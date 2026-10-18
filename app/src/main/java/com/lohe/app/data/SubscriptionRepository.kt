@@ -28,11 +28,17 @@ const val CONTENT_SCHEME = "content://"
  * @param fetcher injected rather than reached for through [ServiceLocator] so the
  *   import and refresh logic — which fans out over many feeds and must survive
  *   individual failures — can be tested without a network.
+ * @param autoDownload invoked for each newly-seen episode of a show with the
+ *   per-show auto-download setting on. A seam rather than a [DownloadManager]
+ *   reference: this constructor takes DAOs and a fetcher only, so the whole
+ *   refresh sweep stays unit-testable, and resolving the manager lazily avoids
+ *   the [ServiceLocator] construction cycle it would otherwise create.
  */
 class SubscriptionRepository internal constructor(
     private val podcasts: com.lohe.app.data.db.dao.PodcastDao,
     private val episodes: com.lohe.app.data.db.dao.EpisodeDao,
     private val fetcher: PodcastFetcher,
+    private val autoDownload: (EpisodeEntity) -> Unit = {},
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
@@ -178,6 +184,13 @@ class SubscriptionRepository internal constructor(
      * than propagated. Feeds are refreshed sequentially on purpose: a user with
      * fifty subscriptions would otherwise open fifty sockets at once and get
      * rate-limited.
+     *
+     * Shows with auto-download enabled get each *newly seen* episode handed to
+     * [autoDownload]. "Newly seen" means absent before this refresh and present
+     * after — a refresh must never re-download a back catalogue. The first
+     * fetch of a show is deliberately exempt: a new subscription arrives with
+     * its whole history attached, and pulling all of it unbidden is not what
+     * "save new episodes" asks for.
      */
     suspend fun refreshAllFeeds(): FeedRefreshSummary {
         val targets = podcasts.allOnce().filter { it.feedUrl.isNotBlank() }
@@ -186,8 +199,20 @@ class SubscriptionRepository internal constructor(
         val failures = mutableListOf<String>()
 
         targets.forEach { podcast ->
+            // Captured before the fetch so the diff is against pre-refresh state.
+            val known = if (podcast.autoDownload) {
+                episodes.byPodcastOnce(podcast.uuid).mapTo(mutableSetOf()) { it.uuid }
+            } else {
+                null
+            }
+
             fetcher.importFeed(podcast.feedUrl)
-                .onSuccess { refreshed++ }
+                .onSuccess {
+                    refreshed++
+                    if (known != null && known.isNotEmpty()) {
+                        autoDownloadNewEpisodes(podcast.uuid, known)
+                    }
+                }
                 .onFailure { failures += podcast.title }
         }
 
@@ -197,6 +222,21 @@ class SubscriptionRepository internal constructor(
             failed = failures.size,
             failureTitles = failures,
         )
+    }
+
+    /**
+     * Hands every episode of [podcastUuid] absent from [known] to [autoDownload].
+     *
+     * Finished episodes are skipped: they cost bandwidth and will never be
+     * played again.
+     */
+    private suspend fun autoDownloadNewEpisodes(
+        podcastUuid: String,
+        known: Set<String>,
+    ) {
+        episodes.byPodcastOnce(podcastUuid)
+            .filter { it.uuid !in known && !it.isPlayed }
+            .forEach(autoDownload)
     }
 }
 
@@ -239,6 +279,10 @@ object ServiceLocator {
             database().podcastDao(),
             database().episodeDao(),
             podcastFetcher(),
+            // Resolved lazily on first auto-download, never during construction.
+            // Calling downloadManager() here instead would recurse: it builds a
+            // DownloadManager that takes a repository, which would come back here.
+            autoDownload = { episode -> downloadManager().start(episode) },
         )
 
     fun podcastFetcher(): PodcastFetcher =

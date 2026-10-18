@@ -5,32 +5,35 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
-## 1. Per-show auto-download does nothing
+## 1. ~~Per-show auto-download does nothing~~ — **done**
 
-**Severity: high — a visible setting that is silently inert.**
+**Was:** `podcasts.autoDownload` was fully plumbed for *storage* and *display*
+(column + migration, DAO setter, repository method, entity field, UI toggle)
+but nothing ever *read* it to start a download. The toggle persisted across
+restarts, rendered correctly, and did nothing.
 
-`podcasts.autoDownload` is fully plumbed for *storage* and *display*:
+**Now:** `SubscriptionRepository` takes an `autoDownload: (EpisodeEntity) -> Unit`
+seam and `refreshAllFeeds()` diffs episode UUIDs across the fetch, handing over
+only what it has not seen before. `ServiceLocator` resolves the real
+`DownloadManager` lazily through that seam — resolving it in the constructor
+would recurse, since the manager itself takes a repository.
 
-- column + migration — `data/db/AppDatabase.kt:71` (schema v4)
-- setter — `data/db/dao/PodcastDao.kt:46`
-- repository — `data/SubscriptionRepository.kt:121`
-- entity field — `data/db/entity/PodcastEntity.kt:30`
-- toggle in the UI — `ui/navigation/PodcastDetailSheet.kt:179`
+Two deliberate exclusions, both covered by tests:
 
-But nothing ever *reads* it to start a download. A grep for `autoDownload`
-across `data/` returns only the definition and the setter — no consumer. The
-only path that reaches `DownloadManager.start()` is the explicit per-episode
-button in `LoheNavHost.kt:320`.
+- **The first fetch of a show is exempt.** A new subscription arrives with its
+  entire back catalogue attached; downloading all of it is not what "save new
+  episodes" asks for.
+- **Already-finished episodes are skipped.** They cost bandwidth and will never
+  be played again.
 
-So the toggle persists across restarts and renders correctly, and then does
-nothing. A user who turns it on will reasonably conclude downloads are broken.
+Pinned by four cases in `SubscriptionRepositoryTest`:
+`refresh does not auto-download when the setting is off`,
+`refresh auto-downloads only episodes it has not seen before`,
+`the first fetch of a show does not pull its back catalogue`,
+`a newly seen episode that is already finished is not downloaded`.
 
-**To fix:** consult the flag in `SubscriptionRepository.refreshAllFeeds()`
-(`SubscriptionRepository.kt:182`) and on the subscribe path, kicking
-`downloadManager().start(episode)` for *newly seen* episodes only — a refresh
-that re-downloads the whole back catalogue would be hostile and expensive.
-Test it in `SubscriptionRepositoryTest` alongside the existing
-`auto-download is per show` and `auto-download defaults to off` cases.
+Still worth confirming on a device (see item 4): that the refresh button
+actually pulls bytes.
 
 ---
 

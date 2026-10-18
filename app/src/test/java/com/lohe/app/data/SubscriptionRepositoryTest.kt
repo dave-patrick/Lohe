@@ -164,11 +164,42 @@ class SubscriptionRepositoryTest {
         }
     }
 
+    /**
+     * Emits episodes into the DAO on every import.
+     *
+     * [ScriptedFetcher] only hands back the show, so a refresh would have no new
+     * rows to diff and the auto-download path could not be observed.
+     */
+    private class EpisodeEmittingFetcher(
+        private val dao: FakeEpisodeDao,
+        private val episodesByFeed: Map<String, List<EpisodeEntity>>,
+    ) : PodcastFetcher {
+        override suspend fun fetch(feedUrl: String): PodcastEntity =
+            importFeed(feedUrl).getOrThrow()
+
+        override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> {
+            val incoming = episodesByFeed[feedUrl]
+                ?: return Result.failure(IllegalStateException("unreachable: $feedUrl"))
+            dao.upsertAll(incoming)
+            return Result.success(
+                PodcastEntity(
+                    uuid = feedUrl,
+                    title = feedUrl.substringAfterLast('/'),
+                    description = null,
+                    feedUrl = feedUrl,
+                    artworkUrl = null,
+                    lastEpisodePublished = 0L,
+                ),
+            )
+        }
+    }
+
     private fun repository(
         fetcher: PodcastFetcher,
         podcasts: FakePodcastDao = FakePodcastDao(),
         episodes: FakeEpisodeDao = FakeEpisodeDao(),
-    ) = SubscriptionRepository(podcasts, episodes, fetcher)
+        autoDownload: (EpisodeEntity) -> Unit = {},
+    ) = SubscriptionRepository(podcasts, episodes, fetcher, autoDownload)
 
     private fun show(title: String, feedUrl: String) = PodcastEntity(
         uuid = title,
@@ -178,6 +209,21 @@ class SubscriptionRepositoryTest {
         feedUrl = feedUrl,
         artworkUrl = null,
         lastEpisodePublished = 0L,
+    )
+
+    /** Feed-shaped episode. Named to avoid colliding with [episode] below, which
+     *  takes an audio URL and hardcodes a single podcast. */
+    private fun feedEpisode(
+        uuid: String,
+        podcastUuid: String,
+        played: Boolean = false,
+    ) = EpisodeEntity(
+        uuid = uuid,
+        podcastUuid = podcastUuid,
+        title = uuid,
+        audioUrl = "https://a.com/$uuid.mp3",
+        published = 0L,
+        playingStatus = if (played) EpisodeEntity.PLAYED else EpisodeEntity.UNPLAYED,
     )
 
     // --- Refresh -------------------------------------------------------------
@@ -360,6 +406,106 @@ class SubscriptionRepositoryTest {
             "turning it on for one show must not affect the other",
             repo.subscriptionForFeed("https://off.com/f.xml")!!.autoDownload,
         )
+    }
+
+    // --- Auto-download on refresh --------------------------------------------
+    //
+    // The setting persisted and rendered long before anything acted on it, so
+    // these pin the behaviour that was missing: which episodes a refresh hands
+    // over, and — more importantly — which it must not.
+
+    private val feed = "https://s.com/f.xml"
+
+    @Test
+    fun `refresh does not auto-download when the setting is off`() = runTest {
+        val eps = FakeEpisodeDao()
+        eps.upsertAll(listOf(feedEpisode("e1", "S")))
+        val requested = mutableListOf<String>()
+        val repo = repository(
+            fetcher = EpisodeEmittingFetcher(
+                eps,
+                mapOf(feed to listOf(feedEpisode("e1", "S"), feedEpisode("e2", "S"))),
+            ),
+            podcasts = FakePodcastDao(mutableListOf(show("S", feed))),
+            episodes = eps,
+        ) { requested += it.uuid }
+
+        repo.refreshAllFeeds()
+
+        assertTrue("nothing should be fetched when the flag is off", requested.isEmpty())
+    }
+
+    @Test
+    fun `refresh auto-downloads only episodes it has not seen before`() = runTest {
+        val eps = FakeEpisodeDao()
+        eps.upsertAll(listOf(feedEpisode("old", "S")))
+        val requested = mutableListOf<String>()
+        val repo = repository(
+            fetcher = EpisodeEmittingFetcher(
+                eps,
+                mapOf(feed to listOf(feedEpisode("old", "S"), feedEpisode("new", "S"))),
+            ),
+            podcasts = FakePodcastDao(mutableListOf(show("S", feed).copy(autoDownload = true))),
+            episodes = eps,
+        ) { requested += it.uuid }
+
+        repo.refreshAllFeeds()
+
+        assertEquals(listOf("new"), requested)
+    }
+
+    @Test
+    fun `the first fetch of a show does not pull its back catalogue`() = runTest {
+        val eps = FakeEpisodeDao()
+        val requested = mutableListOf<String>()
+        val repo = repository(
+            fetcher = EpisodeEmittingFetcher(
+                eps,
+                mapOf(
+                    feed to listOf(
+                        feedEpisode("e1", "S"), feedEpisode("e2", "S"), feedEpisode("e3", "S"),
+                    ),
+                ),
+            ),
+            podcasts = FakePodcastDao(
+                mutableListOf(show("S", feed).copy(autoDownload = true)),
+            ),
+            episodes = eps,
+        ) { requested += it.uuid }
+
+        repo.refreshAllFeeds()
+
+        assertTrue(
+            "a new subscription arrives with its whole history; none of it is \"new\"",
+            requested.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a newly seen episode that is already finished is not downloaded`() = runTest {
+        val eps = FakeEpisodeDao()
+        eps.upsertAll(listOf(feedEpisode("old", "S")))
+        val requested = mutableListOf<String>()
+        val repo = repository(
+            fetcher = EpisodeEmittingFetcher(
+                eps,
+                mapOf(
+                    feed to listOf(
+                        feedEpisode("old", "S"),
+                        feedEpisode("heard", "S", played = true),
+                        feedEpisode("unheard", "S"),
+                    ),
+                ),
+            ),
+            podcasts = FakePodcastDao(
+                mutableListOf(show("S", feed).copy(autoDownload = true)),
+            ),
+            episodes = eps,
+        ) { requested += it.uuid }
+
+        repo.refreshAllFeeds()
+
+        assertEquals(listOf("unheard"), requested)
     }
 
     // --- Storage -------------------------------------------------------------
