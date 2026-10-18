@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
@@ -20,6 +21,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.lohe.app.MainActivity
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.theme.ShowPlaybackSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -231,6 +233,17 @@ class PlaybackService : MediaLibraryService() {
         private var resumedForMediaId: String? = null
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            val stateName = when (playbackState) {
+                Player.STATE_IDLE -> "IDLE"
+                Player.STATE_BUFFERING -> "BUFFERING"
+                Player.STATE_READY -> "READY"
+                Player.STATE_ENDED -> "ENDED"
+                else -> "UNKNOWN($playbackState)"
+            }
+            val summary = "state=$stateName playWhenReady=${player.playWhenReady} mediaId=${player.currentMediaItem?.mediaId} pos=${player.currentPosition}ms dur=${player.duration}ms"
+            DevDiagnostics.playbackStateSummary = summary
+            DevDiagnostics.log("EXOPLAYER", summary)
+
             if (playbackState == Player.STATE_READY) {
                 applyVolumeBoost(Playback.volumeBoost.value)
             }
@@ -250,6 +263,12 @@ class PlaybackService : MediaLibraryService() {
 
             markCurrentPlayed()
             advanceQueue()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            val summary = "ERROR code=${error.errorCodeName} mediaId=${player.currentMediaItem?.mediaId} msg=${error.message}"
+            DevDiagnostics.playbackStateSummary = summary
+            DevDiagnostics.log("EXOPLAYER_ERR", summary, error)
         }
 
         private fun markCurrentPlayed() {

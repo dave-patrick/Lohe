@@ -4,6 +4,7 @@ import android.content.Context
 import com.lohe.app.data.SubscriptionRepository
 import com.lohe.app.data.db.entity.DownloadState
 import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.dev.DevDiagnostics
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +100,7 @@ class DownloadManager(
     private suspend fun runDownload(episode: EpisodeSummary) {
         if (episode.isDownloaded || episode.isDownloading) return
 
+        DevDiagnostics.log("DOWNLOAD", "Start uuid=${episode.uuid} title=${episode.title} url=${episode.audioUrl}")
         repository.setDownloadState(episode.uuid, DownloadState.RUNNING, null)
         val target = File(episodeDir(), fileNameFor(episode))
         val partial = File(target.absolutePath + PART_SUFFIX)
@@ -113,6 +115,7 @@ class DownloadManager(
                     .build()
 
                 client.newCall(request).execute().use { response ->
+                    DevDiagnostics.log("DOWNLOAD", "HTTP ${response.code} for uuid=${episode.uuid} contentLength=${response.body?.contentLength()}")
                     if (!response.isSuccessful) {
                         throw IOException("HTTP ${response.code}")
                     }
@@ -141,12 +144,14 @@ class DownloadManager(
                 if (!partial.renameTo(target)) throw IOException("could not finalise download")
             }
 
+            DevDiagnostics.log("DOWNLOAD", "Done uuid=${episode.uuid} bytes=${target.length()} path=${target.absolutePath}")
             repository.setDownloadState(
                 episode.uuid,
                 DownloadState.DONE,
                 target.absolutePath,
             )
         } catch (e: Exception) {
+            DevDiagnostics.log("DOWNLOAD_ERR", "Failed uuid=${episode.uuid} url=${episode.audioUrl}: ${e.message}", e)
             withContext(io) { runCatching { partial.delete() } }
             repository.setDownloadState(episode.uuid, DownloadState.FAILED, null)
         }

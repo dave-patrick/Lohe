@@ -51,6 +51,7 @@ import com.lohe.app.data.QueueViewModelFactory
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
 import com.lohe.app.data.SubscriptionsViewModelFactory
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.playback.Playback
 import com.lohe.app.playback.rememberPlayerConnection
 import com.lohe.app.playback.rememberTransportState
@@ -127,6 +128,12 @@ fun LoheNavHost(
     // separately because those screens have no tab of their own, and without
     // it the bar shows nothing selected and a tap on Home looks inert.
     var selectedTab by rememberSaveable { mutableStateOf(Dest.HOME.route) }
+
+    LaunchedEffect(backStack) {
+        val route = backStack?.destination?.route ?: "unknown"
+        val uuidArg = backStack?.arguments?.getString("uuid").orEmpty()
+        DevDiagnostics.recordRoute(route, if (uuidArg.isNotBlank()) "uuid=$uuidArg" else "")
+    }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

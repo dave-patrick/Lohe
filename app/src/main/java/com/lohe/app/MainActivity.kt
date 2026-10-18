@@ -13,6 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.dev.BugReportOverlay
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.SplashScreen
 import com.lohe.app.ui.navigation.LoheNavHost
 import com.lohe.app.ui.theme.Appearance
@@ -24,6 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        DevDiagnostics.init(this)
         ServiceLocator.init(this)
 
         setContent {
@@ -54,22 +57,28 @@ class MainActivity : ComponentActivity() {
             }
 
             LoheTheme(appearance = appearance) {
-                if (showSplash) {
-                    SplashScreen(onFinished = { showSplash = false })
-                } else {
-                    LoheNavHost(
-                        appearance = appearance,
-                        onToggleAppearance = {
-                            val next = when (appearance) {
-                                Appearance.DARK -> Appearance.LIGHT
-                                Appearance.LIGHT -> Appearance.DARK
-                            }
-                            // Update in memory first so the toggle feels instant,
-                            // then persist; a failed write must not block the change.
-                            appearance = next
-                            scope.launch { settings.setAppearance(next) }
-                        },
-                    )
+                BugReportOverlay {
+                    if (showSplash) {
+                        SplashScreen(onFinished = {
+                            DevDiagnostics.log("UI", "SplashScreen finished")
+                            showSplash = false
+                        })
+                    } else {
+                        LoheNavHost(
+                            appearance = appearance,
+                            onToggleAppearance = {
+                                val next = when (appearance) {
+                                    Appearance.DARK -> Appearance.LIGHT
+                                    Appearance.LIGHT -> Appearance.DARK
+                                }
+                                DevDiagnostics.recordAction("Toggle appearance -> $next")
+                                // Update in memory first so the toggle feels instant,
+                                // then persist; a failed write must not block the change.
+                                appearance = next
+                                scope.launch { settings.setAppearance(next) }
+                            },
+                        )
+                    }
                 }
             }
         }
