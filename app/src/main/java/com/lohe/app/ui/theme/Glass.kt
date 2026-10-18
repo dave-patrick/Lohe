@@ -3,6 +3,7 @@ package com.lohe.app.ui.theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -11,6 +12,20 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
+/**
+ * Whether the active palette is the light one.
+ *
+ * Read from the theme rather than passed down. Every glass surface needs this
+ * answer, and threading an `isLight` boolean through each call site is exactly
+ * how `GlassCard` ended up hardcoding the dark values and going invisible on
+ * paper white.
+ */
+@Composable
+fun backgroundIsLight(): Boolean = MaterialTheme.colorScheme.background.isLight()
+
+/** Perceived lightness, ITU-R BT.601 weights. */
+fun Color.isLight(): Boolean = red * 0.2126f + green * 0.7152f + blue * 0.0722f > 0.5f
 
 /**
  * Lohe's signature surface: a frosted panel that lets episode artwork behind

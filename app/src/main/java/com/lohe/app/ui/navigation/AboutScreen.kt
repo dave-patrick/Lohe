@@ -31,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
+import com.lohe.app.ui.theme.backgroundIsLight
 
 /**
  * About.
@@ -48,7 +49,7 @@ fun AboutScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val isLight = MaterialTheme.colorScheme.background.luminanceIsLight()
+    val isLight = backgroundIsLight()
 
     // Read from the installed package rather than a baked-in constant, so the
     // page cannot drift from the APK it ships in.
@@ -209,12 +210,7 @@ private fun AboutBlock(heading: String, body: String) {
 }
 
 /**
- * Perceived lightness of the current background.
- *
- * Derived from the theme rather than the [com.lohe.app.ui.theme.Appearance]
- * enum so the page follows whatever the user actually has in front of them.
+ * Perceived lightness lives in ui/theme/Glass.kt as `backgroundIsLight()`.
+ * It used to be a private copy here; two implementations of "is the palette
+ * light" is how GlassCard and AboutScreen ended up disagreeing.
  */
-private fun androidx.compose.ui.graphics.Color.luminanceIsLight(): Boolean {
-    val l = (red * 0.2126f + green * 0.7152f + blue * 0.0722f)
-    return l > 0.5f
-}

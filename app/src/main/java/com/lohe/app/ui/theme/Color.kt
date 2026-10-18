@@ -49,9 +49,15 @@ object LoheAccent {
     val glassFillStrong = Color(0x24E4E4E7)    // ~14%
     val glassBorder = Color(0x29E4E4E7)        // ~16% hairline light catch
 
-    /** Light-mode glass: more subtle frosted fill for refined look. */
-    val glassFillLight = Color(0x4FFFFFFF)     // ~30% white (reduced from 40%)
-    val glassBorderLight = Color(0x15121214)   // ~8% dark (reduced from 10%)
+    /**
+     * Light-mode glass.
+     *
+     * These must be an *ink* tint, not a white one. On paper white a 30% white
+     * fill is indistinguishable from the page behind it, which is what made
+     * every list row disappear in light mode.
+     */
+    val glassFillLight = Color(0x0F1C1C1E)     // ~6% charcoal — a surface on white
+    val glassBorderLight = Color(0x1F121214)   // ~12% charcoal hairline
 
     val electricBlue = ElectricBlue
     val electricCyan = ElectricCyan

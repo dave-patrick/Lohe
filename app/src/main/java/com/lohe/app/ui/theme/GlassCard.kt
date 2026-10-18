@@ -43,6 +43,13 @@ fun GlassCard(
     contentPadding: Dp = 14.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    // Resolved from the theme, not a parameter. These two used to be the dark
+    // values unconditionally, so on paper white the fill and the hairline were
+    // both white-on-white and the row vanished into the page.
+    val isLight = backgroundIsLight()
+    val fill = if (isLight) LoheAccent.glassFillLight else LoheAccent.glassFill
+    val edge = if (isLight) LoheAccent.glassBorderLight else LoheAccent.glassBorder
+
     val base = Modifier
         .fillMaxWidth()
         .clip(shape)
@@ -53,7 +60,7 @@ fun GlassCard(
                 Modifier
             },
         )
-        .background(LoheAccent.glassFill)
+        .background(fill)
         // The wash sits under the fill so it reads as light coming from the
         // artwork rather than as a tint painted on top of the row.
         .then(
@@ -61,8 +68,8 @@ fun GlassCard(
                 Modifier.background(
                     Brush.linearGradient(
                         listOf(
-                            accent.copy(alpha = 0.22f),
-                            accent.copy(alpha = 0.04f),
+                            accent.copy(alpha = if (isLight) 0.16f else 0.22f),
+                            accent.copy(alpha = if (isLight) 0.03f else 0.04f),
                         ),
                     ),
                 )
@@ -72,9 +79,7 @@ fun GlassCard(
         )
         .border(
             width = borderWidth,
-            brush = Brush.verticalGradient(
-                listOf(LoheAccent.glassBorder, Color.Transparent),
-            ),
+            brush = Brush.verticalGradient(listOf(edge, Color.Transparent)),
             shape = shape,
         )
 
@@ -96,17 +101,24 @@ fun GlassRow(
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val isLight = backgroundIsLight()
+    val fill = if (isLight) LoheAccent.glassFillLight else LoheAccent.glassFill
+    val edge = if (isLight) LoheAccent.glassBorderLight else LoheAccent.glassBorder
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(LoheAccent.glassFill)
+            .background(fill)
             .then(
                 if (accent != null) {
                     Modifier.background(
                         Brush.linearGradient(
-                            listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.04f)),
+                            listOf(
+                                accent.copy(alpha = if (isLight) 0.16f else 0.22f),
+                                accent.copy(alpha = if (isLight) 0.03f else 0.04f),
+                            ),
                         ),
                     )
                 } else {
@@ -115,9 +127,7 @@ fun GlassRow(
             )
             .border(
                 width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(LoheAccent.glassBorder, Color.Transparent),
-                ),
+                brush = Brush.verticalGradient(listOf(edge, Color.Transparent)),
                 shape = shape,
             )
             .padding(contentPadding),
