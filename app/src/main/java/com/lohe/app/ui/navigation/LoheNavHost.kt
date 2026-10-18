@@ -362,6 +362,7 @@ fun LoheNavHost(
 
             composable(Dest.PLAYER.route) {
                 PlayerScreen(
+                    connection = playerConnection,
                     appearance = appearance,
                     onToggleAppearance = onToggleAppearance,
                     mediaUri = nowPlaying?.uri,

@@ -95,6 +95,7 @@
     <string name="home_recent_shows">Your shows</string>
     <string name="home_empty">Nothing here yet. Add a feed or import a folder.</string>
     <string name="home_empty_title">Nothing queued up</string>
+    <string name="home_mascot_description">Kani, waiting for something to play</string>
     <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
     <string name="home_cta_discover">Find a show</string>
     <string name="home_cta_import">Import from this device</string>

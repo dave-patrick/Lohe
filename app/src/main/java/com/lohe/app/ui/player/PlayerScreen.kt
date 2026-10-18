@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,7 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.playback.Playback
 import com.lohe.app.playback.PlaybackService
-import com.lohe.app.playback.rememberPlayerConnection
+import com.lohe.app.playback.PlayerConnection
 import com.lohe.app.playback.rememberTransportState
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
@@ -75,6 +76,15 @@ private val ArtTint = Color(0xFF1E4FD8)
  */
 @Composable
 fun PlayerScreen(
+    /**
+     * The session handle, shared with the rest of the nav host.
+     *
+     * Passed in rather than created here: a second `PlayerConnection` means a
+     * second MediaController on the same session, so the now-playing bar and
+     * this screen would observe independent transport state and disagree about
+     * whether anything is playing.
+     */
+    connection: PlayerConnection,
     appearance: Appearance,
     onToggleAppearance: () -> Unit,
     onEnded: () -> Unit = {},
@@ -102,7 +112,6 @@ fun PlayerScreen(
     volumeBoostDefault: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val connection = rememberPlayerConnection()
     val transport by rememberTransportState(connection)
     val sleepTimer = Playback.sleepTimer
     val sleepTimerState by Playback.sleepState.collectAsState()
@@ -122,16 +131,28 @@ fun PlayerScreen(
     // Loading a new item is a one-shot per URI; re-running it on recomposition
     // would restart the episode every time the transport poll ticks.
     LaunchedEffect(mediaUri) {
-        if (!mediaUri.isNullOrBlank()) {
-            connection.play(
-                PlaybackService.mediaItemFor(
-                    episodeUuid = mediaEpisodeId?.takeIf { it.isNotBlank() } ?: mediaUri,
-                    uri = mediaUri,
-                    title = mediaTitle.ifBlank { transport.title },
-                    showTitle = mediaShowTitle.takeIf { it.isNotBlank() },
-                ),
-            )
+        val uri = mediaUri?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val itemId = mediaEpisodeId?.takeIf { it.isNotBlank() } ?: uri
+
+        // Returning to this screen disposes and recreates it, which re-enters
+        // this effect. Without this guard, coming back from Settings restarted
+        // the episode from zero.
+        val controller = connection.controller
+        if (controller != null &&
+            controller.mediaItemCount > 0 &&
+            controller.currentMediaItem?.mediaId == itemId
+        ) {
+            return@LaunchedEffect
         }
+
+        connection.play(
+            PlaybackService.mediaItemFor(
+                episodeUuid = itemId,
+                uri = uri,
+                title = mediaTitle.ifBlank { transport.title },
+                showTitle = mediaShowTitle.takeIf { it.isNotBlank() },
+            ),
+        )
     }
 
     LaunchedEffect(volumeBoostEnabled) {
@@ -487,11 +508,16 @@ private fun TransportRow(
 // disconnected and the controls render disabled — which is also the honest
 // preview of the empty state.
 
+// A preview cannot bind a real MediaSession, so it gets a detached handle:
+// controller stays null, the transport renders its empty snapshot, and nothing
+// tries to play. Enough to check layout and type.
 @Preview(name = "Player — dark", showBackground = true)
 @Composable
 private fun PlayerDarkPreview() {
+    val context = LocalContext.current
     LoheTheme(appearance = Appearance.DARK) {
         PlayerScreen(
+            connection = PlayerConnection.create(context),
             appearance = Appearance.DARK,
             onToggleAppearance = {},
         )
@@ -501,8 +527,10 @@ private fun PlayerDarkPreview() {
 @Preview(name = "Player — light", showBackground = true)
 @Composable
 private fun PlayerLightPreview() {
+    val context = LocalContext.current
     LoheTheme(appearance = Appearance.LIGHT) {
         PlayerScreen(
+            connection = PlayerConnection.create(context),
             appearance = Appearance.LIGHT,
             onToggleAppearance = {},
         )

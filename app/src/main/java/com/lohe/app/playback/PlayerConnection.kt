@@ -48,7 +48,17 @@ class PlayerConnection internal constructor(
 
     private var future: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
 
-    /** Null until the session binds; commands issued before then are dropped. */
+    /**
+     * A play request that arrived before the session had bound.
+     *
+     * [attach] connects asynchronously, but callers issue commands from
+     * `LaunchedEffect` on first composition — which is almost always sooner.
+     * Dropping those requests is why tapping play did nothing: the command hit
+     * a null controller and was discarded, with no retry and no error.
+     */
+    private var pendingPlay: Pair<MediaItem, Boolean>? = null
+
+    /** Null until the session binds; commands issued before then are deferred. */
     var controller: MediaController? = null
         private set
 
@@ -58,19 +68,36 @@ class PlayerConnection internal constructor(
         val pending = MediaController.Builder(appContext, token).buildAsync()
         future = pending
         pending.addListener(
-            { controller = runCatching { pending.get() }.getOrNull() },
+            {
+                controller = runCatching { pending.get() }.getOrNull()
+                controller?.let(::drainPendingPlay)
+            },
             MoreExecutors.directExecutor(),
         )
     }
 
+    /** Applies the play request held during connect, then forgets it. */
+    private fun drainPendingPlay(c: MediaController) {
+        val request = pendingPlay ?: return
+        pendingPlay = null
+        c.setMediaItem(request.first)
+        c.prepare()
+        c.playWhenReady = request.second
+    }
+
     fun detach() {
+        pendingPlay = null
         future?.let { MediaController.releaseFuture(it) }
         future = null
         controller = null
     }
 
     fun play(item: MediaItem, playWhenReady: Boolean = true) {
-        val c = controller ?: return
+        val c = controller
+        if (c == null) {
+            pendingPlay = item to playWhenReady
+            return
+        }
         c.setMediaItem(item)
         c.prepare()
         c.playWhenReady = playWhenReady

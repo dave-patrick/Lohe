@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -36,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -48,7 +45,6 @@ import com.lohe.app.R
 import com.lohe.app.data.ContinueEntry
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.ui.theme.Appearance
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 
 /**
@@ -231,33 +227,18 @@ private fun EmptyHome(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // A gradient tile stands in for episode artwork so the screen still has
-        // the brand's colour and depth when the library is empty. An icon alone
-        // left a void that read as broken rather than as an invitation.
-        Box(
-            modifier = Modifier
-                .size(132.dp)
-                .clip(RoundedCornerShape(34.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            Color(0xFF0B1230),
-                            Color(0xFF14285C),
-                            ElectricBlue,
-                        ),
-                    ),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.GraphicEq,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(52.dp),
-            )
-        }
+        // Kani, the brand mascot, holds the empty library. An abstract gradient tile
+        // with a waveform glyph read as a placeholder nobody had finished; this
+        // is the app's own character doing what the brand says it is for —
+        // present in empty states.
+        Image(
+            painter = painterResource(id = R.drawable.kani_mascot),
+            contentDescription = stringResource(R.string.home_mascot_description),
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.height(232.dp),
+        )
 
-        Spacer(Modifier.size(28.dp))
+        Spacer(Modifier.size(20.dp))
 
         Text(
             text = stringResource(R.string.home_empty_title),
