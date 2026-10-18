@@ -37,56 +37,49 @@ actually pulls bytes.
 
 ---
 
-## 2. Brand tokens have three disagreeing sources
+## 2. ~~Brand tokens had three disagreeing sources~~ — **done**
 
-**Severity: medium — every future brand edit has to guess which file is right.**
+**Was:** the accent existed in three places at once and no two agreed.
 
-| Source | Electric blue | Mid | Cyan |
-|---|---|---|---|
-| `brand/tokens.css` | `#0052FF` | `#00A8FF` | `#00D2FF` |
-| `ui/theme/Color.kt:22-24` | `#0080FF` | `#0052CC` | `#00D2FF` |
-| `res/values/colors.xml:4` | `#FF0052FF` | — | — |
+| Source | Was |
+|---|---|
+| `brand/tokens.css` | `#0052FF` / `#00A8FF` |
+| `ui/theme/Color.kt` | `#0080FF` / `#0052CC` |
+| `res/values/colors.xml` | `#FF0052FF`, referenced nowhere |
 
-`Color.kt` currently holds the values read off the brand identity artwork
-(`#0080FF` / `#0052CC`), while its own header comment still claims *"Mirrors
-brand/tokens.css — keep the two in sync"* — which is no longer true.
+`Color.kt` held values read off the brand identity artwork, while its own
+header still claimed it mirrored `tokens.css`. That was a misread of a colour
+circle in a rendered JPEG.
 
-`colors.xml` agrees with neither, and `lohe_accent_700` is **referenced
-nowhere**: `themes.xml` only consumes `lohe_bg_900`. It is dead and drifted.
+**Now:** `tokens.css` wins. It self-declares as "platform-agnostic source of
+truth" and `BRAND.md` §2 independently corroborates `#0052FF → #00D2FF`, so
+two written sources outweigh one reading of a picture. `Color.kt` is back to
+`#0052FF` / `#00A8FF` with a comment recording why, and the dead
+`lohe_accent_700` is gone — `colors.xml` now carries only the window background
+it is actually read for.
 
-**To fix:** pick one canonical accent (artwork or `tokens.css`), write it into
-`tokens.css` first, then make `Color.kt` and `colors.xml` agree. Either delete
-`lohe_accent_700` or point it at the single source of truth — right now it is
-a third answer that nothing reads.
+*If the artwork hex is the one you want, say so and this reverts — but then
+`tokens.css` and `BRAND.md` need updating first, not just `Color.kt`.*
 
 ---
 
-## 3. Three committed docs assert things that are no longer true
+## 3. ~~Committed docs described a codebase that no longer exists~~ — **done**
 
-**Severity: medium — these are the first thing a reader opens.**
+`FINAL_SUMMARY.md`, `STATUS_UPDATE.md`, `PROGRESS_SUMMARY.md`,
+`INSTALL_INSTRUCTIONS.md` and `WIRELESS_INSTALL.md` were all progress snapshots
+from an earlier build, and all five had rotted:
 
-`FINAL_SUMMARY.md`
+- `#070D14` background (actual: `#121214`)
+- *"Known Limitation: `seekTo()` has reference issues"* — resolved long ago;
+  `PlayerConnection.seekToFraction` / `seekTo` / `seekBack` all work and
+  `PlayerScreen` wires `onSeek`
+- *"Pending: wire playback"* — `PlaybackService` exists with a MediaSession
+- install docs pointing at `rea\work\Lohe`, a directory that no longer exists
+- wrong APK size, wrong adb path, wrong bottom-bar tabs, an emoji
 
-- Says the background is `#070D14` "Midnight Void". It is `#121214`.
-- Lists *"Known Limitation: `seekTo()` method has reference issues"*. This is
-  **stale** — `PlayerConnection.seekToFraction` / `seekTo` / `seekBack` all
-  exist (`playback/PlayerConnection.kt:88-103`) and `PlayerScreen.kt:191` wires
-  `onSeek`. Scrubbing works; the note should go.
-- Describes the player as built around manual state tracking and "post-build
-  method calls" instead of a `Player.Listener`. That predates `PlaybackService`.
-
-`STATUS_UPDATE.md`
-
-- *"Pending — Wire Playback (Media3/ExoPlayer)"* and *"Resolve Media3
-  dependency issue"*. Both resolved: `playback/PlaybackService.kt` exists with
-  a MediaSession.
-
-`PROGRESS_SUMMARY.md`
-
-- Repeats the `#070D14` background.
-
-**To fix:** rewrite or delete these three. They are worse than absent, because
-each one confidently describes a codebase that no longer exists.
+**Now:** replaced with a single `README.md` describing the app as it actually
+is, and the five stale files are deleted. They were worse than absent — each
+one asserted confidently about code that had changed.
 
 ---
 

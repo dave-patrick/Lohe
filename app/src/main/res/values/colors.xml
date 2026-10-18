@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  XML-side brand values, consumed before Compose starts.
+
+  The real palette lives in brand/tokens.css and is mirrored in
+  ui/theme/Color.kt. This file exists only because the window background is
+  read by themes.xml at a point where no Compose code is running.
+
+  An earlier revision also declared lohe_accent_700 here. Nothing referenced
+  it, and it had already drifted out of step with both tokens.css and
+  Color.kt. Removed rather than left to rot.
+-->
 <resources>
+    <!-- tokens.css: bg 900 -->
     <color name="lohe_bg_900">#FF121214</color>
-    <color name="lohe_accent_700">#FF0052FF</color>
 </resources>

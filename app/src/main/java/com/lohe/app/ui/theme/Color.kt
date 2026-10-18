@@ -18,10 +18,15 @@ val CharcoalRaised = Color(0xFF26262A)
 val CharcoalHairline = Color(0xFF323238)
 
 // --- Accent: electric blue -------------------------------------------------
-// Brand: Electric Blue #0080FF, Deep Blue #0052CC per brand identity guide
-val ElectricBlue = Color(0xFF0080FF)
-val ElectricBlueMid = Color(0xFF0052CC)
-val ElectricCyan = Color(0xFF00D2FF)
+// Values come from brand/tokens.css, which self-declares as the source of
+// truth and is corroborated by BRAND.md §2 ("#0052FF -> #00D2FF").
+//
+// An earlier pass took #0080FF / #0052CC from the brand identity artwork
+// instead. That was a misread of a colour circle in a rendered JPEG, and it
+// desynced this file from tokens.css — see docs/TODO.md item 2.
+val ElectricBlue = Color(0xFF0052FF)     // --lohe-accent-700
+val ElectricBlueMid = Color(0xFF00A8FF)  // --lohe-accent-500
+val ElectricCyan = Color(0xFF00D2FF)     // --lohe-accent-300
 
 // --- Text: frosted white ---------------------------------------------------
 val FrostWhite = Color(0xFFF4F4F5)
