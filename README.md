@@ -21,13 +21,14 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 Then:
 
 ```cmd
-gradle assembleDebug
-gradle testDebugUnitTest
+gradlew.bat assembleDebug          # Windows
+./gradlew assembleDebug            # macOS / Linux
+gradlew.bat testDebugUnitTest
 ```
 
-Gradle 9.6.0 is resolved through `gradle/wrapper/gradle-wrapper.gradle.kts`;
-there is no `gradle-wrapper.jar` in the repo, which is the expected shape for
-the declarative wrapper.
+Gradle 9.6.0 arrives via the wrapper — no local install needed. It is pinned in
+`gradle/wrapper/gradle-wrapper.gradle.kts`, which in Gradle 9 is the source of
+truth; `gradle-wrapper.properties` is generated from it.
 
 | | |
 |---|---|
@@ -106,8 +107,11 @@ download naming and path-traversal safety, sleep-timer deadlines, and the
 repository's failure isolation.
 
 ```cmd
-gradle testDebugUnitTest
+./gradlew testDebugUnitTest
 ```
+
+Tests also run in CI on every push and pull request, and the debug APK is
+attached to each run.
 
 `FeedParser` runs against kxml2 on the JVM because Android's `android.util.Xml`
 is unavailable in plain unit tests.
