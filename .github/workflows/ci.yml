@@ -28,11 +28,22 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 was tried here and failed: it shells
+      # out to `sdkmanager tools`, and that package no longer exists under
+      # cmdline-tools 16. The runner image already ships an SDK, so drive
+      # sdkmanager directly instead.
+      #
+      # The platform is `android-37.0` — preview-style suffix — which is what
+      # compileSdk 37 resolves to locally.
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
 
       - name: Write local.properties
-        # The SDK path is machine-local and gitignored, so CI has to declare it
-        # the same way a developer does. Harmless in CI; this is never committed.
+        # The SDK path is machine-local and gitignored, so CI declares it the
+        # same way a developer does. Never committed.
         run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
 
       - name: Unit tests
