@@ -2,6 +2,7 @@ package com.lohe.app.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -34,6 +35,8 @@ class PlaybackService : MediaSessionService() {
 
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var loudnessSessionId: Int = C.AUDIO_SESSION_ID_UNSET
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
@@ -61,6 +64,7 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         player.addListener(EndOfEpisodeWatcher())
+        startVolumeBoostObserver()
         startSleepTimerPolling()
         startProgressReporting()
     }
@@ -78,6 +82,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         scope.cancel()
         player.removeListener(EndOfEpisodeWatcher())
+        runCatching { loudnessEnhancer?.release() }
+        loudnessEnhancer = null
         session?.release()
         session = null
         player.release()
@@ -104,6 +110,9 @@ class PlaybackService : MediaSessionService() {
         private var resumedForMediaId: String? = null
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) {
+                applyVolumeBoost(Playback.volumeBoost.value)
+            }
             if (playbackState != Player.STATE_ENDED) {
                 if (playbackState == Player.STATE_READY) resumeOnce()
                 return
@@ -202,6 +211,31 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun startVolumeBoostObserver() {
+        scope.launch {
+            Playback.volumeBoost.collect { enabled ->
+                applyVolumeBoost(enabled)
+            }
+        }
+    }
+
+    private fun applyVolumeBoost(enabled: Boolean) {
+        val sessionId = player.audioSessionId
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId <= 0) return
+
+        runCatching {
+            if (loudnessEnhancer == null || loudnessSessionId != sessionId) {
+                loudnessEnhancer?.release()
+                loudnessEnhancer = LoudnessEnhancer(sessionId)
+                loudnessSessionId = sessionId
+            }
+            loudnessEnhancer?.apply {
+                setTargetGain(if (enabled) VOLUME_BOOST_MILLIBELS else 0)
+                setEnabled(enabled)
+            }
+        }
+    }
+
     /**
      * Polls the sleep timer.
      *
@@ -268,12 +302,10 @@ class PlaybackService : MediaSessionService() {
         private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
 
         /**
-         * Amplification applied when volume boost is on.
-         *
-         * This is gain, not loudness normalisation: it lifts everything, so an
-         * already-hot master will clip. Real loudness boost should measure
-         * integrated LUFS and apply a limiter rather than a fixed multiplier.
+         * Amplification applied via [LoudnessEnhancer] when volume boost is on.
+         * 500 mB = +5 dB (~1.78x linear amplitude).
          */
+        const val VOLUME_BOOST_MILLIBELS = 500
         const val VOLUME_BOOST_GAIN = 1.8f
 
         /**
