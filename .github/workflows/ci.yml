@@ -33,13 +33,17 @@ jobs:
       # cmdline-tools 16. The runner image already ships an SDK, so drive
       # sdkmanager directly instead.
       #
-      # The platform is `android-37.0` — preview-style suffix — which is what
-      # compileSdk 37 resolves to locally.
+      # It is not on PATH by default — hence the explicit lookup. The platform
+      # is `android-37.0` (preview-style suffix), which is what compileSdk 37
+      # resolves to locally.
       - name: Install Android SDK packages
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
+          SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          if [ -z "$SDKMANAGER" ]; then echo "::error::sdkmanager not found under $ANDROID_SDK_ROOT"; exit 1; fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
 
       - name: Write local.properties
         # The SDK path is machine-local and gitignored, so CI declares it the
