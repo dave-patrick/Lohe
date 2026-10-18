@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
@@ -55,7 +56,7 @@ fun EpisodesScreen(
     viewModel: EpisodesViewModel,
     onBack: () -> Unit,
     onPlay: (EpisodeEntity) -> Unit,
-    onQueue: (String) -> Unit,
+    onQueue: (EpisodeEntity) -> Unit,
     onDownload: (EpisodeEntity) -> Unit,
 ) {
     val podcast by viewModel.podcast.collectAsState()
@@ -161,7 +162,7 @@ fun EpisodesScreen(
                     episode = episode,
                     now = now,
                     onPlay = { onPlay(episode) },
-                    onQueue = { onQueue(episode.uuid) },
+                    onQueue = { onQueue(episode) },
                     onDownload = { onDownload(episode) },
                     onTogglePlayed = {
                         viewModel.togglePlayed(episode.uuid, episode.isPlayed)
@@ -284,11 +285,14 @@ private fun EpisodeRow(
 
             IconButton(
                 onClick = onQueue,
-                enabled = !episode.isQueued,
                 modifier = Modifier.size(30.dp),
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                    imageVector = if (episode.isQueued) {
+                        Icons.AutoMirrored.Filled.PlaylistAddCheck
+                    } else {
+                        Icons.AutoMirrored.Filled.PlaylistAdd
+                    },
                     contentDescription = stringResource(
                         if (episode.isQueued) R.string.episodes_queued
                         else R.string.episodes_add_to_queue,

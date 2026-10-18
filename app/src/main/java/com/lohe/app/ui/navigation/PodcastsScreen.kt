@@ -68,8 +68,6 @@ fun PodcastsScreen(
     onManageStorage: () -> Unit,
     onPickOpmlToImport: () -> Unit,
     onPickExportDestination: (String) -> Unit,
-    message: String?,
-    onMessageShown: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -82,13 +80,6 @@ fun PodcastsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddFeed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-
-    LaunchedEffect(message) {
-        message?.let {
-            snackbarHostState.showSnackbar(it)
-            onMessageShown()
-        }
-    }
 
     LaunchedEffect(import) {
         when (val state = import) {

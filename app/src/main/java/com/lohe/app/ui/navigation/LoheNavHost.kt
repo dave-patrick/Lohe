@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -120,6 +122,20 @@ fun LoheNavHost(
     var pendingExport by remember { mutableStateOf<String?>(null) }
     var importMessage by remember { mutableStateOf<String?>(null) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
+
+    // One snackbar for the whole nav host. This used to be rendered inside
+    // PodcastsScreen alone, so a message raised from any other screen was
+    // silently dropped: queueing an episode or starting a download from the
+    // episode list set importMessage with no host mounted to show it, and the
+    // only feedback was an icon changing tint. Confirms are raised from Home,
+    // Episodes and Podcasts alike, so the host belongs above the NavHost.
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(importMessage) {
+        val message = importMessage ?: return@LaunchedEffect
+        importMessage = null
+        snackbarHostState.showSnackbar(message)
+    }
 
     val podcastsViewModel: SubscriptionsViewModel = viewModel(
         factory = SubscriptionsViewModelFactory(),
@@ -250,6 +266,7 @@ fun LoheNavHost(
             }
         },
         containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         NavHost(
             navController = navController,
@@ -293,8 +310,6 @@ fun LoheNavHost(
                         pendingExport = document
                         exportWriter.launch(context.getString(R.string.opml_file_name))
                     },
-                    message = importMessage,
-                    onMessageShown = { importMessage = null },
                 )
             }
 
@@ -312,9 +327,14 @@ fun LoheNavHost(
                 EpisodesScreen(
                     viewModel = vm,
                     onBack = { navController.popBackStack() },
-                    onQueue = { episodeId ->
-                        queueViewModel.enqueue(episodeId)
-                        importMessage = "Added to queue"
+                    onQueue = { episode ->
+                        if (episode.isQueued) {
+                            queueViewModel.dequeue(episode.uuid)
+                            importMessage = "Removed from queue"
+                        } else {
+                            queueViewModel.enqueue(episode.uuid)
+                            importMessage = "Added to queue"
+                        }
                     },
                     onDownload = { episode ->
                         ServiceLocator.downloadManager().start(episode)
