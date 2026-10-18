@@ -25,6 +25,8 @@ data class TransportState(
     val bufferedMs: Long = 0L,
     val title: String = "",
     val showTitle: String = "",
+    val artworkUrl: String = "",
+    val playbackSpeed: Float = 1f,
 ) {
     /** 0f..1f, or 0f when the duration is not known yet. */
     val progress: Float
@@ -138,6 +140,12 @@ class PlayerConnection internal constructor(
         controller?.volume = 1f
     }
 
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 3.0f)
+        Playback.setPlaybackSpeed(clamped)
+        controller?.setPlaybackSpeed(clamped)
+    }
+
     companion object {
         fun create(context: Context): PlayerConnection =
             PlayerConnection(context.applicationContext)
@@ -175,6 +183,8 @@ fun rememberTransportState(connection: PlayerConnection): State<TransportState> 
                     bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
                     title = c.mediaMetadata.title?.toString().orEmpty(),
                     showTitle = c.mediaMetadata.artist?.toString().orEmpty(),
+                    artworkUrl = c.mediaMetadata.artworkUri?.toString().orEmpty(),
+                    playbackSpeed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
                 )
             }
             delay(POLL_MS)

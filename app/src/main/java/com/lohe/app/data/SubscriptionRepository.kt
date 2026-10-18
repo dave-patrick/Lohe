@@ -93,6 +93,19 @@ class SubscriptionRepository internal constructor(
     /** Undo [markPlayed]: back to unplayed, restarting from the beginning. */
     suspend fun reopenEpisode(uuid: String) = episodes.reopenEpisode(uuid)
 
+    /** Soft-deletes [uuid] from the episode list and removes it from the queue. */
+    suspend fun deleteEpisode(uuid: String) {
+        val current = episodes.get(uuid) ?: return
+        episodes.upsertAll(
+            listOf(
+                current.copy(
+                    isDeleted = true,
+                    queuePosition = null,
+                ),
+            ),
+        )
+    }
+
     /** Saved resume point in seconds; 0 when there is nothing to resume. */
     suspend fun playedPosition(uuid: String): Long = episodes.playedPosition(uuid)
 
@@ -330,5 +343,13 @@ object ServiceLocator {
                 context = context ?: error("ServiceLocator not initialized"),
                 repository = subscriptionRepository(),
             ).also { downloads = it }
+        }
+
+    @Volatile private var playlists: PlaylistRepository? = null
+
+    fun playlistRepository(): PlaylistRepository =
+        playlists ?: synchronized(this) {
+            val file = context?.let { java.io.File(it.filesDir, "playlists.json") }
+            playlists ?: PlaylistRepository(file).also { playlists = it }
         }
 }

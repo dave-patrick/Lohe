@@ -35,14 +35,14 @@ fun SplashScreen(
         // Fade in.
         alpha.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
         )
-        // Hold so the brand registers — 5 seconds total.
-        delay(4300)
+        // Hold so the brand registers — 2 seconds total.
+        delay(1500)
         // Fade out.
         alpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 300),
+            animationSpec = tween(durationMillis = 250),
         )
         onFinished()
     }

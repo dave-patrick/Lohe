@@ -1,8 +1,10 @@
 package com.lohe.app.ui.theme
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -33,10 +35,12 @@ import androidx.compose.ui.unit.dp
  * @param accent tint sampled from the show's artwork, or null for neutral rows.
  * @param onClick when non-null the row becomes interactive and takes a ripple.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GlassCard(
     accent: Color? = null,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(20.dp),
     borderWidth: Dp = 1.dp,
@@ -54,10 +58,13 @@ fun GlassCard(
         .fillMaxWidth()
         .clip(shape)
         .then(
-            if (onClick != null) {
-                Modifier.clickable(onClick = onClick)
-            } else {
-                Modifier
+            when {
+                onLongClick != null -> Modifier.combinedClickable(
+                    onClick = { onClick?.invoke() },
+                    onLongClick = onLongClick,
+                )
+                onClick != null -> Modifier.clickable(onClick = onClick)
+                else -> Modifier
             },
         )
         .background(fill)
@@ -90,11 +97,13 @@ fun GlassCard(
 }
 
 /** Row variant: a horizontal [GlassCard]. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GlassRow(
     modifier: Modifier = Modifier,
     accent: Color? = null,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     shape: Shape = RoundedCornerShape(20.dp),
     contentPadding: Dp = 14.dp,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
@@ -109,7 +118,16 @@ fun GlassRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                when {
+                    onLongClick != null -> Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = onLongClick,
+                    )
+                    onClick != null -> Modifier.clickable(onClick = onClick)
+                    else -> Modifier
+                },
+            )
             .background(fill)
             .then(
                 if (accent != null) {

@@ -19,7 +19,7 @@
     <string name="sleep_timer_minutes">%1$d min</string>
     <string name="sleep_timer_cancel">Cancel timer</string>
 
-    <string name="podcasts_title">Shows</string>
+    <string name="podcasts_title">My Podcasts</string>
     <string name="podcasts_search_label">Search shows</string>
     <string name="podcasts_add_folder">Import a folder from this device</string>
     <string name="podcasts_empty_title">No shows yet</string>

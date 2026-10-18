@@ -98,6 +98,14 @@ class FeedParser(
             ev = parser.next()
         }
 
+        val resolvedEpisodes = if (artwork != null) {
+            episodes.map { ep ->
+                if (ep.artworkUrl.isNullOrBlank()) ep.copy(artworkUrl = artwork) else ep
+            }
+        } else {
+            episodes
+        }
+
         return ParsedFeed(
             podcast = PodcastEntity(
                 uuid = podcastUuid,
@@ -106,9 +114,9 @@ class FeedParser(
                 description = summary?.let { plainText(it) }?.takeIf { it.isNotEmpty() },
                 feedUrl = feedUrl,
                 artworkUrl = artwork,
-                lastEpisodePublished = episodes.maxOfOrNull { it.published } ?: 0L,
+                lastEpisodePublished = resolvedEpisodes.maxOfOrNull { it.published } ?: 0L,
             ),
-            episodes = episodes,
+            episodes = resolvedEpisodes,
         )
     }
 
@@ -202,6 +210,7 @@ class FeedParser(
         var durationSeconds: Int? = null
         var guid: String? = null
         var author: String? = null
+        var itemArtwork: String? = null
 
         var ev = parser.next()
         while (ev != XmlPullParser.END_DOCUMENT) {
@@ -213,26 +222,36 @@ class FeedParser(
             }
 
             if (ev == XmlPullParser.START_TAG) {
-                when (parser.localName) {
-                    "title" -> title = title ?: parser.nextTextOrNull()
-                    "guid", "id" -> guid = guid ?: parser.nextTextOrNull()
-                    "pubDate", "published", "updated", "date" ->
-                        published = parseDate(parser.nextTextOrNull()) ?: published
-                    "duration" ->
-                        durationSeconds = parseDuration(parser.nextTextOrNull()) ?: durationSeconds
-                    "author", "creator" -> author = author ?: parser.nextTextOrNull()
+                if (parser.name == "itunes:image") {
+                    itemArtwork = parser.getAttributeValue(null, "href") ?: itemArtwork
+                } else {
+                    when (parser.localName) {
+                        "title" -> title = title ?: parser.nextTextOrNull()
+                        "guid", "id" -> guid = guid ?: parser.nextTextOrNull()
+                        "pubDate", "published", "updated", "date" ->
+                            published = parseDate(parser.nextTextOrNull()) ?: published
+                        "duration" ->
+                            durationSeconds = parseDuration(parser.nextTextOrNull()) ?: durationSeconds
+                        "author", "creator" -> author = author ?: parser.nextTextOrNull()
 
-                    "enclosure" -> {
-                        audioUrl = parser.getAttributeValue(null, "url") ?: audioUrl
-                        mimeType = parser.getAttributeValue(null, "type") ?: mimeType
-                        sizeBytes = parser.getAttributeValue(null, "length")?.toLongOrNull()
-                            ?: sizeBytes
-                    }
+                        "image", "thumbnail" -> {
+                            itemArtwork = parser.getAttributeValue(null, "href")
+                                ?: parser.getAttributeValue(null, "url")
+                                ?: itemArtwork
+                        }
 
-                    // Atom carries audio as <link rel="enclosure" href="..."/>
-                    "link" -> if (parser.getAttributeValue(null, "rel") == "enclosure") {
-                        audioUrl = parser.getAttributeValue(null, "href") ?: audioUrl
-                        mimeType = parser.getAttributeValue(null, "type") ?: mimeType
+                        "enclosure" -> {
+                            audioUrl = parser.getAttributeValue(null, "url") ?: audioUrl
+                            mimeType = parser.getAttributeValue(null, "type") ?: mimeType
+                            sizeBytes = parser.getAttributeValue(null, "length")?.toLongOrNull()
+                                ?: sizeBytes
+                        }
+
+                        // Atom carries audio as <link rel="enclosure" href="..."/>
+                        "link" -> if (parser.getAttributeValue(null, "rel") == "enclosure") {
+                            audioUrl = parser.getAttributeValue(null, "href") ?: audioUrl
+                            mimeType = parser.getAttributeValue(null, "type") ?: mimeType
+                        }
                     }
                 }
             }
@@ -252,6 +271,7 @@ class FeedParser(
             sizeBytes = sizeBytes,
             fileType = mimeType,
             author = author?.trim()?.takeIf { it.isNotEmpty() },
+            artworkUrl = itemArtwork?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

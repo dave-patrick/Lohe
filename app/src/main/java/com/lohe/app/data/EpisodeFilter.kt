@@ -51,6 +51,7 @@ object EpisodeFilter {
         val needle = query.trim().lowercase()
 
         val matched = episodes.asSequence()
+            .filter { episode -> !episode.isDeleted }
             .filter { episode -> episode.matches(filter) }
             .filter { episode ->
                 needle.isEmpty() || episode.title.lowercase().contains(needle)

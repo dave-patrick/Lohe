@@ -1,17 +1,21 @@
 package com.lohe.app.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
@@ -23,9 +27,14 @@ import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -46,6 +55,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -63,6 +73,8 @@ import com.lohe.app.ui.theme.artworkBleed
 import com.lohe.app.ui.theme.glassPanel
 import com.lohe.app.ui.image.RemoteImage
 import kotlinx.coroutines.delay
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private val ArtTint = Color(0xFF1E4FD8)
 
@@ -115,9 +127,14 @@ fun PlayerScreen(
     val transport by rememberTransportState(connection)
     val sleepTimer = Playback.sleepTimer
     val sleepTimerState by Playback.sleepState.collectAsState()
+    val playbackSpeed by Playback.playbackSpeed.collectAsState()
     var sleepRemainingMs by remember { mutableLongStateOf(0L) }
     var volumeBoostEnabled by rememberSaveable { mutableStateOf(volumeBoostDefault) }
     var sleepTimerOpen by remember { mutableStateOf(false) }
+    var speedSheetOpen by remember { mutableStateOf(false) }
+
+    val resolvedArtworkUrl = mediaArtworkUrl?.takeIf { it.isNotBlank() }
+        ?: transport.artworkUrl.takeIf { it.isNotBlank() }
 
     // The timer owns its deadline; this only re-reads the remaining time often
     // enough for the sheet's countdown to move.
@@ -151,12 +168,17 @@ fun PlayerScreen(
                 uri = uri,
                 title = mediaTitle.ifBlank { transport.title },
                 showTitle = mediaShowTitle.takeIf { it.isNotBlank() },
+                artworkUrl = resolvedArtworkUrl,
             ),
         )
     }
 
     LaunchedEffect(volumeBoostEnabled) {
         connection.setVolumeBoost(volumeBoostEnabled)
+    }
+
+    LaunchedEffect(playbackSpeed) {
+        connection.setPlaybackSpeed(playbackSpeed)
     }
 
     val shownTitle = mediaTitle.ifBlank { transport.title }
@@ -171,35 +193,39 @@ fun PlayerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             HeaderRow(
                 appearance = appearance,
                 onToggleAppearance = onToggleAppearance,
                 onOpenSleepTimer = { sleepTimerOpen = true },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
             )
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(6.dp))
 
+            // Artwork expands to fill almost the entire screen between the
+            // header and the playback controls dock.
             ArtworkTile(
                 isLight = appearance == Appearance.LIGHT,
-                artworkUrl = mediaArtworkUrl,
+                artworkUrl = resolvedArtworkUrl,
                 modifier = Modifier
-                    .fillMaxWidth(0.72f)
-                    .aspectRatio(1f),
+                    .fillMaxWidth()
+                    .weight(1f),
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(12.dp))
 
             EpisodeTitle(
                 isLight = appearance == Appearance.LIGHT,
                 title = shownTitle,
-                showTitle = mediaShowTitle,
+                showTitle = mediaShowTitle.ifBlank { transport.showTitle },
             )
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(6.dp))
 
             Scrubber(
                 progress = transport.progress,
@@ -209,24 +235,29 @@ fun PlayerScreen(
                 durationMs = transport.durationMs.takeIf { it > 0L }
                     ?: knownDurationMs
                     ?: 0L,
+                playbackSpeed = playbackSpeed,
                 onSeek = connection::seekToFraction,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(2.dp))
 
             TransportRow(
                 isPlaying = transport.isPlaying,
                 enabled = transport.hasMedia,
+                playbackSpeed = playbackSpeed,
                 onTogglePlay = connection::togglePlayPause,
                 onSkipBack = { connection.skipBackMs(skipBackMs) },
                 onSkipForward = { connection.skipForwardMs(skipForwardMs) },
                 onVolumeBoostToggle = { volumeBoostEnabled = !volumeBoostEnabled },
+                onOpenSpeedSheet = { speedSheetOpen = true },
                 volumeBoostEnabled = volumeBoostEnabled,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             )
-
-            Spacer(Modifier.weight(1f))
         }
     }
 
@@ -237,6 +268,14 @@ fun PlayerScreen(
             onArm = sleepTimer::start,
             onCancel = sleepTimer::cancel,
             onDismiss = { sleepTimerOpen = false },
+        )
+    }
+
+    if (speedSheetOpen) {
+        PlaybackSpeedSheet(
+            currentSpeed = playbackSpeed,
+            onSelectSpeed = { connection.setPlaybackSpeed(it) },
+            onDismiss = { speedSheetOpen = false },
         )
     }
 }
@@ -300,7 +339,12 @@ private fun ArtworkTile(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(26.dp))
+            .border(
+                width = 1.dp,
+                color = if (isLight) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(26.dp),
+            )
             .background(
                 Brush.linearGradient(
                     listOf(
@@ -347,6 +391,7 @@ private fun Scrubber(
     progress: Float,
     positionMs: Long,
     durationMs: Long,
+    playbackSpeed: Float,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -355,8 +400,27 @@ private fun Scrubber(
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
 
+    // Tapping either side of the timeline toggles between raw file time and
+    // real wall-clock time adjusted for the current playback speed.
+    var showElapsedAdjusted by rememberSaveable { mutableStateOf(false) }
+    var showRemainingAdjusted by rememberSaveable { mutableStateOf(false) }
+
     val shown = if (dragging) dragValue else progress.coerceIn(0f, 1f)
     val shownMs = if (dragging) (dragValue * durationMs).toLong() else positionMs
+
+    val leftText = if (showElapsedAdjusted) {
+        val adj = adjustedElapsedMs(shownMs, playbackSpeed)
+        "${formatTimestamp(adj)} (${formatSpeedLabel(playbackSpeed)})"
+    } else {
+        formatTimestamp(shownMs)
+    }
+
+    val rightText = if (showRemainingAdjusted) {
+        val rem = adjustedRemainingMs(shownMs, durationMs, playbackSpeed)
+        "-${formatTimestamp(rem)} (${formatSpeedLabel(playbackSpeed)})"
+    } else {
+        formatTimestamp(durationMs)
+    }
 
     Column(modifier = modifier) {
         Slider(
@@ -378,18 +442,60 @@ private fun Scrubber(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = formatTimestamp(shownMs),
+                text = leftText,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (showElapsedAdjusted) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (showElapsedAdjusted) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showElapsedAdjusted = !showElapsedAdjusted }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
             )
             Text(
-                text = formatTimestamp(durationMs),
+                text = rightText,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (showRemainingAdjusted) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (showRemainingAdjusted) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showRemainingAdjusted = !showRemainingAdjusted }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
             )
         }
+    }
+}
+
+/** Real wall-clock remaining time at [speed] (ms). */
+internal fun adjustedRemainingMs(positionMs: Long, durationMs: Long, speed: Float): Long {
+    val safeSpeed = speed.takeIf { it > 0f } ?: 1f
+    val rawRemaining = (durationMs - positionMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+    return (rawRemaining / safeSpeed).toLong()
+}
+
+/** Real wall-clock elapsed time at [speed] (ms). */
+internal fun adjustedElapsedMs(positionMs: Long, speed: Float): Long {
+    val safeSpeed = speed.takeIf { it > 0f } ?: 1f
+    return (positionMs.coerceAtLeast(0L) / safeSpeed).toLong()
+}
+
+/** Compact speed badge such as `1×`, `1.25×`, `1.5×`. */
+internal fun formatSpeedLabel(speed: Float): String {
+    val rounded = (speed * 100).roundToInt() / 100f
+    return when {
+        rounded % 1f == 0f -> String.format(Locale.US, "%.0f×", rounded)
+        (rounded * 10f) % 1f == 0f -> String.format(Locale.US, "%.1f×", rounded)
+        else -> String.format(Locale.US, "%.2f×", rounded)
     }
 }
 
@@ -411,33 +517,24 @@ internal fun formatTimestamp(ms: Long): String {
 private fun TransportRow(
     isPlaying: Boolean,
     enabled: Boolean,
+    playbackSpeed: Float,
     onTogglePlay: () -> Unit,
     onSkipBack: () -> Unit,
     onSkipForward: () -> Unit,
     onVolumeBoostToggle: () -> Unit,
+    onOpenSpeedSheet: () -> Unit,
     volumeBoostEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onSkipBack, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Filled.Replay10,
-                contentDescription = stringResource(R.string.player_skip_back),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp),
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
-
         IconButton(
             onClick = onVolumeBoostToggle,
             enabled = enabled,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(40.dp),
         ) {
             Icon(
                 imageVector = if (volumeBoostEnabled) {
@@ -449,54 +546,199 @@ private fun TransportRow(
                     if (volumeBoostEnabled) R.string.player_volume_boost_on
                     else R.string.player_volume_boost_off,
                 ),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp),
+                tint = if (volumeBoostEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(24.dp),
             )
         }
 
-        Spacer(Modifier.weight(0.5f))
-
-        Box(
-            modifier = Modifier
-                .size(68.dp)
-                .clip(RoundedCornerShape(34.dp))
-                .background(
-                    if (enabled) {
-                        Brush.linearGradient(listOf(ElectricBlue, ElectricCyan))
-                    } else {
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.surfaceContainerHigh,
-                                MaterialTheme.colorScheme.surfaceContainerHigh,
-                            ),
-                        )
-                    },
-                ),
-            contentAlignment = Alignment.Center,
+        // Center cluster: Replay10 right next to Play, and Forward30 right next to Play.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             IconButton(
-                onClick = onTogglePlay,
+                onClick = onSkipBack,
                 enabled = enabled,
-                modifier = Modifier.size(68.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = stringResource(R.string.player_now_playing),
-                    tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    imageVector = Icons.Filled.Replay10,
+                    contentDescription = stringResource(R.string.player_skip_back),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(34.dp))
+                    .background(
+                        if (enabled) {
+                            Brush.linearGradient(listOf(ElectricBlue, ElectricCyan))
+                        } else {
+                            Brush.linearGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                                ),
+                            )
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(
+                    onClick = onTogglePlay,
+                    enabled = enabled,
+                    modifier = Modifier.size(68.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(R.string.player_now_playing),
+                        tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(34.dp),
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = onSkipForward,
+                enabled = enabled,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Forward30,
+                    contentDescription = stringResource(R.string.player_skip_forward),
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(32.dp),
                 )
             }
         }
 
-        Spacer(Modifier.weight(1f))
-
-        IconButton(onClick = onSkipForward, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Filled.Forward30,
-                contentDescription = stringResource(R.string.player_skip_forward),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp),
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    if (playbackSpeed != 1f) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    },
+                )
+                .clickable { onOpenSpeedSheet() }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = formatSpeedLabel(playbackSpeed),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (playbackSpeed != 1f) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
+        }
+    }
+}
+
+private val SPEED_PRESETS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun PlaybackSpeedSheet(
+    currentSpeed: Float,
+    onSelectSpeed: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Speed,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Playback Speed · ${formatSpeedLabel(currentSpeed)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val next = ((currentSpeed - 0.05f) * 20).roundToInt() / 20f
+                        onSelectSpeed(next.coerceIn(0.5f, 3.0f))
+                    },
+                ) {
+                    Text("-0.05×")
+                }
+
+                Slider(
+                    value = currentSpeed.coerceIn(0.5f, 3.0f),
+                    onValueChange = { raw ->
+                        val stepped = (raw * 20).roundToInt() / 20f
+                        onSelectSpeed(stepped.coerceIn(0.5f, 3.0f))
+                    },
+                    valueRange = 0.5f..3.0f,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = ElectricBlue,
+                        activeTrackColor = ElectricBlue,
+                    ),
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        val next = ((currentSpeed + 0.05f) * 20).roundToInt() / 20f
+                        onSelectSpeed(next.coerceIn(0.5f, 3.0f))
+                    },
+                ) {
+                    Text("+0.05×")
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SPEED_PRESETS.forEach { preset ->
+                    val selected = kotlin.math.abs(currentSpeed - preset) < 0.01f
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSelectSpeed(preset) },
+                        label = { Text(formatSpeedLabel(preset)) },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }

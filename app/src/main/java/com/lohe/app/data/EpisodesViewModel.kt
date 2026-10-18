@@ -41,11 +41,20 @@ class EpisodesViewModel(
     val episodes: StateFlow<List<EpisodeEntity>> =
         combine(
             repository.observeEpisodesFor(podcastUuid),
+            podcast,
             _filter,
             _order,
             _query,
-        ) { all, filter, order, query ->
-            EpisodeFilter.apply(all, filter, order, query)
+        ) { all, show, filter, order, query ->
+            val fallbackArt = show?.artworkUrl?.takeIf { it.isNotBlank() }
+            val resolved = if (fallbackArt != null) {
+                all.map { ep ->
+                    if (ep.artworkUrl.isNullOrBlank()) ep.copy(artworkUrl = fallbackArt) else ep
+                }
+            } else {
+                all
+            }
+            EpisodeFilter.apply(resolved, filter, order, query)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setFilter(value: EpisodeFilter.Filter) {
@@ -76,6 +85,18 @@ class EpisodesViewModel(
         } else {
             repository.markPlayed(uuid)
         }
+    }
+
+    fun markPlayedBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.markPlayed(it) }
+    }
+
+    fun markUnplayedBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.reopenEpisode(it) }
+    }
+
+    fun deleteBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.deleteEpisode(it) }
     }
 }
 

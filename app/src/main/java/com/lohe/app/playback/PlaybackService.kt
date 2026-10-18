@@ -3,6 +3,7 @@ package com.lohe.app.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.media.audiofx.LoudnessEnhancer
+import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -160,17 +161,20 @@ class PlaybackService : MediaSessionService() {
                     return@launch
                 }
 
-                val showTitle = runCatching {
-                    repository.getPodcast(next.podcastUuid)?.title
+                val show = runCatching {
+                    repository.getPodcast(next.podcastUuid)
                 }.getOrNull()
+                val showTitle = show?.title
+                val artworkUrl = next.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
 
                 withContext(Dispatchers.Main) {
                     player.setMediaItem(
                         mediaItemFor(
                             episodeUuid = next.uuid,
-                            uri = next.audioUrl,
+                            uri = next.playbackUri,
                             title = next.title,
                             showTitle = showTitle,
+                            artworkUrl = artworkUrl,
                         ),
                     )
                     player.prepare()
@@ -215,6 +219,11 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             Playback.volumeBoost.collect { enabled ->
                 applyVolumeBoost(enabled)
+            }
+        }
+        scope.launch {
+            Playback.playbackSpeed.collect { speed ->
+                player.setPlaybackSpeed(speed.coerceIn(0.5f, 3.0f))
             }
         }
     }
@@ -321,6 +330,7 @@ class PlaybackService : MediaSessionService() {
             uri: String,
             title: String,
             showTitle: String? = null,
+            artworkUrl: String? = null,
         ): MediaItem = MediaItem.Builder()
             .setUri(uri)
             .setMediaId(episodeUuid)
@@ -328,6 +338,11 @@ class PlaybackService : MediaSessionService() {
                 MediaMetadata.Builder()
                     .setTitle(title)
                     .setArtist(showTitle)
+                    .apply {
+                        artworkUrl?.takeIf { it.isNotBlank() }?.let {
+                            setArtworkUri(Uri.parse(it))
+                        }
+                    }
                     .build(),
             )
             .build()

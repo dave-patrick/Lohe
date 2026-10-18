@@ -64,9 +64,9 @@ import kotlinx.coroutines.launch
 
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
     HOME("home", "Home", Icons.Filled.Home),
-    PODCASTS("podcasts", "Podcasts", Icons.Filled.LibraryMusic),
+    PODCASTS("podcasts", "My Podcasts", Icons.Filled.LibraryMusic),
     DISCOVER("discover", "Discover", Icons.Filled.Explore),
-    QUEUE("queue", "Queue", Icons.AutoMirrored.Filled.QueueMusic),
+    QUEUE("queue", "Playlists", Icons.AutoMirrored.Filled.QueueMusic),
     PLAYER("player", "Now Playing", Icons.Filled.PlayArrow),
     STORAGE("storage", "Storage", Icons.Filled.Storage),
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
@@ -237,12 +237,14 @@ fun LoheNavHost(
     Scaffold(
         bottomBar = {
             Column {
-                NowPlayingBar(
-                    connection = playerConnection,
-                    transport = transport.value,
-                    artworkUrl = nowPlaying?.artworkUrl,
-                    onOpenPlayer = { navController.navigate(Dest.PLAYER.route) },
-                )
+                if (currentRoute != Dest.PLAYER.route) {
+                    NowPlayingBar(
+                        connection = playerConnection,
+                        transport = transport.value,
+                        artworkUrl = nowPlaying?.artworkUrl ?: transport.value.artworkUrl.takeIf { it.isNotBlank() },
+                        onOpenPlayer = { navController.navigate(Dest.PLAYER.route) },
+                    )
+                }
 
                 LoheBottomBar(
                     destinations = remember {
@@ -302,6 +304,7 @@ fun LoheNavHost(
             composable(Dest.PODCASTS.route) {
                 PodcastsScreen(
                     viewModel = podcastsViewModel,
+                    queueViewModel = queueViewModel,
                     onOpenPodcast = { navController.navigate(Routes.episodes(it)) },
                     onAddLocalFolder = { folderPicker.launch(null) },
                     onManageStorage = { navController.navigate(Dest.STORAGE.route) },
@@ -326,6 +329,7 @@ fun LoheNavHost(
                 val queueTitle = show?.title.orEmpty()
                 EpisodesScreen(
                     viewModel = vm,
+                    queueViewModel = queueViewModel,
                     onBack = { navController.popBackStack() },
                     onQueue = { episode ->
                         if (episode.isQueued) {
@@ -340,6 +344,13 @@ fun LoheNavHost(
                         ServiceLocator.downloadManager().start(episode)
                         importMessage = "Downloading"
                     },
+                    onRemoveDownloads = { episodesToRemove ->
+                        val dm = ServiceLocator.downloadManager()
+                        scope.launch {
+                            episodesToRemove.forEach { dm.delete(it) }
+                        }
+                    },
+                    onShowMessage = { msg -> importMessage = msg },
                     onPlay = { episode ->
                         // A downloaded copy plays offline; playbackUri prefers it.
                         nowPlaying = NowPlaying(

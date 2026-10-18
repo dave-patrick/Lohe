@@ -23,13 +23,23 @@ object Playback {
     /** Whether loudness boost above 0 dB is enabled. */
     val volumeBoost: StateFlow<Boolean> = _volumeBoost.asStateFlow()
 
+    private val _playbackSpeed = MutableStateFlow(1f)
+
+    /** Current playback speed multiplier (0.5x .. 3.0x). */
+    val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
     fun setVolumeBoost(enabled: Boolean) {
         _volumeBoost.value = enabled
     }
 
-    /** Test seam: drops any armed timer and resets boost. */
+    fun setPlaybackSpeed(speed: Float) {
+        _playbackSpeed.value = speed.coerceIn(0.5f, 3.0f)
+    }
+
+    /** Test seam: drops any armed timer and resets boost/speed. */
     fun resetForTests() {
         sleepTimer.cancel()
         _volumeBoost.value = false
+        _playbackSpeed.value = 1f
     }
 }

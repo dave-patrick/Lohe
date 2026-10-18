@@ -53,6 +53,15 @@ class SubscriptionsViewModel(
         repository.unsubscribe(uuid)
     }
 
+    fun unsubscribeBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.unsubscribe(it) }
+    }
+
+    fun markPodcastsPlayed(podcastUuids: Set<String>) = viewModelScope.launch {
+        val targetEpisodes = allEpisodes.value.filter { it.podcastUuid in podcastUuids }
+        targetEpisodes.forEach { repository.markPlayed(it.uuid) }
+    }
+
     /** Delete every episode backed by a local content:// URI. */
     fun deleteLocalFiles() = viewModelScope.launch {
         repository.deleteLocalFiles()
