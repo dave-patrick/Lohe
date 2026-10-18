@@ -1,0 +1,93 @@
+package com.lohe.app.ui.theme
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(
+    name = "lohe-settings",
+)
+
+/** User-tunable playback behaviour, with defaults chosen to need no setup. */
+data class PlaybackSettings(
+    val appearance: Appearance = Appearance.DARK,
+    val volumeBoostByDefault: Boolean = false,
+    val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
+    val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
+    val markPlayedAtEnd: Boolean = true,
+) {
+    companion object {
+        const val DEFAULT_SKIP_BACK = 10
+        const val DEFAULT_SKIP_FORWARD = 30
+
+        /** Offered in the UI; the choice is constrained to this list. */
+        val SKIP_CHOICES = listOf(5, 10, 15, 30, 45, 60)
+    }
+}
+
+/**
+ * Durable user settings.
+ *
+ * Reads coerce to the legal range rather than trusting whatever is on disk: a
+ * value written by an older build (or hand-edited) must not be able to put the
+ * skip buttons into a nonsense state.
+ */
+class SettingsStore(private val context: Context) {
+
+    private object Keys {
+        val appearance = stringPreferencesKey("appearance")
+        val volumeBoost = booleanPreferencesKey("volume_boost")
+        val skipBack = intPreferencesKey("skip_back")
+        val skipForward = intPreferencesKey("skip_forward")
+        val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
+    }
+
+    val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
+        PlaybackSettings(
+            appearance = when (prefs[Keys.appearance]) {
+                Appearance.LIGHT.name -> Appearance.LIGHT
+                else -> Appearance.DARK
+            },
+            volumeBoostByDefault = prefs[Keys.volumeBoost] ?: false,
+            // A value written by an older build, or hand-edited into the file,
+            // must not be able to put the skip buttons into a nonsense state.
+            skipBackSeconds = (prefs[Keys.skipBack] ?: PlaybackSettings.DEFAULT_SKIP_BACK)
+                .coerceIn(5, 60),
+            skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
+                .coerceIn(5, 120),
+            markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
+        )
+    }
+
+    val appearance: Flow<Appearance> = context.settingsStore.data.map { prefs ->
+        when (prefs[Keys.appearance]) {
+            Appearance.LIGHT.name -> Appearance.LIGHT
+            else -> Appearance.DARK
+        }
+    }
+
+    suspend fun setAppearance(value: Appearance) = edit { it[Keys.appearance] = value.name }
+
+    suspend fun setVolumeBoostDefault(value: Boolean) =
+        edit { it[Keys.volumeBoost] = value }
+
+    suspend fun setSkipBackSeconds(value: Int) =
+        edit { it[Keys.skipBack] = value.coerceIn(5, 60) }
+
+    suspend fun setSkipForwardSeconds(value: Int) =
+        edit { it[Keys.skipForward] = value.coerceIn(5, 120) }
+
+    suspend fun setMarkPlayedAtEnd(value: Boolean) =
+        edit { it[Keys.markPlayedAtEnd] = value }
+
+    private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
+        context.settingsStore.edit(block)
+    }
+}

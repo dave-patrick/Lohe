@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lohe</string>
+
+    <string name="theme_label_dark">Dark</string>
+    <string name="theme_label_light">Light</string>
+
+    <string name="player_now_playing">Now playing</string>
+    <string name="player_stream_crisp">Stream crisp.</string>
+    <string name="player_nothing_queued">Nothing queued yet.</string>
+    <string name="player_queue_clear">Your queue is clear. Feed your ears.</string>
+    <string name="player_volume_boost_on">Volume boost on</string>
+    <string name="player_volume_boost_off">Volume boost off</string>
+    <string name="player_skip_back">Back 10 seconds</string>
+    <string name="player_skip_forward">Forward 30 seconds</string>
+
+    <string name="sleep_timer_title">Sleep timer</string>
+    <string name="sleep_timer_end_of_episode">End of this episode</string>
+    <string name="sleep_timer_minutes">%1$d min</string>
+    <string name="sleep_timer_cancel">Cancel timer</string>
+
+    <string name="podcasts_title">Shows</string>
+    <string name="podcasts_search_label">Search shows</string>
+    <string name="podcasts_add_folder">Import a folder from this device</string>
+    <string name="podcasts_empty_title">No shows yet</string>
+    <string name="podcasts_empty_hint">Subscribe to a feed, or bring in audio already on this phone.</string>
+    <string name="podcasts_empty_search">Nothing matches that.</string>
+    <string name="podcasts_empty_search_hint">Try a different title, author, or topic.</string>
+    <string name="podcasts_local_badge">On this device</string>
+
+    <string name="podcasts_add_feed">Add a feed</string>
+    <string name="podcasts_add">Add</string>
+    <string name="podcasts_fetching">Fetching…</string>
+    <string name="podcasts_feed_url_label">Feed URL</string>
+    <string name="podcasts_feed_url_hint">example.com/show/feed.xml</string>
+    <string name="podcasts_feed_added">Subscribed to %1$s</string>
+    <string name="podcasts_more">More options</string>
+
+    <string name="opml_import">Import subscriptions (OPML)</string>
+    <string name="opml_export">Export subscriptions (OPML)</string>
+    <string name="opml_export_failed">Couldn\'t build the export.</string>
+    <string name="opml_imported_clean">Imported %1$d show(s)</string>
+    <string name="opml_imported_partial">Imported %1$d, skipped %2$d</string>
+    <string name="opml_file_name">lohe-subscriptions.opml</string>
+
+    <string name="refresh_feeds">Check for new episodes</string>
+    <string name="refreshing">Refreshing…</string>
+    <string name="refresh_clean">Checked %1$d show(s)</string>
+    <string name="refresh_partial">Checked %1$d, %2$d unreachable</string>
+
+    <string name="storage_management">Storage</string>
+    <string name="storage_used">Local audio</string>
+    <string name="storage_downloads">Offline downloads</string>
+    <string name="storage_imported">Imported from this device</string>
+    <string name="storage_no_downloads">Nothing downloaded yet.</string>
+    <string name="storage_delete_downloads">Delete downloads</string>
+    <string name="storage_delete_downloads_hint">Removes every downloaded episode from this device. The shows themselves stay in your library.</string>
+    <string name="storage_clear_imports">Clear imported audio</string>
+    <string name="storage_clear_imports_hint">Removes imported episodes from your library. Your audio files stay on the device, untouched.</string>
+    <string name="storage_delete_one">Delete this download</string>
+    <string name="storage_download_hint">Downloaded episodes play without a connection.</string>
+    <string name="storage_clear">Remove local audio from library</string>
+    <string name="storage_clear_hint">Deletes library entries only. Your files stay on the device.</string>
+    <string name="storage_clear_confirm">Remove every locally-imported episode from the library? The audio files themselves are not deleted.</string>
+    <string name="storage_nothing">No local audio imported yet.</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+
+    <string name="action_back">Back</string>
+
+    <string name="episodes_loading">Loading…</string>
+    <string name="episodes_empty">No episodes yet. Import a folder, or add a feed.</string>
+    <string name="episodes_star">Star episode</string>
+    <string name="episodes_sort">Change sort order</string>
+    <string name="episodes_mark_played">Mark as played</string>
+    <string name="episodes_mark_unplayed">Mark as unplayed</string>
+
+    <string name="queue_title">Queue</string>
+    <string name="queue_summary">%1$d min queued</string>
+    <string name="queue_empty_title">Your queue is clear.</string>
+    <string name="queue_empty_hint">Add episodes from a show to line them up.</string>
+    <string name="queue_move_up">Move to the front</string>
+    <string name="queue_remove">Remove from queue</string>
+    <string name="queue_clear_from_here">Played up to here</string>
+    <string name="queue_clear_title">Clear the queue?</string>
+    <string name="queue_clear_hint">This removes the selected episode and everything after it.</string>
+    <string name="queue_clear_confirm">Clear</string>
+
+    <string name="episodes_add_to_queue">Add to queue</string>
+    <string name="episodes_queued">In queue</string>
+    <string name="episodes_download">Download for offline</string>
+    <string name="episodes_downloaded">Downloaded</string>
+
+    <string name="home_continue">Continue listening</string>
+    <string name="home_recent_shows">Your shows</string>
+    <string name="home_empty">Nothing here yet. Add a feed or import a folder.</string>
+    <string name="home_empty_title">Nothing queued up</string>
+    <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
+    <string name="home_cta_discover">Find a show</string>
+    <string name="home_cta_import">Import from this device</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_dark">Dark</string>
+    <string name="settings_light">Light</string>
+    <string name="settings_on">On</string>
+    <string name="settings_playback">Playback</string>
+    <string name="settings_skip_back">Skip back</string>
+    <string name="settings_skip_forward">Skip forward</string>
+    <string name="settings_seconds">%1$ds</string>
+    <string name="settings_volume_boost">Volume boost</string>
+    <string name="settings_volume_boost_hint">Starts every episode amplified.</string>
+    <string name="settings_mark_played">Mark played when finished</string>
+    <string name="settings_mark_played_hint">Keeps finished episodes out of continue listening.</string>
+
+    <string name="discovery_title">Discover</string>
+    <string name="discovery_search_label">Search the catalog</string>
+    <string name="discovery_search_hint">topic, show, or host</string>
+    <string name="discovery_idle">Search thousands of shows, then subscribe in one tap.</string>
+    <string name="discovery_no_results">Nothing matched that.</string>
+    <string name="discovery_subscribe">Subscribe</string>
+    <string name="discovery_unsubscribe">Following</string>
+    <string name="discovery_open_show">Open</string>
+    <string name="show_setting_auto_download">Download new episodes</string>
+    <string name="show_setting_auto_download_summary">Save them as soon as a refresh finds them</string>
+    <string name="discovery_already_subscribed">Already subscribed</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_open">About Lohe</string>
+    <string name="about_tagline">Catch the frequency.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_version_unknown">Version unavailable</string>
+    <string name="about_name_heading">The name</string>
+    <string name="about_name_body">Lohe (lōhe) is a Hawaiian transitive verb: to hear, to listen to, to mind. The name marks the move from background noise to deliberate listening.</string>
+    <string name="about_credits_heading">Credits</string>
+    <string name="about_studio">An Atomic 22 Industries app.</string>
+    <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Lohe Brand System</string>
+    <string name="about_mark_description">Lohe hero mark</string>
+    <string name="about_wordmark_description">Lohe</string>
+    <string name="about_studio_logo_description">Atomic 22 Industries</string>
+</resources>

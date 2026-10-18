@@ -1,0 +1,290 @@
+package com.lohe.app.data
+
+import android.content.Context
+import com.lohe.app.data.db.AppDatabase
+import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.fetch.CatalogSearcher
+import com.lohe.app.data.fetch.OpmlCodec
+import com.lohe.app.data.fetch.PodcastFetcher
+import com.lohe.app.data.fetch.RssPodcastFetcher
+import com.lohe.app.download.DownloadManager
+import com.lohe.app.ui.image.ArtworkLoader
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import okhttp3.OkHttpClient
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+/** Episodes whose [EpisodeEntity.audioUrl] starts with this are device-local. */
+const val CONTENT_SCHEME = "content://"
+
+/**
+ * Simple front-door for subscription management. UI observes [observePodcasts];
+ * mutation call-sites run their own coroutines via [kotlinx.coroutines.CoroutineScope].
+ *
+ * Kept deliberately Hilt-free: an application-scoped singleton via [ServiceLocator].
+ *
+ * @param fetcher injected rather than reached for through [ServiceLocator] so the
+ *   import and refresh logic — which fans out over many feeds and must survive
+ *   individual failures — can be tested without a network.
+ */
+class SubscriptionRepository internal constructor(
+    private val podcasts: com.lohe.app.data.db.dao.PodcastDao,
+    private val episodes: com.lohe.app.data.db.dao.EpisodeDao,
+    private val fetcher: PodcastFetcher,
+) {
+    fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
+
+    fun observeSearchResults(query: String): Flow<List<PodcastEntity>> = 
+        if (query.isBlank()) podcasts.observeAll() 
+        else podcasts.observeSearchResults(query)
+
+    fun observeAllEpisodes(): Flow<List<EpisodeEntity>> = episodes.observeAll()
+
+    /** Episodes belonging to one podcast, newest first. */
+    fun observeEpisodesFor(podcastUuid: String): Flow<List<EpisodeEntity>> =
+        episodes.observeByPodcast(podcastUuid)
+
+    /** Episodes still in progress, newest activity first — what "continue" means. */
+    fun observeInProgress(): Flow<List<EpisodeEntity>> = episodes.observeInProgress()
+
+    /** Episodes queued by the user, in the order they queued them. */
+    fun observeQueue(): Flow<List<EpisodeEntity>> = episodes.observeQueue()
+
+    /** Completed offline downloads, newest first. */
+    fun observeDownloads(): Flow<List<EpisodeEntity>> = episodes.observeDownloads()
+
+    suspend fun setDownloadState(uuid: String, state: Int, path: String?) =
+        episodes.setDownloadState(uuid, state, path)
+
+    suspend fun clearDownload(uuid: String) = episodes.clearDownload(uuid)
+
+    /** Snapshot of the queue for read-modify-write callers such as auto-advance. */
+    suspend fun queueSnapshot(): List<EpisodeEntity> = episodes.queueSnapshot()
+
+    /** Appends [uuid] to the queue; a no-op if it is already queued. */
+    suspend fun enqueue(uuid: String) = episodes.enqueue(uuid, System.currentTimeMillis())
+
+    suspend fun dequeue(uuid: String) = episodes.dequeue(uuid)
+
+    /** Moves a queued episode to the front of the queue. */
+    suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
+
+    /** Drops everything from [uuid] onwards — "played up to here". */
+    suspend fun clearQueueFrom(uuid: String) = episodes.clearQueueFrom(uuid)
+
+    suspend fun setStarred(uuid: String, starred: Boolean) = episodes.setStarred(uuid, starred)
+
+    /** Persist a resume point, recording the duration when it was unknown before. */
+    suspend fun saveProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) {
+        episodes.saveProgress(uuid, positionSeconds, durationSeconds)
+    }
+
+    /** Mark finished and drop the resume point so it never restarts. */
+    suspend fun markPlayed(uuid: String) = episodes.markPlayedAndClearProgress(uuid)
+
+    /** Undo [markPlayed]: back to unplayed, restarting from the beginning. */
+    suspend fun reopenEpisode(uuid: String) = episodes.reopenEpisode(uuid)
+
+    /** Saved resume point in seconds; 0 when there is nothing to resume. */
+    suspend fun playedPosition(uuid: String): Long = episodes.playedPosition(uuid)
+
+    /** Get total storage size used by local files (content:// URIs) */
+    fun getLocalFilesStorageSize(): Flow<Long> =
+        episodes.observeAll().map { list ->
+            list.filter { it.audioUrl.startsWith(CONTENT_SCHEME) }
+                .sumOf { it.sizeBytes ?: 0L }
+        }
+
+    /** Delete every episode backed by a local content:// URI. */
+    suspend fun deleteLocalFiles() = episodes.deleteLocalFiles()
+
+    /** Insert or replace episodes (used by the local-file importer). */
+    suspend fun upsertEpisodes(items: List<EpisodeEntity>) = episodes.upsertAll(items)
+
+    /** Snapshot of a podcast's episodes — for read-modify-write callers. */
+    suspend fun allEpisodesOnce(podcastUuid: String): List<EpisodeEntity> =
+        episodes.byPodcastOnce(podcastUuid)
+
+    suspend fun getPodcast(uuid: String): PodcastEntity? = podcasts.get(uuid)
+
+    suspend fun subscribe(podcast: PodcastEntity) = podcasts.upsert(podcast)
+
+    suspend fun unsubscribe(uuid: String) = podcasts.deleteByUuid(uuid)
+
+    /** Finds an existing subscription by feed URL — how a catalog result is matched. */
+    suspend fun subscriptionForFeed(feedUrl: String): PodcastEntity? =
+        podcasts.byFeedUrl(feedUrl)
+
+    /** Per-show setting: download new episodes as soon as a refresh finds them. */
+    suspend fun setAutoDownload(uuid: String, enabled: Boolean) =
+        podcasts.setAutoDownload(uuid, enabled)
+
+    /** Convenience: fresh UUID for callers that mint one. */
+    fun newUuid(): String = UUID.randomUUID().toString()
+
+    /**
+     * Fetch a feed and upsert it with its episodes.
+     *
+     * Returns the failure rather than throwing so the UI can show the reason —
+     * a bad URL is an ordinary outcome here, not an exception.
+     */
+    suspend fun importFeed(feedUrl: String): Result<PodcastEntity> =
+        fetcher.importFeed(feedUrl)
+
+    /**
+     * Fetches feed metadata purely to show it, without subscribing.
+     *
+     * The iTunes search API returns no description at all, so opening a show
+     * before following it means reading the feed. Failure is returned, not
+     * thrown: a missing blurb must not break the detail view.
+     */
+    suspend fun previewFeed(feedUrl: String): Result<PodcastEntity> =
+        runCatching { fetcher.fetch(feedUrl) }
+
+    /** Serialise every subscribed show that has a feed URL as an OPML document. */
+    suspend fun exportOpml(): String =
+        OpmlCodec.write(OpmlCodec.fromPodcasts(podcasts.allOnce()))
+    /**
+     * Import subscriptions from an OPML document.
+     *
+     * Feeds are fetched independently: one dead URL in a 200-show export must
+     * not abort the import, so failures are counted and reported rather than
+     * propagated.
+     */
+    suspend fun importOpml(opml: String): OpmlImportResult {
+        val subscriptions = OpmlCodec.read(opml)
+        val failures = mutableListOf<String>()
+        var imported = 0
+
+        subscriptions.forEach { subscription ->
+            fetcher.importFeed(subscription.feedUrl)
+                .onSuccess { imported++ }
+                .onFailure { failures += subscription.title }
+        }
+
+        return OpmlImportResult(
+            total = subscriptions.size,
+            imported = imported,
+            failed = failures.size,
+            failureTitles = failures,
+        )
+    }
+    /**
+     * Re-fetches every subscription that has a feed URL.
+     *
+     * One dead feed must not abort the sweep, so failures are counted rather
+     * than propagated. Feeds are refreshed sequentially on purpose: a user with
+     * fifty subscriptions would otherwise open fifty sockets at once and get
+     * rate-limited.
+     */
+    suspend fun refreshAllFeeds(): FeedRefreshSummary {
+        val targets = podcasts.allOnce().filter { it.feedUrl.isNotBlank() }
+
+        var refreshed = 0
+        val failures = mutableListOf<String>()
+
+        targets.forEach { podcast ->
+            fetcher.importFeed(podcast.feedUrl)
+                .onSuccess { refreshed++ }
+                .onFailure { failures += podcast.title }
+        }
+
+        return FeedRefreshSummary(
+            total = targets.size,
+            refreshed = refreshed,
+            failed = failures.size,
+            failureTitles = failures,
+        )
+    }
+}
+
+/** Outcome of refreshing every subscription. */
+data class FeedRefreshSummary(
+    val total: Int,
+    val refreshed: Int,
+    val failed: Int,
+    val failureTitles: List<String> = emptyList(),
+)
+
+/** Outcome of an OPML import, for the UI to summarise. */
+data class OpmlImportResult(
+    val total: Int,
+    val imported: Int,
+    val failed: Int,
+    val failureTitles: List<String> = emptyList(),
+)
+
+/**
+ * Service-locator (wasn't going to mention Hilt). Swappable in tests.
+ */
+object ServiceLocator {
+    @Volatile private var context: Context? = null
+    @Volatile private var db: AppDatabase? = null
+    @Volatile private var fetcher: PodcastFetcher? = null
+
+    fun init(context: Context) {
+        this.context = context.applicationContext
+    }
+
+    fun database(): AppDatabase =
+        db ?: run {
+            val c = context ?: error("ServiceLocator not initialized")
+            synchronized(this) { db ?: AppDatabase.get(c).also { db = it } }
+        }
+
+    fun subscriptionRepository(): SubscriptionRepository =
+        SubscriptionRepository(
+            database().podcastDao(),
+            database().episodeDao(),
+            podcastFetcher(),
+        )
+
+    fun podcastFetcher(): PodcastFetcher =
+        fetcher ?: synchronized(this) {
+            fetcher ?: RssPodcastFetcher(
+                client = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(20, TimeUnit.SECONDS)
+                    .build(),
+                podcastDao = database().podcastDao(),
+                episodeDao = database().episodeDao(),
+            ).also { fetcher = it }
+        }
+
+    @Volatile private var searcher: CatalogSearcher? = null
+
+    fun catalogSearcher(): CatalogSearcher =
+        searcher ?: synchronized(this) {
+            searcher ?: CatalogSearcher(
+                client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .build(),
+            ).also { searcher = it }
+        }
+
+    @Volatile private var artworkLoader: ArtworkLoader? = null
+
+    fun artworkLoader(): ArtworkLoader =
+        artworkLoader ?: synchronized(this) {
+            artworkLoader ?: ArtworkLoader(
+                context = context ?: error("ServiceLocator not initialized"),
+                client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .build(),
+            ).also { artworkLoader = it }
+        }
+
+    @Volatile private var downloads: DownloadManager? = null
+
+    fun downloadManager(): DownloadManager =
+        downloads ?: synchronized(this) {
+            downloads ?: DownloadManager(
+                context = context ?: error("ServiceLocator not initialized"),
+                repository = subscriptionRepository(),
+            ).also { downloads = it }
+        }
+}

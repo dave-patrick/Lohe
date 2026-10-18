@@ -1,0 +1,428 @@
+package com.lohe.app.data
+
+import com.lohe.app.data.db.entity.DownloadState
+import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.data.fetch.OpmlCodec
+import com.lohe.app.data.fetch.OpmlSubscription
+import com.lohe.app.data.fetch.PodcastFetcher
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Exercises the repository's fan-out logic against in-memory DAOs and a
+ * scripted fetcher.
+ *
+ * The behaviour worth pinning here is not the happy path — it is that a single
+ * bad feed inside a large import or refresh does not take the rest down with
+ * it, and that locally-imported audio is excluded from network operations.
+ */
+class SubscriptionRepositoryTest {
+
+    // --- Fakes --------------------------------------------------------------
+
+    private class FakePodcastDao(
+        private val rows: MutableList<PodcastEntity> = mutableListOf(),
+    ) : com.lohe.app.data.db.dao.PodcastDao {
+        override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.toList())
+        override suspend fun allOnce() = rows.toList()
+        override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
+
+        override suspend fun upsert(podcast: PodcastEntity) {
+            rows.removeAll { it.uuid == podcast.uuid }
+            rows += podcast
+        }
+
+        override suspend fun update(podcast: PodcastEntity) = upsert(podcast)
+        override suspend fun delete(podcast: PodcastEntity) {
+            rows.removeAll { it.uuid == podcast.uuid }
+        }
+
+        override suspend fun deleteByUuid(uuid: String) {
+            rows.removeAll { it.uuid == uuid }
+        }
+
+        override suspend fun count() = rows.size
+
+        override suspend fun byFeedUrl(feedUrl: String) =
+            rows.firstOrNull { it.feedUrl == feedUrl }
+
+        override suspend fun setAutoDownload(uuid: String, autoDownload: Boolean) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(autoDownload = autoDownload)
+        }
+        override fun observeSearchResults(query: String) =
+            kotlinx.coroutines.flow.flowOf(
+                rows.filter {
+                    it.title.contains(query, ignoreCase = true) ||
+                        it.author?.contains(query, ignoreCase = true) == true
+                },
+            )
+
+        override suspend fun upsertWithEpisodes(
+            podcast: PodcastEntity,
+            episodes: List<EpisodeEntity>,
+        ) = upsert(podcast)
+    }
+
+    private class FakeEpisodeDao : com.lohe.app.data.db.dao.EpisodeDao {
+        val rows = mutableListOf<EpisodeEntity>()
+        override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.toList())
+        override fun observeDownloads() =
+            kotlinx.coroutines.flow.flowOf(
+                rows.filter { it.downloadState == DownloadState.DONE && it.localPath != null },
+            )
+
+        override fun observeInProgress() =
+            kotlinx.coroutines.flow.flowOf(rows.filter { it.isInProgress })
+
+        override fun observeQueue() =
+            kotlinx.coroutines.flow.flowOf(rows.filter { it.isQueued }.sortedBy { it.queuePosition })
+
+        override suspend fun upsertAll(episodes: List<EpisodeEntity>) {
+            episodes.forEach { incoming ->
+                rows.removeAll { it.uuid == incoming.uuid }
+                rows += incoming
+            }
+        }
+
+        override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
+        override fun observeByPodcast(podcastUuid: String) =
+            kotlinx.coroutines.flow.flowOf(rows.filter { it.podcastUuid == podcastUuid })
+
+        override suspend fun byPodcastOnce(podcastUuid: String) =
+            rows.filter { it.podcastUuid == podcastUuid }
+
+        override fun observeLatest(limit: Int) = kotlinx.coroutines.flow.flowOf(rows.take(limit))
+        override suspend fun queueSnapshot() =
+            rows.filter { it.isQueued }.sortedBy { it.queuePosition }
+
+        override suspend fun enqueue(uuid: String, now: Long) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index < 0) return
+            if (rows[index].isQueued) return
+            val next = (rows.mapNotNull { it.queuePosition }.maxOrNull() ?: -1) + 1
+            rows[index] = rows[index].copy(queuePosition = next, lastPlayedAt = now)
+        }
+
+        override suspend fun dequeue(uuid: String) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(queuePosition = null)
+        }
+
+        override suspend fun promoteInQueue(uuid: String) = Unit
+        override suspend fun clearQueueFrom(uuid: String) = Unit
+        override suspend fun renumber(uuid: String, position: Int) = Unit
+        override suspend fun rewriteQueue(items: List<EpisodeEntity>) = Unit
+        override suspend fun deleteForPodcast(podcastUuid: String) {
+            rows.removeAll { it.podcastUuid == podcastUuid }
+        }
+
+        override suspend fun deleteLocalFiles() {
+            rows.removeAll { it.audioUrl.startsWith(CONTENT_SCHEME) }
+        }
+
+        override suspend fun updateProgress(uuid: String, position: Long) = Unit
+        override suspend fun saveProgress(uuid: String, position: Long, duration: Long) = Unit
+        override suspend fun markPlayedAndClearProgress(uuid: String) = Unit
+        override suspend fun reopenEpisode(uuid: String) = Unit
+        override suspend fun playedPosition(uuid: String) = 0L
+        override suspend fun markPlayed(uuid: String) = Unit
+        override suspend fun setStarred(uuid: String, starred: Boolean) = Unit
+        override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
+        override suspend fun clearDownload(uuid: String) = Unit
+    }
+
+    /** Returns success for the listed URLs and failure for everything else. */
+    private class ScriptedFetcher(
+        private val working: Set<String>,
+    ) : PodcastFetcher {
+        var attempts = mutableListOf<String>()
+
+        override suspend fun fetch(feedUrl: String): PodcastEntity =
+            importFeed(feedUrl).getOrThrow()
+
+        override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> {
+            attempts += feedUrl
+            return if (feedUrl in working) {
+                Result.success(
+                    PodcastEntity(
+                        uuid = feedUrl,
+                        title = feedUrl.substringAfterLast('/'),
+                        description = null,
+                        feedUrl = feedUrl,
+                        artworkUrl = null,
+                        lastEpisodePublished = 0L,
+                    ),
+                )
+            } else {
+                Result.failure(IllegalStateException("unreachable: $feedUrl"))
+            }
+        }
+    }
+
+    private fun repository(
+        fetcher: PodcastFetcher,
+        podcasts: FakePodcastDao = FakePodcastDao(),
+        episodes: FakeEpisodeDao = FakeEpisodeDao(),
+    ) = SubscriptionRepository(podcasts, episodes, fetcher)
+
+    private fun show(title: String, feedUrl: String) = PodcastEntity(
+        uuid = title,
+        title = title,
+        author = null,
+        description = null,
+        feedUrl = feedUrl,
+        artworkUrl = null,
+        lastEpisodePublished = 0L,
+    )
+
+    // --- Refresh -------------------------------------------------------------
+
+    @Test
+    fun `refresh reports one failure without aborting the sweep`() = runTest {
+        val daos = FakePodcastDao(mutableListOf(
+            show("Good", "https://good.com/f.xml"),
+            show("Bad", "https://bad.com/f.xml"),
+            show("AlsoGood", "https://alsogood.com/f.xml"),
+        ))
+        val repo = repository(
+            fetcher = ScriptedFetcher(setOf("https://good.com/f.xml", "https://alsogood.com/f.xml")),
+            podcasts = daos,
+        )
+
+        val summary = repo.refreshAllFeeds()
+
+        assertEquals(3, summary.total)
+        assertEquals(2, summary.refreshed)
+        assertEquals(1, summary.failed)
+        assertEquals(listOf("Bad"), summary.failureTitles)
+    }
+
+    @Test
+    fun `refresh skips shows with no feed url`() = runTest {
+        val daos = FakePodcastDao(mutableListOf(
+            show("Local", ""),
+            show("Remote", "https://remote.com/f.xml"),
+        ))
+        val fetcher = ScriptedFetcher(setOf("https://remote.com/f.xml"))
+        val repo = repository(fetcher, podcasts = daos)
+
+        val summary = repo.refreshAllFeeds()
+
+        // A device-local import has nothing to refresh and must not be counted.
+        assertEquals(1, summary.total)
+        assertEquals(1, summary.refreshed)
+        assertEquals(listOf("https://remote.com/f.xml"), fetcher.attempts)
+    }
+
+    @Test
+    fun `refreshing an empty library is a no-op`() = runTest {
+        val fetcher = ScriptedFetcher(emptySet())
+        val summary = repository(fetcher).refreshAllFeeds()
+
+        assertEquals(0, summary.total)
+        assertEquals(0, summary.refreshed)
+        assertTrue(fetcher.attempts.isEmpty())
+    }
+
+    @Test
+    fun `every feed is attempted even when the first one fails`() = runTest {
+        val daos = FakePodcastDao(
+            mutableListOf(
+                show("A", "https://a.com/f.xml"),
+                show("B", "https://b.com/f.xml"),
+                show("C", "https://c.com/f.xml"),
+            ),
+        )
+        val repo = repository(ScriptedFetcher(emptySet()), podcasts = daos)
+
+        val summary = repo.refreshAllFeeds()
+
+        assertEquals("a total failure must not stop the sweep", 3, summary.refreshed + summary.failed)
+        assertEquals(3, summary.failed)
+    }
+
+    // --- OPML ---------------------------------------------------------------
+
+    @Test
+    fun `opml import counts partial success`() = runTest {
+        val opml = OpmlCodec.write(
+            listOf(
+                OpmlSubscription("Good", "https://good.com/f.xml"),
+                OpmlSubscription("Bad", "https://bad.com/f.xml"),
+            ),
+        )
+        val repo = repository(ScriptedFetcher(setOf("https://good.com/f.xml")))
+
+        val result = repo.importOpml(opml)
+
+        assertEquals(2, result.total)
+        assertEquals(1, result.imported)
+        assertEquals(1, result.failed)
+        assertEquals(listOf("Bad"), result.failureTitles)
+    }
+
+    @Test
+    fun `importing a document that is not opml throws for the caller to catch`() = runTest {
+        val repo = repository(ScriptedFetcher(emptySet()))
+        val failure = runCatching { repo.importOpml("this is not xml") }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+    }
+
+    @Test
+    fun `importing an empty opml imports nothing`() = runTest {
+        val fetcher = ScriptedFetcher(emptySet())
+        val result = repository(fetcher).importOpml(
+            """<opml version="2.0"><head/><body/></opml>""",
+        )
+
+        assertEquals(0, result.total)
+        assertEquals(0, result.imported)
+        assertTrue(fetcher.attempts.isEmpty())
+    }
+
+    @Test
+    fun `export omits device-local shows`() = runTest {
+        val daos = FakePodcastDao(
+            mutableListOf(
+                show("Remote", "https://remote.com/f.xml"),
+                show("Imported", ""),
+            ),
+        )
+        val xml = repository(ScriptedFetcher(emptySet()), podcasts = daos).exportOpml()
+
+        val titles = OpmlCodec.read(xml).map { it.title }
+        assertEquals(listOf("Remote"), titles)
+    }
+
+    @Test
+    fun `export of an empty library still produces a valid document`() = runTest {
+        val xml = repository(ScriptedFetcher(emptySet())).exportOpml()
+        assertTrue(xml.contains("<opml"))
+        assertTrue(OpmlCodec.read(xml).isEmpty())
+    }
+
+    @Test
+    fun `export then import preserves the subscription set`() = runTest {
+        val originals = listOf(
+            OpmlSubscription("Alpha", "https://a.com/f.xml"),
+            OpmlSubscription("Beta", "https://b.com/f.xml"),
+        )
+        val exporter = repository(ScriptedFetcher(emptySet()))
+        val document = OpmlCodec.write(originals)
+
+        val importer = repository(ScriptedFetcher(originals.map { it.feedUrl }.toSet()))
+        val result = importer.importOpml(document)
+
+        assertEquals(2, result.imported)
+        assertEquals(0, result.failed)
+    }
+
+    // --- Per-show settings -----------------------------------------------------
+
+    @Test
+    fun `a show is looked up by its feed url`() = runTest {
+        val daos = FakePodcastDao(mutableListOf(show("Remote", "https://remote.com/f.xml")))
+        val repo = repository(ScriptedFetcher(emptySet()), podcasts = daos)
+
+        assertEquals("Remote", repo.subscriptionForFeed("https://remote.com/f.xml")?.title)
+    }
+
+    @Test
+    fun `an unsubscribed feed has no library row`() = runTest {
+        val repo = repository(ScriptedFetcher(emptySet()))
+        assertEquals(null, repo.subscriptionForFeed("https://not-followed.com/f.xml"))
+    }
+
+    @Test
+    fun `auto-download defaults to off`() = runTest {
+        assertFalse(show("Remote", "https://a.com/f.xml").autoDownload)
+    }
+
+    @Test
+    fun `auto-download is per show`() = runTest {
+        val daos = FakePodcastDao(
+            mutableListOf(
+                show("On", "https://on.com/f.xml"),
+                show("Off", "https://off.com/f.xml"),
+            ),
+        )
+        val repo = repository(ScriptedFetcher(emptySet()), podcasts = daos)
+
+        repo.setAutoDownload("On", true)
+
+        assertTrue(repo.subscriptionForFeed("https://on.com/f.xml")!!.autoDownload)
+        assertFalse(
+            "turning it on for one show must not affect the other",
+            repo.subscriptionForFeed("https://off.com/f.xml")!!.autoDownload,
+        )
+    }
+
+    // --- Storage -------------------------------------------------------------
+
+    @Test
+    fun `local storage size counts only content uris`() = runTest {
+        val episodes = FakeEpisodeDao().apply {
+            rows += episode("local", "content://media/1.mp3", size = 1_000)
+            rows += episode("remote", "https://cdn.com/1.mp3", size = 5_000)
+            rows += episode("local2", "content://media/2.mp3", size = 2_000)
+        }
+        val repo = repository(ScriptedFetcher(emptySet()), episodes = episodes)
+
+        val size = repo.getLocalFilesStorageSize().let { flow ->
+            var captured = 0L
+            flow.collect { captured = it }
+            captured
+        }
+
+        // Remote episodes are not storage this app owns.
+        assertEquals(3_000L, size)
+    }
+
+    @Test
+    fun `deleting local files leaves remote episodes alone`() = runTest {
+        val episodes = FakeEpisodeDao().apply {
+            rows += episode("local", "content://media/1.mp3")
+            rows += episode("remote", "https://cdn.com/1.mp3")
+        }
+        val repo = repository(ScriptedFetcher(emptySet()), episodes = episodes)
+
+        repo.deleteLocalFiles()
+
+        assertEquals(listOf("remote"), episodes.rows.map { it.uuid })
+    }
+
+    @Test
+    fun `episodes with an unknown size do not break the total`() = runTest {
+        val episodes = FakeEpisodeDao().apply {
+            rows += episode("known", "content://media/1.mp3", size = 1_000)
+            rows += episode("unknown", "content://media/2.mp3", size = null)
+        }
+        val repo = repository(ScriptedFetcher(emptySet()), episodes = episodes)
+
+        var captured = 0L
+        repo.getLocalFilesStorageSize().collect { captured = it }
+        assertEquals(1_000L, captured)
+    }
+
+    // --- Helpers -------------------------------------------------------------
+
+    private fun episode(
+        uuid: String,
+        audioUrl: String,
+        size: Long? = null,
+        downloadState: Int = DownloadState.NONE,
+    ) = EpisodeEntity(
+        uuid = uuid,
+        podcastUuid = "p1",
+        title = uuid,
+        audioUrl = audioUrl,
+        published = 0L,
+        sizeBytes = size,
+        downloadState = downloadState,
+    )
+}
