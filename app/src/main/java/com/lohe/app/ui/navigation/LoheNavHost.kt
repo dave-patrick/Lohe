@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
@@ -66,7 +67,8 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
     HOME("home", "Home", Icons.Filled.Home),
     PODCASTS("podcasts", "My Podcasts", Icons.Filled.LibraryMusic),
     DISCOVER("discover", "Discover", Icons.Filled.Explore),
-    QUEUE("queue", "Playlists", Icons.AutoMirrored.Filled.QueueMusic),
+    PLAYLISTS("playlists", "Playlists", Icons.AutoMirrored.Filled.PlaylistPlay),
+    QUEUE("queue", "Up Next", Icons.AutoMirrored.Filled.QueueMusic),
     PLAYER("player", "Now Playing", Icons.Filled.PlayArrow),
     STORAGE("storage", "Storage", Icons.Filled.Storage),
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
@@ -283,6 +285,7 @@ fun LoheNavHost(
             composable(Dest.HOME.route) {
                 HomeScreen(
                     queueViewModel = queueViewModel,
+                    currentEpisodeId = nowPlaying?.episodeId,
                     onOpenPodcast = { navController.navigate(Routes.episodes(it)) },
                     onOpenLibrary = { navController.navigate(Dest.PODCASTS.route) },
                     onOpenDiscover = { navController.navigate(Dest.DISCOVER.route) },
@@ -375,6 +378,23 @@ fun LoheNavHost(
                 )
             }
 
+            composable(Dest.PLAYLISTS.route) {
+                PlaylistsScreen(
+                    viewModel = queueViewModel,
+                    onPlay = { entry ->
+                        nowPlaying = NowPlaying(
+                            title = entry.episode.title,
+                            uri = entry.episode.playbackUri,
+                            showTitle = entry.showTitle,
+                            episodeId = entry.episode.uuid,
+                            artworkUrl = entry.episode.artworkUrl,
+                        )
+                        navController.navigate(Dest.PLAYER.route)
+                    },
+                    onShowMessage = { msg -> importMessage = msg },
+                )
+            }
+
             composable(Dest.QUEUE.route) {
                 QueueScreen(
                     viewModel = queueViewModel,
@@ -388,6 +408,7 @@ fun LoheNavHost(
                         )
                         navController.navigate(Dest.PLAYER.route)
                     },
+                    onShowMessage = { msg -> importMessage = msg },
                 )
             }
 

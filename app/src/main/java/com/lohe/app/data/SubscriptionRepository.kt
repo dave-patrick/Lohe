@@ -77,6 +77,23 @@ class SubscriptionRepository internal constructor(
     /** Moves a queued episode to the front of the queue. */
     suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
 
+    /** Shifts [uuid] up (`delta < 0`) or down (`delta > 0`) in the queue. */
+    suspend fun moveInQueue(uuid: String, delta: Int) {
+        val current = episodes.queueSnapshot().toMutableList()
+        val idx = current.indexOfFirst { it.uuid == uuid }
+        if (idx < 0) return
+        val targetIdx = (idx + delta).coerceIn(0, current.lastIndex)
+        if (targetIdx == idx) return
+        val moved = current.removeAt(idx)
+        current.add(targetIdx, moved)
+        episodes.rewriteQueue(current)
+    }
+
+    /** Empties the entire Up Next queue. */
+    suspend fun clearAllQueue() {
+        episodes.queueSnapshot().forEach { episodes.dequeue(it.uuid) }
+    }
+
     /** Drops everything from [uuid] onwards — "played up to here". */
     suspend fun clearQueueFrom(uuid: String) = episodes.clearQueueFrom(uuid)
 

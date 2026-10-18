@@ -85,6 +85,7 @@ import kotlin.math.sin
 @Composable
 fun HomeScreen(
     queueViewModel: QueueViewModel,
+    currentEpisodeId: String? = null,
     onOpenPodcast: (String) -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenDiscover: () -> Unit,
@@ -94,9 +95,12 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val inProgress by queueViewModel.continueListening.collectAsState()
-    val queueEntries by queueViewModel.queue.collectAsState()
     val stats by queueViewModel.dashboardStats.collectAsState()
     val isLight = appearance == Appearance.LIGHT
+
+    val currentEpisode: ContinueEntry? = inProgress.firstOrNull {
+        currentEpisodeId != null && it.episode.uuid == currentEpisodeId
+    } ?: inProgress.firstOrNull()
 
     Column(
         modifier = modifier
@@ -164,42 +168,23 @@ fun HomeScreen(
                 )
             }
 
-            if (inProgress.isNotEmpty()) {
+            if (currentEpisode != null) {
                 item {
                     Text(
-                        text = stringResource(R.string.home_continue),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                        text = "NOW PLAYING",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = if (isLight) ElectricBlue else ElectricCyan,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                     )
                 }
 
-                items(inProgress, key = { it.episode.uuid }) { entry ->
+                item(key = currentEpisode.episode.uuid) {
                     ContinueCard(
-                        entry = entry,
-                        onPlay = { onPlay(entry) },
-                        onOpenShow = { onOpenPodcast(entry.episode.podcastUuid) },
-                    )
-                }
-            }
-
-            if (queueEntries.isNotEmpty()) {
-                item {
-                    Text(
-                        text = stringResource(R.string.queue_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                    )
-                }
-
-                items(queueEntries.take(5), key = { "q-${it.episode.uuid}" }) { entry ->
-                    ContinueCard(
-                        entry = ContinueEntry(entry.episode, entry.showTitle),
-                        onPlay = { onPlay(ContinueEntry(entry.episode, entry.showTitle)) },
-                        onOpenShow = { onOpenPodcast(entry.episode.podcastUuid) },
+                        entry = currentEpisode,
+                        onPlay = { onPlay(currentEpisode) },
+                        onOpenShow = { onOpenPodcast(currentEpisode.episode.podcastUuid) },
                     )
                 }
             }

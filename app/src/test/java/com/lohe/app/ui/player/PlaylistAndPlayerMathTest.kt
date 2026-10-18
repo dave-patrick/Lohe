@@ -61,6 +61,12 @@ class PlaylistAndPlayerMathTest {
                 repo.playlists.value.single().episodeUuids,
             )
 
+            repo.moveEpisode(created.id, "ep-3", -1)
+            assertEquals(
+                listOf("ep-1", "ep-3", "ep-2"),
+                repo.playlists.value.single().episodeUuids,
+            )
+
             repo.removeEpisode(created.id, "ep-2")
             assertEquals(
                 listOf("ep-1", "ep-3"),

@@ -153,7 +153,17 @@ class QueueViewModel(
 
     fun dequeue(uuid: String) = viewModelScope.launch { repository.dequeue(uuid) }
 
+    fun dequeueBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.dequeue(it) }
+    }
+
     fun promote(uuid: String) = viewModelScope.launch { repository.promote(uuid) }
+
+    fun moveInQueue(uuid: String, delta: Int) = viewModelScope.launch {
+        repository.moveInQueue(uuid, delta)
+    }
+
+    fun clearAllQueue() = viewModelScope.launch { repository.clearAllQueue() }
 
     /** "Played up to here": drops this entry and everything after it. */
     fun clearFrom(uuid: String) = viewModelScope.launch { repository.clearQueueFrom(uuid) }
@@ -162,6 +172,11 @@ class QueueViewModel(
 
     fun enqueueAll(uuids: Collection<String>) = viewModelScope.launch {
         uuids.forEach { repository.enqueue(it) }
+    }
+
+    fun addPlaylistToUpNext(playlistId: String) = viewModelScope.launch {
+        val pl = playlistRepository.playlists.value.firstOrNull { it.id == playlistId } ?: return@launch
+        pl.episodeUuids.forEach { repository.enqueue(it) }
     }
 
     val userPlaylists: StateFlow<List<ResolvedPlaylist>> = combine(
@@ -202,6 +217,9 @@ class QueueViewModel(
 
     fun removeEpisodeFromPlaylist(playlistId: String, episodeUuid: String) =
         playlistRepository.removeEpisode(playlistId, episodeUuid)
+
+    fun moveEpisodeInPlaylist(playlistId: String, episodeUuid: String, delta: Int) =
+        playlistRepository.moveEpisode(playlistId, episodeUuid, delta)
 
     /** Total remaining time across the queue, in seconds; unknown durations ignored. */
     val queuedSeconds: StateFlow<Long> = queue

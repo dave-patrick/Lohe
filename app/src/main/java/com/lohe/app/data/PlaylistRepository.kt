@@ -87,6 +87,33 @@ class PlaylistRepository(
         }
     }
 
+    fun moveEpisode(playlistId: String, episodeUuid: String, delta: Int) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id != playlistId) {
+                    pl
+                } else {
+                    val list = pl.episodeUuids.toMutableList()
+                    val idx = list.indexOf(episodeUuid)
+                    if (idx < 0) {
+                        pl
+                    } else {
+                        val target = (idx + delta).coerceIn(0, list.lastIndex)
+                        if (target == idx) {
+                            pl
+                        } else {
+                            val item = list.removeAt(idx)
+                            list.add(target, item)
+                            pl.copy(episodeUuids = list)
+                        }
+                    }
+                }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
     private fun loadFromDisk(): List<UserPlaylist> {
         val target = file ?: return emptyList()
         if (!target.exists()) return emptyList()
