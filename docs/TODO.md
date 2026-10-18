@@ -117,17 +117,37 @@ so this is a one-file change plus the font asset.
 
 ---
 
-## 6. Release build is not hardened
+## 6. Release build is not hardened — **CI done, R8 outstanding**
 
-**Severity: low, but blocks any real distribution.**
+**CI (done).** Tests and a debug APK now run on every push and pull request,
+with the APK attached to each run and test reports uploaded on failure. Before
+this, the 199 tests only ran when someone remembered.
+
+Getting there surfaced three things that were broken for anyone but this
+machine:
+
+- **There was no `gradlew` at all.** Every build had been driven by a hardcoded
+  absolute path to a local Gradle install, so a clean clone could not be built
+  by anyone else. The wrapper is now generated and committed.
+- **The wrapper contradicted itself.** `gradle-wrapper.gradle.kts` pinned
+  Gradle 9.3.1 while `gradle-wrapper.properties` said 9.6.0. In Gradle 9 the
+  declarative file wins, so only one of them was ever consulted. Aligned on
+  9.6.0, the version actually verified.
+- **`gradlew` was not executable in git**, so it exited 126 on the Linux
+  runner. Fixed in the index rather than with a `chmod` in the workflow.
+
+**Still to do:**
 
 - `build.gradle.kts:21` — `isMinifyEnabled = false`, so R8 never runs
 - `proguard-rules.pro` exists but is never applied to anything
 - no signing config; debug-signed only
-- no CI — the 195 tests currently run because someone remembered to run them
 
-**To fix:** enable R8 and fix whatever it breaks (Media3 and Room both need
-keep rules), then add a workflow that runs `testDebugUnitTest` on push.
+Enabling R8 needs care and is deliberately not done blind: a minified build
+can pass assembly and still crash at runtime, and the release path here is
+unsigned so it cannot be installed to check. Media3 and Room both ship
+consumer rules, so the likely result is that it works — but "likely" is not
+the standard. Do it alongside a signing config, then smoke-test the artifact
+before trusting it.
 
 ---
 
