@@ -50,6 +50,7 @@ import com.lohe.app.data.QueueViewModelFactory
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
 import com.lohe.app.data.SubscriptionsViewModelFactory
+import com.lohe.app.playback.Playback
 import com.lohe.app.playback.rememberPlayerConnection
 import com.lohe.app.playback.rememberTransportState
 import com.lohe.app.ui.player.NowPlayingBar
@@ -88,6 +89,7 @@ private data class NowPlaying(
     val showTitle: String,
     val episodeId: String,
     val artworkUrl: String?,
+    val description: String? = null,
     /**
      * Length from the feed, in seconds.
      *
@@ -167,6 +169,11 @@ fun LoheNavHost(
                 PlaybackSettings(appearance = appearance),
             )
     }.collectAsState()
+
+    LaunchedEffect(playbackSettings.defaultPlaybackSpeed, playbackSettings.skipSilenceByDefault) {
+        Playback.setPlaybackSpeed(playbackSettings.defaultPlaybackSpeed)
+        Playback.setSkipSilence(playbackSettings.skipSilenceByDefault)
+    }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
@@ -297,6 +304,8 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
+                            description = entry.episode.description,
+                            knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
                     },
@@ -362,6 +371,7 @@ fun LoheNavHost(
                             showTitle = queueTitle,
                             episodeId = episode.uuid,
                             artworkUrl = episode.artworkUrl ?: show?.artworkUrl,
+                            description = episode.description ?: show?.description,
                             knownDurationSeconds = episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
@@ -388,6 +398,8 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
+                            description = entry.episode.description,
+                            knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
                     },
@@ -405,6 +417,8 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
+                            description = entry.episode.description,
+                            knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
                     },
@@ -422,10 +436,17 @@ fun LoheNavHost(
                     mediaTitle = nowPlaying?.title.orEmpty(),
                     mediaShowTitle = nowPlaying?.showTitle.orEmpty(),
                     mediaArtworkUrl = nowPlaying?.artworkUrl,
+                    mediaDescription = nowPlaying?.description,
                     knownDurationMs = nowPlaying?.knownDurationSeconds?.times(1_000L),
                     skipBackMs = playbackSettings.skipBackSeconds * 1_000L,
                     skipForwardMs = playbackSettings.skipForwardSeconds * 1_000L,
                     volumeBoostDefault = playbackSettings.volumeBoostByDefault,
+                    onPersistSpeed = { speed ->
+                        scope.launch { settingsStore.setDefaultPlaybackSpeed(speed) }
+                    },
+                    onPersistSkipSilence = { enabled ->
+                        scope.launch { settingsStore.setSkipSilenceDefault(enabled) }
+                    },
                 )
             }
 

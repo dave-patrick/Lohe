@@ -211,6 +211,7 @@ class FeedParser(
         var guid: String? = null
         var author: String? = null
         var itemArtwork: String? = null
+        var itemDescription: String? = null
 
         var ev = parser.next()
         while (ev != XmlPullParser.END_DOCUMENT) {
@@ -233,6 +234,8 @@ class FeedParser(
                         "duration" ->
                             durationSeconds = parseDuration(parser.nextTextOrNull()) ?: durationSeconds
                         "author", "creator" -> author = author ?: parser.nextTextOrNull()
+                        "description", "summary", "subtitle", "encoded", "content" ->
+                            itemDescription = itemDescription ?: parser.nextTextOrNull()
 
                         "image", "thumbnail" -> {
                             itemArtwork = parser.getAttributeValue(null, "href")
@@ -272,6 +275,7 @@ class FeedParser(
             fileType = mimeType,
             author = author?.trim()?.takeIf { it.isNotEmpty() },
             artworkUrl = itemArtwork?.trim()?.takeIf { it.isNotEmpty() },
+            description = itemDescription?.let { plainText(it, limit = 2_000) }?.takeIf { it.isNotEmpty() },
         )
     }
 

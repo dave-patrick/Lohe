@@ -28,8 +28,10 @@ import androidx.compose.material.icons.automirrored.filled.VolumeMute
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +39,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +112,7 @@ fun PlayerScreen(
     /** Shown under the artwork; falls back to the loaded item's title. */
     mediaTitle: String = "",
     mediaShowTitle: String = "",
+    mediaDescription: String? = null,
     /** Skip amounts, from user settings. */
     skipBackMs: Long = 10_000L,
     skipForwardMs: Long = 30_000L,
@@ -122,16 +126,20 @@ fun PlayerScreen(
     knownDurationMs: Long? = null,
     /** Whether playback starts amplified. */
     volumeBoostDefault: Boolean = false,
+    onPersistSpeed: (Float) -> Unit = {},
+    onPersistSkipSilence: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val transport by rememberTransportState(connection)
     val sleepTimer = Playback.sleepTimer
     val sleepTimerState by Playback.sleepState.collectAsState()
     val playbackSpeed by Playback.playbackSpeed.collectAsState()
+    val skipSilence by Playback.skipSilence.collectAsState()
     var sleepRemainingMs by remember { mutableLongStateOf(0L) }
     var volumeBoostEnabled by rememberSaveable { mutableStateOf(volumeBoostDefault) }
     var sleepTimerOpen by remember { mutableStateOf(false) }
     var speedSheetOpen by remember { mutableStateOf(false) }
+    var notesSheetOpen by remember { mutableStateOf(false) }
 
     val resolvedArtworkUrl = mediaArtworkUrl?.takeIf { it.isNotBlank() }
         ?: transport.artworkUrl.takeIf { it.isNotBlank() }
@@ -200,6 +208,7 @@ fun PlayerScreen(
                 appearance = appearance,
                 onToggleAppearance = onToggleAppearance,
                 onOpenSleepTimer = { sleepTimerOpen = true },
+                onOpenNotes = { notesSheetOpen = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 6.dp),
@@ -223,6 +232,7 @@ fun PlayerScreen(
                 isLight = appearance == Appearance.LIGHT,
                 title = shownTitle,
                 showTitle = mediaShowTitle.ifBlank { transport.showTitle },
+                onClick = { notesSheetOpen = true },
             )
 
             Spacer(Modifier.height(6.dp))
@@ -274,8 +284,28 @@ fun PlayerScreen(
     if (speedSheetOpen) {
         PlaybackSpeedSheet(
             currentSpeed = playbackSpeed,
-            onSelectSpeed = { connection.setPlaybackSpeed(it) },
+            skipSilenceEnabled = skipSilence,
+            onSelectSpeed = { speed ->
+                connection.setPlaybackSpeed(speed)
+                onPersistSpeed(speed)
+            },
+            onToggleSkipSilence = { enabled ->
+                connection.setSkipSilence(enabled)
+                onPersistSkipSilence(enabled)
+            },
             onDismiss = { speedSheetOpen = false },
+        )
+    }
+
+    if (notesSheetOpen) {
+        val totalDurSecs = ((transport.durationMs.takeIf { it > 0L } ?: knownDurationMs ?: 0L) / 1_000L).toInt()
+        EpisodeNotesSheet(
+            title = shownTitle,
+            showTitle = mediaShowTitle.ifBlank { transport.showTitle },
+            artworkUrl = resolvedArtworkUrl,
+            description = mediaDescription,
+            durationSeconds = totalDurSecs.takeIf { it > 0 },
+            onDismiss = { notesSheetOpen = false },
         )
     }
 }
@@ -284,6 +314,7 @@ private fun HeaderRow(
     appearance: Appearance,
     onToggleAppearance: () -> Unit,
     onOpenSleepTimer: () -> Unit,
+    onOpenNotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isLight = appearance == Appearance.LIGHT
@@ -299,6 +330,18 @@ private fun HeaderRow(
         )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onOpenNotes,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = "Show notes",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+
             IconButton(
                 onClick = onOpenSleepTimer,
                 modifier = Modifier.size(40.dp),
@@ -365,8 +408,19 @@ private fun ArtworkTile(
 }
 
 @Composable
-private fun EpisodeTitle(isLight: Boolean, title: String, showTitle: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun EpisodeTitle(
+    isLight: Boolean,
+    title: String,
+    showTitle: String,
+    onClick: () -> Unit = {},
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
         Text(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
@@ -653,7 +707,9 @@ private val SPEED_PRESETS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 
 @Composable
 private fun PlaybackSpeedSheet(
     currentSpeed: Float,
+    skipSilenceEnabled: Boolean,
     onSelectSpeed: (Float) -> Unit,
+    onToggleSkipSilence: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -736,6 +792,31 @@ private fun PlaybackSpeedSheet(
                         label = { Text(formatSpeedLabel(preset)) },
                     )
                 }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Skip Silence",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Automatically trim dead air and long pauses",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = skipSilenceEnabled,
+                    onCheckedChange = onToggleSkipSilence,
+                )
             }
 
             Spacer(Modifier.height(24.dp))

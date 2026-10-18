@@ -226,6 +226,11 @@ class PlaybackService : MediaSessionService() {
                 player.setPlaybackSpeed(speed.coerceIn(0.5f, 3.0f))
             }
         }
+        scope.launch {
+            Playback.skipSilence.collect { enabled ->
+                player.skipSilenceEnabled = enabled
+            }
+        }
     }
 
     private fun applyVolumeBoost(enabled: Boolean) {

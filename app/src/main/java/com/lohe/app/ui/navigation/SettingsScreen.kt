@@ -39,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
+import com.lohe.app.playback.Playback
+import com.lohe.app.ui.player.formatSpeedLabel
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
@@ -117,11 +119,31 @@ fun SettingsScreen(
                 onSelect = { scope.launch { settingsStore.setSkipForwardSeconds(it) } },
             )
 
+            SpeedChoiceRow(
+                label = "Default playback speed",
+                choices = PlaybackSettings.SPEED_CHOICES,
+                selected = settings.defaultPlaybackSpeed,
+                onSelect = { speed ->
+                    Playback.setPlaybackSpeed(speed)
+                    scope.launch { settingsStore.setDefaultPlaybackSpeed(speed) }
+                },
+            )
+
             ToggleRow(
                 label = stringResource(R.string.settings_volume_boost),
                 hint = stringResource(R.string.settings_volume_boost_hint),
                 checked = settings.volumeBoostByDefault,
                 onChange = { scope.launch { settingsStore.setVolumeBoostDefault(it) } },
+            )
+
+            ToggleRow(
+                label = "Skip silence",
+                hint = "Automatically trim dead air and long pauses during playback.",
+                checked = settings.skipSilenceByDefault,
+                onChange = {
+                    Playback.setSkipSilence(it)
+                    scope.launch { settingsStore.setSkipSilenceDefault(it) }
+                },
             )
 
             ToggleRow(
@@ -230,6 +252,36 @@ private fun ChoiceRow(
                     selected = choice == selected,
                     onClick = { onSelect(choice) },
                     label = { Text(format(choice), maxLines = 1) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpeedChoiceRow(
+    label: String,
+    choices: List<Float>,
+    selected: Float,
+    onSelect: (Float) -> Unit,
+) {
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            choices.forEach { choice ->
+                FilterChip(
+                    selected = kotlin.math.abs(choice - selected) < 0.01f,
+                    onClick = { onSelect(choice) },
+                    label = { Text(formatSpeedLabel(choice), maxLines = 1) },
                 )
             }
         }

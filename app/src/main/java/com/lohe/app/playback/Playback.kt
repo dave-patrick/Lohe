@@ -28,6 +28,11 @@ object Playback {
     /** Current playback speed multiplier (0.5x .. 3.0x). */
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
 
+    private val _skipSilence = MutableStateFlow(false)
+
+    /** Whether ExoPlayer silence trimming is enabled. */
+    val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
+
     fun setVolumeBoost(enabled: Boolean) {
         _volumeBoost.value = enabled
     }
@@ -36,10 +41,15 @@ object Playback {
         _playbackSpeed.value = speed.coerceIn(0.5f, 3.0f)
     }
 
+    fun setSkipSilence(enabled: Boolean) {
+        _skipSilence.value = enabled
+    }
+
     /** Test seam: drops any armed timer and resets boost/speed. */
     fun resetForTests() {
         sleepTimer.cancel()
         _volumeBoost.value = false
         _playbackSpeed.value = 1f
+        _skipSilence.value = false
     }
 }

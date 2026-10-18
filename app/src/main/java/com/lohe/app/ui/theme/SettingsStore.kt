@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,8 @@ private val Context.settingsStore: DataStore<Preferences> by preferencesDataStor
 data class PlaybackSettings(
     val appearance: Appearance = Appearance.DARK,
     val volumeBoostByDefault: Boolean = false,
+    val skipSilenceByDefault: Boolean = false,
+    val defaultPlaybackSpeed: Float = 1.0f,
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
     val markPlayedAtEnd: Boolean = true,
@@ -29,6 +32,7 @@ data class PlaybackSettings(
 
         /** Offered in the UI; the choice is constrained to this list. */
         val SKIP_CHOICES = listOf(5, 10, 15, 30, 45, 60)
+        val SPEED_CHOICES = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     }
 }
 
@@ -44,6 +48,8 @@ class SettingsStore(private val context: Context) {
     private object Keys {
         val appearance = stringPreferencesKey("appearance")
         val volumeBoost = booleanPreferencesKey("volume_boost")
+        val skipSilence = booleanPreferencesKey("skip_silence")
+        val defaultSpeed = floatPreferencesKey("default_playback_speed")
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
         val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
@@ -56,6 +62,8 @@ class SettingsStore(private val context: Context) {
                 else -> Appearance.DARK
             },
             volumeBoostByDefault = prefs[Keys.volumeBoost] ?: false,
+            skipSilenceByDefault = prefs[Keys.skipSilence] ?: false,
+            defaultPlaybackSpeed = (prefs[Keys.defaultSpeed] ?: 1.0f).coerceIn(0.5f, 3.0f),
             // A value written by an older build, or hand-edited into the file,
             // must not be able to put the skip buttons into a nonsense state.
             skipBackSeconds = (prefs[Keys.skipBack] ?: PlaybackSettings.DEFAULT_SKIP_BACK)
@@ -77,6 +85,12 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setVolumeBoostDefault(value: Boolean) =
         edit { it[Keys.volumeBoost] = value }
+
+    suspend fun setSkipSilenceDefault(value: Boolean) =
+        edit { it[Keys.skipSilence] = value }
+
+    suspend fun setDefaultPlaybackSpeed(value: Float) =
+        edit { it[Keys.defaultSpeed] = value.coerceIn(0.5f, 3.0f) }
 
     suspend fun setSkipBackSeconds(value: Int) =
         edit { it[Keys.skipBack] = value.coerceIn(5, 60) }

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +58,7 @@ import com.lohe.app.data.EpisodeFilter
 import com.lohe.app.data.EpisodesViewModel
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.ui.player.EpisodeNotesSheet
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 
@@ -81,6 +83,7 @@ fun EpisodesScreen(
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedUuids.isNotEmpty()
     var playlistPickerUuids by remember { mutableStateOf<List<String>?>(null) }
+    var notesEpisode by remember { mutableStateOf<EpisodeEntity?>(null) }
 
     // Sampled once per composition pass rather than per row: "3d ago" would
     // otherwise be recomputed for every episode and could disagree mid-list.
@@ -350,6 +353,7 @@ fun EpisodesScreen(
                     },
                     onQueue = { onQueue(episode) },
                     onDownload = { onDownload(episode) },
+                    onOpenNotes = { notesEpisode = episode },
                     onTogglePlayed = {
                         viewModel.togglePlayed(episode.uuid, episode.isPlayed)
                     },
@@ -357,6 +361,19 @@ fun EpisodesScreen(
                 )
             }
         }
+    }
+
+    notesEpisode?.let { ep ->
+        EpisodeNotesSheet(
+            title = ep.title,
+            showTitle = podcast?.title.orEmpty(),
+            artworkUrl = ep.artworkUrl ?: podcast?.artworkUrl,
+            description = ep.description ?: podcast?.description,
+            durationSeconds = ep.durationSeconds,
+            onPlay = { onPlay(ep) },
+            onAddToUpNext = { onQueue(ep) },
+            onDismiss = { notesEpisode = null },
+        )
     }
 
     playlistPickerUuids?.let { uuids ->
@@ -383,6 +400,7 @@ private fun EpisodeRow(
     onLongPress: () -> Unit,
     onQueue: () -> Unit,
     onDownload: () -> Unit,
+    onOpenNotes: () -> Unit,
     onTogglePlayed: () -> Unit,
     onToggleStar: () -> Unit,
 ) {
@@ -438,6 +456,15 @@ private fun EpisodeRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
+
+                    IconButton(onClick = onOpenNotes, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = "Show notes",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
 
                     IconButton(onClick = onToggleStar, modifier = Modifier.size(30.dp)) {
                         Icon(

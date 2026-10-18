@@ -20,7 +20,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
  */
 @Database(
     entities = [PodcastEntity::class, EpisodeEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters()
@@ -73,6 +73,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE episodes ADD COLUMN description TEXT DEFAULT NULL",
+                )
+            }
+        }
+
         /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
@@ -103,7 +111,13 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "lohe.db",
                 )
-                    .addMigrations(MIGRATION_1_3, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_1_4)
+                    .addMigrations(
+                        MIGRATION_1_3,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_1_4,
+                        MIGRATION_4_5,
+                    )
                     .build()
                     .also { instance = it }
             }

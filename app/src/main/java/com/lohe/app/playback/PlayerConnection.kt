@@ -146,6 +146,10 @@ class PlayerConnection internal constructor(
         controller?.setPlaybackSpeed(clamped)
     }
 
+    fun setSkipSilence(enabled: Boolean) {
+        Playback.setSkipSilence(enabled)
+    }
+
     companion object {
         fun create(context: Context): PlayerConnection =
             PlayerConnection(context.applicationContext)

@@ -40,6 +40,7 @@ data class EpisodeEntity(
     val fileType: String? = null,
     val author: String? = null,
     val artworkUrl: String? = null,
+    val description: String? = null,
     /** 0 = unplayed, 1 = in progress, 2 = played. */
     val playingStatus: Int = 0,
     val playedUpToSeconds: Long = 0,
