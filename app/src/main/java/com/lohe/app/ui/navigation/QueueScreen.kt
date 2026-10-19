@@ -351,6 +351,8 @@ fun QueueScreen(
     actionEpisode?.let { entry ->
         EpisodeActionSheet(
             episode = entry.episode,
+            artworkUrl = entry.episode.artworkUrl,
+            showTitle = entry.showTitle,
             onDismiss = { actionEpisode = null },
             onPlay = {
                 actionEpisode = null
@@ -910,6 +912,8 @@ fun PlaylistsScreen(
     actionEpisode?.let { entry ->
         EpisodeActionSheet(
             episode = entry.episode,
+            artworkUrl = entry.episode.artworkUrl,
+            showTitle = entry.showTitle,
             onDismiss = { actionEpisode = null },
             onPlay = {
                 actionEpisode = null

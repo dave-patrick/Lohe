@@ -1,6 +1,10 @@
 package com.lohe.app.ui.navigation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +13,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -18,21 +24,25 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.ui.image.RemoteImage
 
 /**
  * Long-press action sheet for an episode.
@@ -40,11 +50,17 @@ import com.lohe.app.data.db.entity.EpisodeEntity
  * Offered wherever a single episode is listed — inside a playlist, in the Up
  * Next queue — so the same set of verbs is available wherever the episode is
  * touched.
+ *
+ * The layout is deliberately quiet: one icon tile per action, the label
+ * sitting right next to it, and the destructive action separated at the
+ * bottom so it cannot be hit by accident.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpisodeActionSheet(
     episode: EpisodeEntity,
+    artworkUrl: String? = null,
+    showTitle: String = "",
     onDismiss: () -> Unit,
     onPlay: () -> Unit = {},
     onAddToUpNext: () -> Unit = {},
@@ -54,97 +70,185 @@ fun EpisodeActionSheet(
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .widthIn(max = 520.dp)
+                .align(Alignment.CenterHorizontally)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp),
+                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
         ) {
-            Text(
-                text = episode.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            SheetAction(
-                icon = Icons.Filled.PlayArrow,
-                label = "Play now",
-                tint = MaterialTheme.colorScheme.primary,
-                onClick = onPlay,
-            )
-            SheetAction(
-                icon = Icons.AutoMirrored.Filled.QueueMusic,
-                label = "Add to Up Next",
-                onClick = onAddToUpNext,
-            )
-            SheetAction(
-                icon = if (episode.isPlayed) Icons.Filled.CheckCircle else Icons.Filled.CheckCircle,
-                label = if (episode.isPlayed) "Mark as unlistened" else "Mark as listened",
-                onClick = onTogglePlayed,
-            )
-            SheetAction(
-                icon = if (episode.isDownloaded) Icons.Filled.DeleteSweep else Icons.Filled.Download,
-                label = if (episode.isDownloaded) "Remove download" else "Download",
-                onClick = onToggleDownload,
-            )
-            SheetAction(
-                icon = Icons.AutoMirrored.Filled.PlaylistAdd,
-                label = "Add to another playlist",
-                onClick = onAddToPlaylist,
-            )
-            if (onRemoveFromPlaylist != null) {
-                SheetAction(
-                    icon = Icons.Filled.RemoveCircleOutline,
-                    label = "Remove from this playlist",
-                    onClick = onRemoveFromPlaylist,
-                )
+            // --- Header: which episode these actions belong to ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (artworkUrl != null) {
+                    RemoteImage(
+                        url = artworkUrl,
+                        contentDescription = null,
+                        size = 44.dp,
+                        cornerRadius = 12.dp,
+                        modifier = Modifier.size(44.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = episode.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (showTitle.isNotBlank()) {
+                        Text(
+                            text = showTitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
-            if (onDelete != null) {
-                SheetAction(
-                    icon = Icons.Filled.DeleteOutline,
-                    label = "Delete episode",
-                    tint = MaterialTheme.colorScheme.error,
-                    onClick = onDelete,
+
+            Spacer(Modifier.padding(top = 18.dp))
+
+            // --- Actions, grouped in a single quiet surface ---
+            val actions = buildList {
+                add(
+                    SheetAction(
+                        icon = Icons.Filled.PlayArrow,
+                        label = "Play now",
+                        accent = MaterialTheme.colorScheme.primary,
+                        onClick = onPlay,
+                    ),
                 )
+                add(
+                    SheetAction(
+                        icon = Icons.AutoMirrored.Filled.QueueMusic,
+                        label = "Add to Up Next",
+                        accent = MaterialTheme.colorScheme.primary,
+                        onClick = onAddToUpNext,
+                    ),
+                )
+                add(
+                    SheetAction(
+                        icon = Icons.Filled.CheckCircle,
+                        label = if (episode.isPlayed) "Mark as unlistened" else "Mark as listened",
+                        accent = MaterialTheme.colorScheme.primary,
+                        onClick = onTogglePlayed,
+                    ),
+                )
+                add(
+                    SheetAction(
+                        icon = if (episode.isDownloaded) Icons.Filled.DeleteSweep else Icons.Filled.Download,
+                        label = if (episode.isDownloaded) "Remove download" else "Download",
+                        accent = MaterialTheme.colorScheme.onSurface,
+                        onClick = onToggleDownload,
+                    ),
+                )
+                add(
+                    SheetAction(
+                        icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+                        label = "Add to another playlist",
+                        accent = MaterialTheme.colorScheme.onSurface,
+                        onClick = onAddToPlaylist,
+                    ),
+                )
+                if (onRemoveFromPlaylist != null) {
+                    add(
+                        SheetAction(
+                            icon = Icons.Filled.RemoveCircleOutline,
+                            label = "Remove from this playlist",
+                            accent = MaterialTheme.colorScheme.onSurface,
+                            onClick = onRemoveFromPlaylist,
+                        ),
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            ) {
+                actions.forEachIndexed { index, action ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
+                            modifier = Modifier.padding(start = 54.dp),
+                        )
+                    }
+                    SheetActionRow(action)
+                }
+            }
+
+            if (onDelete != null) {
+                Spacer(Modifier.padding(top = 10.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                ) {
+                    SheetActionRow(
+                        SheetAction(
+                            icon = Icons.Filled.DeleteOutline,
+                            label = "Delete episode",
+                            accent = MaterialTheme.colorScheme.error,
+                            onClick = onDelete,
+                        ),
+                    )
+                }
             }
         }
     }
 }
 
+private data class SheetAction(
+    val icon: ImageVector,
+    val label: String,
+    val accent: Color,
+    val onClick: () -> Unit,
+)
+
 @Composable
-private fun SheetAction(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+private fun SheetActionRow(action: SheetAction) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = action.onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(vertical = 4.dp),
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(action.accent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = icon,
+                imageVector = action.icon,
                 contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = tint,
+                tint = action.accent,
+                modifier = Modifier.size(16.dp),
             )
         }
+        Spacer(Modifier.width(14.dp))
+        Text(
+            text = action.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = action.accent,
+        )
     }
 }

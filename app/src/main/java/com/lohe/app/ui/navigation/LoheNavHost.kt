@@ -272,55 +272,63 @@ fun LoheNavHost(
                 val nextUp = upNext.firstOrNull { entry ->
                     entry.episode.uuid != currentEpisodeId
                 }
-                NowPlayingBar(
-                    connection = playerConnection,
-                    transport = transport.value,
-                    artworkUrl = nowPlaying?.artworkUrl
-                        ?: transport.value.artworkUrl.takeIf { it.isNotBlank() }
-                        ?: fallbackEntry?.episode?.artworkUrl,
-                    fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
-                    fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
-                    fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
-                    nextUpTitle = nextUp?.episode?.title,
-                    nextUpShowTitle = nextUp?.showTitle,
-                    onPlayFallback = {
-                        val target = fallbackEntry ?: return@NowPlayingBar
-                        if (!target.episode.isDownloaded && !target.episode.isDownloading) {
-                            ServiceLocator.downloadManager().start(target.episode)
-                        }
-                        nowPlaying = NowPlaying(
-                            title = target.episode.title,
-                            uri = target.episode.playbackUri,
-                            showTitle = target.showTitle,
-                            episodeId = target.episode.uuid,
-                            artworkUrl = target.episode.artworkUrl,
-                            description = target.episode.description,
-                            knownDurationSeconds = target.episode.durationSeconds,
-                        )
-                        navController.navigate(Dest.PLAYER.route)
-                    },
-                    onOpenPlayer = {
-                        // Nothing loaded and nothing in progress: open the
-                        // episode that is ready to play rather than an empty
-                        // player.
-                        if (nowPlaying == null) {
-                            val episode = fallbackEntry?.episode ?: nextUp?.episode
-                            val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
-                            if (episode != null) {
-                                nowPlaying = NowPlaying(
-                                    title = episode.title,
-                                    uri = episode.playbackUri,
-                                    showTitle = showTitle,
-                                    episodeId = episode.uuid,
-                                    artworkUrl = episode.artworkUrl,
-                                    description = episode.description,
-                                    knownDurationSeconds = episode.durationSeconds,
-                                )
+
+                // The mini player is hidden while the full player is up: the
+                // full screen already shows the artwork, title and controls, so
+                // a second copy of it directly above the bottom bar is noise.
+                // The bottom bar stays, so tapping a tab still minimizes the
+                // player and switches away.
+                if (currentRoute != Dest.PLAYER.route) {
+                    NowPlayingBar(
+                        connection = playerConnection,
+                        transport = transport.value,
+                        artworkUrl = nowPlaying?.artworkUrl
+                            ?: transport.value.artworkUrl.takeIf { it.isNotBlank() }
+                            ?: fallbackEntry?.episode?.artworkUrl,
+                        fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
+                        fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
+                        fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
+                        nextUpTitle = nextUp?.episode?.title,
+                        nextUpShowTitle = nextUp?.showTitle,
+                        onPlayFallback = {
+                            val target = fallbackEntry ?: return@NowPlayingBar
+                            if (!target.episode.isDownloaded && !target.episode.isDownloading) {
+                                ServiceLocator.downloadManager().start(target.episode)
                             }
-                        }
-                        navController.navigate(Dest.PLAYER.route)
-                    },
-                )
+                            nowPlaying = NowPlaying(
+                                title = target.episode.title,
+                                uri = target.episode.playbackUri,
+                                showTitle = target.showTitle,
+                                episodeId = target.episode.uuid,
+                                artworkUrl = target.episode.artworkUrl,
+                                description = target.episode.description,
+                                knownDurationSeconds = target.episode.durationSeconds,
+                            )
+                            navController.navigate(Dest.PLAYER.route)
+                        },
+                        onOpenPlayer = {
+                            // Nothing loaded and nothing in progress: open the
+                            // episode that is ready to play rather than an empty
+                            // player.
+                            if (nowPlaying == null) {
+                                val episode = fallbackEntry?.episode ?: nextUp?.episode
+                                val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
+                                if (episode != null) {
+                                    nowPlaying = NowPlaying(
+                                        title = episode.title,
+                                        uri = episode.playbackUri,
+                                        showTitle = showTitle,
+                                        episodeId = episode.uuid,
+                                        artworkUrl = episode.artworkUrl,
+                                        description = episode.description,
+                                        knownDurationSeconds = episode.durationSeconds,
+                                    )
+                                }
+                            }
+                            navController.navigate(Dest.PLAYER.route)
+                        },
+                    )
+                }
 
                 LoheBottomBar(
                     destinations = remember {
