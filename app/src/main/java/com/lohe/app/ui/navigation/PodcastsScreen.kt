@@ -576,13 +576,13 @@ fun PodcastsScreen(
                 )
             } else if (isGridView) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(3),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp,
+                        start = 16.dp, end = 16.dp, top = 6.dp, bottom = 20.dp,
                     ),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(visiblePodcasts, key = { it.uuid }) { podcast ->
                         val isSelected = podcast.uuid in selectedPodcastUuids
@@ -1045,6 +1045,7 @@ private fun PodcastCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onClick,
         onLongClick = onLongClick,
+        contentPadding = 10.dp,
     ) {
         if (inSelectionMode) {
             Icon(
@@ -1060,24 +1061,24 @@ private fun PodcastCard(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(22.dp),
+                    .padding(end = 10.dp)
+                    .size(20.dp),
             )
         }
 
         RemoteImage(
             url = podcast.artworkUrl,
             contentDescription = null,
-            size = 56.dp,
-            cornerRadius = 10.dp,
+            size = 44.dp,
+            cornerRadius = 9.dp,
         )
 
-        Spacer(Modifier.size(14.dp))
+        Spacer(Modifier.size(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = podcast.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1085,7 +1086,7 @@ private fun PodcastCard(
             podcast.author?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1159,14 +1160,14 @@ private fun PodcastGridCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onClick,
         onLongClick = onLongClick,
-        contentPadding = 12.dp,
+        contentPadding = 8.dp,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(14.dp)),
+                    .clip(RoundedCornerShape(12.dp)),
             ) {
                 RemoteImage(
                     url = podcast.artworkUrl,
@@ -1189,25 +1190,63 @@ private fun PodcastGridCard(
                         },
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .size(22.dp),
+                            .padding(6.dp)
+                            .size(20.dp),
                     )
+                }
+
+                // The folder and unsubscribe actions live on the artwork rather
+                // than on a line of their own: at three columns there is no
+                // room for a third row of buttons under the title.
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        // A scrim behind them: white icons vanish against
+                        // white artwork.
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 2.dp, vertical = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = "Assign folder",
+                            tint = if (folderName.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                Color.White
+                            },
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                    IconButton(onClick = onUnsubscribe, modifier = Modifier.size(26.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteOutline,
+                            contentDescription = "Unsubscribe",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
                 }
 
                 if (folderName.isNotBlank()) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(5.dp))
                             .background(Color.Black.copy(alpha = 0.72f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
                     ) {
                         Text(
                             text = "📁 $folderName",
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1215,49 +1254,20 @@ private fun PodcastGridCard(
 
             Text(
                 text = podcast.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = podcast.author.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-
-                IconButton(onClick = onAssignFolder, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.Folder,
-                        contentDescription = "Assign folder",
-                        tint = if (folderName.isNotBlank()) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-
-                IconButton(onClick = onUnsubscribe, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.DeleteOutline,
-                        contentDescription = "Unsubscribe",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
+            Text(
+                text = podcast.author.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
