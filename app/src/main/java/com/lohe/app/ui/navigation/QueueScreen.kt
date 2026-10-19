@@ -73,8 +73,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -239,6 +241,16 @@ fun QueueScreen(
                     // sit behind an overflow.
                     var menuOpen by remember { mutableStateOf(false) }
 
+                    if (queue.isNotEmpty()) {
+                        IconButton(onClick = { confirmClearAll = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteSweep,
+                                contentDescription = "Clear Up Next",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
@@ -266,19 +278,6 @@ fun QueueScreen(
                                     },
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Clear Up Next") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.DeleteSweep,
-                                        contentDescription = null,
-                                    )
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    confirmClearAll = true
-                                },
-                            )
                         }
                     }
                 }
@@ -1591,10 +1590,36 @@ private fun QueueRow(
         }
     }
 
+    // Swiping left takes the episode out of the queue.
+    //
+    // It used to be a reveal: the swipe showed a Remove button and then
+    // settled back, which meant the button could never be tapped — the row
+    // was already on its way home. A swipe that does nothing is worse than
+    // no swipe at all, so the swipe now does the removing itself.
     val dismissState = rememberSwipeToDismissBoxState(
-        // Always settle back: the swipe reveals actions, it does not dismiss.
-        confirmValueChange = { false },
+        confirmValueChange = { value ->
+            when (value) {
+                // The swipe removes the episode itself.
+                SwipeToDismissBoxValue.EndToStart -> onRemove != null
+                // Swiping the other way rests the row open on its actions, so
+                // they can actually be tapped; the old behaviour settled
+                // straight back, which made them unreachable.
+                SwipeToDismissBoxValue.StartToEnd -> true
+                else -> false
+            }
+        },
     )
+
+    val scope = rememberCoroutineScope()
+
+    // Fired once the swipe has actually been accepted, rather than from
+    // inside the confirm callback, so the removal is not racing the
+    // animation that is still running.
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onRemove?.invoke()
+        }
+    }
 
     SwipeToDismissBox(
         state = dismissState,
@@ -1624,7 +1649,10 @@ private fun QueueRow(
                                 icon = Icons.Filled.KeyboardArrowUp,
                                 contentDescription = stringResource(R.string.queue_move_up),
                                 tint = MaterialTheme.colorScheme.primary,
-                                onClick = onMoveUp,
+                                onClick = {
+                                    onMoveUp()
+                                    scope.launch { dismissState.reset() }
+                                },
                             )
                         }
                         if (onMoveDown != null) {
@@ -1632,7 +1660,10 @@ private fun QueueRow(
                                 icon = Icons.Filled.KeyboardArrowDown,
                                 contentDescription = "Move down",
                                 tint = MaterialTheme.colorScheme.primary,
-                                onClick = onMoveDown,
+                                onClick = {
+                                    onMoveDown()
+                                    scope.launch { dismissState.reset() }
+                                },
                             )
                         }
                         if (onTogglePlayed != null) {
@@ -1640,18 +1671,33 @@ private fun QueueRow(
                                 icon = Icons.Filled.CheckCircle,
                                 contentDescription = "Mark listened",
                                 tint = MaterialTheme.colorScheme.primary,
-                                onClick = onTogglePlayed,
+                                onClick = {
+                                    onTogglePlayed()
+                                    scope.launch { dismissState.reset() }
+                                },
                             )
                         }
                     }
                 } else if (direction == SwipeToDismissBoxValue.EndToStart && onRemove != null) {
-                    SwipeActionButton(
-                        icon = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.queue_remove),
-                        tint = MaterialTheme.colorScheme.error,
-                        onClick = onRemove,
+                    // A hint, not a button: the swipe itself removes the
+                    // episode, so there is nothing to tap.
+                    Row(
                         modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.queue_remove),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         },
