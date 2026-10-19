@@ -172,9 +172,12 @@ class LibraryCatalog(
     private fun playable(episode: EpisodeEntity, shows: Map<String, PodcastEntity>): MediaItem {
         val show = shows[episode.podcastUuid]
         val artwork = episode.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
-        return MediaItem.Builder()
+        // fromUri, not setUri: the request metadata is what carries the
+        // address to a browser, and setUri only fills in the local
+        // configuration.
+        return MediaItem.fromUri(episode.playbackUri)
+            .buildUpon()
             .setMediaId(episode.uuid)
-            .setUri(episode.playbackUri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(episode.title)
