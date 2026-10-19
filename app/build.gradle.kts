@@ -14,6 +14,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -90,4 +91,11 @@ implementation(libs.androidx.compose.foundation)
     // For the repository's suspend fan-out logic: runTest gives the test a
     // scope without needing Android's main looper.
     testImplementation(libs.coroutines.test)
+
+    // Instrumented tests: real Room, real SQLite, real foreign keys. The
+    // cascade that wiped a listener's episode state only reproduces against a
+    // genuine foreign-key-enforcing database, so it cannot be faked on the JVM.
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
 }

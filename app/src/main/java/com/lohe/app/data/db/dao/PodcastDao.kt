@@ -22,8 +22,67 @@ interface PodcastDao {
     @Query("SELECT * FROM podcasts WHERE uuid = :uuid")
     suspend fun get(uuid: String): PodcastEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(podcast: PodcastEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(podcast: PodcastEntity): Long
+
+    /**
+     * Refreshes the columns that come from the feed.
+     *
+     * Deliberately narrow. Auto-download, when the show was subscribed and
+     * the unread count belong to the listener, not to the feed — a refresh
+     * must never reset them.
+     */
+    @Query(
+        """
+        UPDATE podcasts SET
+            title = :title,
+            author = :author,
+            description = :description,
+            artworkUrl = :artworkUrl,
+            feedUrl = :feedUrl,
+            lastEpisodePublished = :lastEpisodePublished
+        WHERE uuid = :uuid
+        """
+    )
+    suspend fun updateFeedFields(
+        uuid: String,
+        title: String,
+        author: String?,
+        description: String?,
+        artworkUrl: String?,
+        feedUrl: String,
+        lastEpisodePublished: Long?,
+    )
+
+    /**
+     * Adds the show, or refreshes its feed metadata if it is already here.
+     *
+     * The obvious spelling of this — `@Insert(onConflict = REPLACE)` — is a
+     * trap. Room implements REPLACE as delete-then-insert, and `episodes`
+     * carries a foreign key onto `podcasts` with ON DELETE CASCADE. Deleting
+     * the podcast row therefore deleted every episode of the show with it,
+     * and the refresh then wrote the feed's copy back in with default state:
+     * played status, resume positions, downloads, stars and queue order all
+     * silently gone, on every single refresh.
+     *
+     * INSERT OR IGNORE cannot delete anything, so the row survives and only
+     * the feed-derived columns change.
+     */
+    @Transaction
+    suspend fun upsert(podcast: PodcastEntity) {
+        // -1 means the insert was ignored because the show is already here.
+        if (insertIfAbsent(podcast) == -1L) {
+            updateFeedFields(
+                uuid = podcast.uuid,
+                title = podcast.title,
+                author = podcast.author,
+                description = podcast.description,
+                artworkUrl = podcast.artworkUrl,
+                feedUrl = podcast.feedUrl,
+                lastEpisodePublished = podcast.lastEpisodePublished,
+            )
+        }
+    }
 
     @Update
     suspend fun update(podcast: PodcastEntity)

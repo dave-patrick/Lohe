@@ -31,9 +31,49 @@ class SubscriptionRepositoryTest {
         override suspend fun allOnce() = rows.toList()
         override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
 
-        override suspend fun upsert(podcast: PodcastEntity) {
-            rows.removeAll { it.uuid == podcast.uuid }
+        /**
+         * Mirrors the real DAO: the row is never deleted, only its feed-derived
+         * columns are refreshed.
+         */
+        override suspend fun insertIfAbsent(podcast: PodcastEntity): Long {
+            if (rows.any { it.uuid == podcast.uuid }) return -1L
             rows += podcast
+            return rows.size.toLong()
+        }
+
+        override suspend fun updateFeedFields(
+            uuid: String,
+            title: String,
+            author: String?,
+            description: String?,
+            artworkUrl: String?,
+            feedUrl: String,
+            lastEpisodePublished: Long?,
+        ) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index < 0) return
+            rows[index] = rows[index].copy(
+                title = title,
+                author = author,
+                description = description,
+                artworkUrl = artworkUrl,
+                feedUrl = feedUrl,
+                lastEpisodePublished = lastEpisodePublished,
+            )
+        }
+
+        override suspend fun upsert(podcast: PodcastEntity) {
+            if (insertIfAbsent(podcast) == -1L) {
+                updateFeedFields(
+                    uuid = podcast.uuid,
+                    title = podcast.title,
+                    author = podcast.author,
+                    description = podcast.description,
+                    artworkUrl = podcast.artworkUrl,
+                    feedUrl = podcast.feedUrl,
+                    lastEpisodePublished = podcast.lastEpisodePublished,
+                )
+            }
         }
 
         override suspend fun update(podcast: PodcastEntity) = upsert(podcast)

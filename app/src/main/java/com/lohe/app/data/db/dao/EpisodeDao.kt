@@ -122,6 +122,14 @@ interface EpisodeDao {
     )
     fun observeDownloads(): Flow<List<EpisodeEntity>>
 
+    /**
+     * Inserts or replaces episodes.
+     *
+     * REPLACE is safe here in a way it is not for podcasts: `episodes` is a
+     * leaf table — nothing has a foreign key pointing at it — so the
+     * delete-then-insert cannot cascade anything away. Replacing the podcast
+     * row, by contrast, would take the whole library with it.
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(episodes: List<EpisodeEntity>)
 
