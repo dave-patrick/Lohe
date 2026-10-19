@@ -102,7 +102,6 @@ fun PlayerScreen(
      */
     connection: PlayerConnection,
     appearance: Appearance,
-    onToggleAppearance: () -> Unit,
     onShrink: () -> Unit = {},
     onEnded: () -> Unit = {},
     /** Media to play. Null leaves whatever is already loaded alone. */
@@ -207,9 +206,7 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             HeaderRow(
-                appearance = appearance,
                 onShrink = onShrink,
-                onToggleAppearance = onToggleAppearance,
                 onOpenSleepTimer = { sleepTimerOpen = true },
                 onOpenNotes = { notesSheetOpen = true },
                 modifier = Modifier
@@ -314,14 +311,11 @@ fun PlayerScreen(
 }
 @Composable
 private fun HeaderRow(
-    appearance: Appearance,
     onShrink: () -> Unit,
-    onToggleAppearance: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenNotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isLight = appearance == Appearance.LIGHT
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -373,23 +367,6 @@ private fun HeaderRow(
                     imageVector = Icons.Filled.Bedtime,
                     contentDescription = stringResource(R.string.sleep_timer_title),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-
-            IconButton(
-                onClick = onToggleAppearance,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .glassPanel(isLight = isLight, shape = RoundedCornerShape(20.dp)),
-            ) {
-                Icon(
-                    imageVector = if (isLight) Icons.Filled.DarkMode else Icons.Filled.LightMode,
-                    contentDescription = stringResource(
-                        if (isLight) R.string.theme_label_dark else R.string.theme_label_light,
-                    ),
-                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -865,7 +842,6 @@ private fun PlayerDarkPreview() {
         PlayerScreen(
             connection = PlayerConnection.create(context),
             appearance = Appearance.DARK,
-            onToggleAppearance = {},
         )
     }
 }
@@ -878,7 +854,6 @@ private fun PlayerLightPreview() {
         PlayerScreen(
             connection = PlayerConnection.create(context),
             appearance = Appearance.LIGHT,
-            onToggleAppearance = {},
         )
     }
 }

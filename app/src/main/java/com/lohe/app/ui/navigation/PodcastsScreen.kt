@@ -919,7 +919,7 @@ private fun SwipeablePodcastCard(
             }
         },
     ) {
-        PodcastCard(
+        PodcastGridCard(
             podcast = podcast,
             folderName = folderName,
             inSelectionMode = inSelectionMode,

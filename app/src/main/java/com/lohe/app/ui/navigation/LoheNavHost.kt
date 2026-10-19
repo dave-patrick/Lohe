@@ -114,6 +114,12 @@ fun LoheNavHost(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
 
+    // Resolve the active bottom-bar tab even when inside a nested detail screen
+    // (e.g. podcast/{uuid}/episodes still shows the My Podcasts tab as active).
+    val activeTabRoute = BAR_DESTINATIONS.firstOrNull { dest ->
+        currentRoute == dest.route || currentRoute?.startsWith("${dest.route}/") == true
+    }?.route
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -301,7 +307,7 @@ fun LoheNavHost(
                             )
                         }
                     },
-                    currentRoute = currentRoute,
+                    currentRoute = activeTabRoute,
                     onSelect = { route ->
                         navController.navigate(route) {
                             popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -478,7 +484,6 @@ fun LoheNavHost(
                 PlayerScreen(
                     connection = playerConnection,
                     appearance = appearance,
-                    onToggleAppearance = onToggleAppearance,
                     onShrink = { navController.popBackStack() },
                     mediaUri = nowPlaying?.uri,
                     mediaEpisodeId = nowPlaying?.episodeId,
