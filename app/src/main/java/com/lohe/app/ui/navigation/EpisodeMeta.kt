@@ -18,6 +18,17 @@ object EpisodeMeta {
     /** Milliseconds in a day. Distinct from [HOUR], which is in seconds. */
     private const val DAY_MS = 86_400_000L
 
+    /** Feeds older than ~year 5138 can't store real millisecond dates, so a
+     *  timestamp under 100 billion is treated as Unix seconds and scaled up. */
+    private const val SECONDS_SCALE_THRESHOLD = 100_000_000_000L
+
+    /**
+     * Normalises a feed epoch that some publishers store as Unix seconds
+     * instead of Unix milliseconds.
+     */
+    private fun toEpochMillis(epochMillis: Long): Long =
+        if (epochMillis <= 0L) epochMillis else if (epochMillis < SECONDS_SCALE_THRESHOLD) epochMillis * 1000L else epochMillis
+
     /**
      * Coarse runtime, e.g. "24 min", "1 hr 5 min".
      *
@@ -43,39 +54,43 @@ object EpisodeMeta {
      * older than that a listener is looking for the date, not the distance.
      */
     fun published(epochMillis: Long, now: Long): String {
-        if (epochMillis <= 0L) return ""
-        val days = ((now - epochMillis) / DAY_MS).toInt()
+        val ms = toEpochMillis(epochMillis)
+        if (ms <= 0L) return ""
+        val days = ((now - ms) / DAY_MS).toInt()
         return when {
             days <= 0 -> "Today"
             days == 1 -> "Yesterday"
             days < 7 -> "${days}d ago"
-            else -> absoluteDate(epochMillis, now)
+            else -> absoluteDate(ms, now)
         }
     }
 
     /** "HH:mm" today, "12 Oct" within this year, "12 Oct 2024" for older. */
     fun publishedCompact(epochMillis: Long, now: Long): String {
-        if (epochMillis <= 0L) return ""
-        val days = ((now - epochMillis) / DAY_MS).toInt()
+        val ms = toEpochMillis(epochMillis)
+        if (ms <= 0L) return ""
+        val days = ((now - ms) / DAY_MS).toInt()
         return when {
-            days <= 0 -> timeOfDay(epochMillis)
+            days <= 0 -> timeOfDay(ms)
             days == 1 -> "Yesterday"
             days < 7 -> "${days}d ago"
-            else -> absoluteDate(epochMillis, now)
+            else -> absoluteDate(ms, now)
         }
     }
 
     /** "12 Oct" within this year, "12 Oct 2024" for older. */
     fun absoluteDate(epochMillis: Long, now: Long): String {
-        if (epochMillis <= 0L) return ""
-        val month = MONTHS[monthIndex(epochMillis)]
-        val day = dayOfMonth(epochMillis)
-        return if (year(epochMillis) == year(now)) "$day $month" else "$day $month ${year(epochMillis)}"
+        val ms = toEpochMillis(epochMillis)
+        if (ms <= 0L) return ""
+        val month = MONTHS[monthIndex(ms)]
+        val day = dayOfMonth(ms)
+        return if (year(ms) == year(now)) "$day $month" else "$day $month ${year(ms)}"
     }
 
     /** The "09:45" portion of a publication timestamp. */
     fun timeOfDay(epochMillis: Long): String {
-        val instant = java.time.Instant.ofEpochMilli(epochMillis)
+        val ms = toEpochMillis(epochMillis)
+        val instant = java.time.Instant.ofEpochMilli(ms)
         val local = instant.atZone(java.time.ZoneId.systemDefault()).toLocalTime()
         return "%02d:%02d".format(local.hour, local.minute)
     }

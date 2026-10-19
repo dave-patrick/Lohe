@@ -1310,22 +1310,29 @@ private fun QueueRow(
     onClearFrom: (() -> Unit)?,
 ) {
     val ep = entry.episode
-    val pubDateStr = remember(ep.published, now) {
-        if (ep.published > 0L) {
-            "${EpisodeMeta.absoluteDate(ep.published, now)} · ${EpisodeMeta.timeOfDay(ep.published)}"
+    val pubStr = remember(ep.published, now) {
+        val pub = EpisodeMeta.publishedCompact(ep.published, now)
+        if (pub.isNotEmpty()) {
+            val leftMs = ep.durationSeconds?.let { dur ->
+                ((dur - ep.playedUpToSeconds.coerceAtLeast(0L)) * 1000L).coerceAtLeast(0L)
+            } ?: 0L
+            "$pub · ${EpisodeMeta.duration((leftMs / 1000).toInt()).takeIf { it.isNotEmpty() } ?: "?"} left"
         } else {
             ""
         }
     }
-    val playedAmountStr = remember(ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus) {
-        val total = EpisodeMeta.duration(ep.durationSeconds).ifBlank { "--" }
+    val playedStr = remember(ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus) {
         val played = EpisodeMeta.duration(ep.playedUpToSeconds.toInt()).ifBlank { "0s" }
-        "$played / $total (${EpisodeMeta.progress(ep)})"
+        if (ep.isPlayed) {
+            "$played (Played)"
+        } else {
+            "$played (${EpisodeMeta.progress(ep)})"
+        }
     }
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = 12.dp,
+        contentPadding = 8.dp,
         accent = when {
             isSelected -> ElectricBlue
             isHead -> ElectricBlue.copy(alpha = 0.5f)
@@ -1336,6 +1343,7 @@ private fun QueueRow(
     ) {
         Column {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1370,10 +1378,10 @@ private fun QueueRow(
                 RemoteImage(
                     url = ep.artworkUrl,
                     contentDescription = null,
-                    size = 44.dp,
+                    size = 40.dp,
                     cornerRadius = 10.dp,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
                 )
@@ -1381,82 +1389,95 @@ private fun QueueRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = ep.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (entry.showTitle.isNotBlank()) {
                         Text(
-                            text = entry.showTitle,
-                            style = MaterialTheme.typography.bodySmall,
+                            text = "$entry.showTitle · $pubStr",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    if (pubDateStr.isNotBlank()) {
+                    } else {
                         Text(
-                            text = "Published $pubDateStr",
+                            text = pubStr,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = playedAmountStr,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
 
-                if (onPromote != null) {
-                    IconButton(onClick = onPromote, modifier = Modifier.size(30.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (onPromote != null) {
+                        IconButton(onClick = onPromote, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.VerticalAlignTop,
+                                contentDescription = "Move to top",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                    if (onMoveUp != null) {
+                        IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.queue_move_up),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                    if (onMoveDown != null) {
+                        IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "Move down",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                    IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
                         Icon(
-                            imageVector = Icons.Filled.VerticalAlignTop,
-                            contentDescription = "Move to top",
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.queue_remove),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp),
                         )
                     }
-                }
-                if (onMoveUp != null) {
-                    IconButton(onClick = onMoveUp, modifier = Modifier.size(30.dp)) {
+                    IconButton(onClick = onPlay, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            imageVector = Icons.Filled.KeyboardArrowUp,
-                            contentDescription = stringResource(R.string.queue_move_up),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = stringResource(R.string.player_now_playing),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }
-                if (onMoveDown != null) {
-                    IconButton(onClick = onMoveDown, modifier = Modifier.size(30.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "Move down",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-                IconButton(onClick = onRemove, modifier = Modifier.size(30.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.queue_remove),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(onClick = onPlay, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(R.string.player_now_playing),
-                        tint = MaterialTheme.colorScheme.primary,
+            }
+
+            if (playedStr.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = playedStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1466,14 +1487,14 @@ private fun QueueRow(
                     progress = { ep.completionFraction },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
+                        .padding(top = 4.dp),
                 )
             }
 
             if (isHead && onClearFrom != null) {
                 TextButton(
                     onClick = onClearFrom,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 2.dp),
                 ) {
                     Text(
                         text = stringResource(R.string.queue_clear_from_here),

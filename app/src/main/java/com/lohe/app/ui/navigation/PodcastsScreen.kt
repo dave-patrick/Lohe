@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
@@ -47,7 +48,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -60,8 +61,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -94,6 +98,7 @@ import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.GlassRow
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 private const val ALL_FOLDERS = "__ALL__"
@@ -283,7 +288,8 @@ fun PodcastsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            AssistChip(
+                            FilterChip(
+                                selected = false,
                                 onClick = {
                                     val unplayed = targetEpisodes.filter { !it.isPlayed }
                                     val dm = ServiceLocator.downloadManager()
@@ -303,7 +309,8 @@ fun PodcastsScreen(
                                 label = { Text("Download") },
                             )
 
-                            AssistChip(
+                            FilterChip(
+                                selected = false,
                                 onClick = {
                                     val dm = ServiceLocator.downloadManager()
                                     val downloaded = targetEpisodes.filter { it.isDownloaded }
@@ -323,7 +330,8 @@ fun PodcastsScreen(
                                 label = { Text("Remove Downloads") },
                             )
 
-                            AssistChip(
+                            FilterChip(
+                                selected = false,
                                 onClick = {
                                     playlistPickerUuids = targetEpisodes
                                         .filter { !it.isPlayed }
@@ -340,7 +348,8 @@ fun PodcastsScreen(
                                 label = { Text("Add to Playlist") },
                             )
 
-                            AssistChip(
+                            FilterChip(
+                                selected = false,
                                 onClick = {
                                     viewModel.markPodcastsPlayed(selectedPodcastUuids)
                                     val count = targetEpisodes.size
@@ -359,7 +368,8 @@ fun PodcastsScreen(
                                 label = { Text("Mark Listened") },
                             )
 
-                            AssistChip(
+                            FilterChip(
+                                selected = false,
                                 onClick = {
                                     val count = selectedPodcastUuids.size
                                     viewModel.unsubscribeBatch(selectedPodcastUuids)
@@ -575,12 +585,12 @@ fun PodcastsScreen(
                 ) {
                     items(visiblePodcasts, key = { it.uuid }) { podcast ->
                         val isSelected = podcast.uuid in selectedPodcastUuids
-                        PodcastGridCard(
+                        SwipeablePodcastCard(
                             podcast = podcast,
                             folderName = podcastFolders[podcast.uuid].orEmpty(),
                             inSelectionMode = inSelectionMode,
                             isSelected = isSelected,
-                            onClick = {
+                            onOpen = {
                                 if (inSelectionMode) {
                                     selectedPodcastUuids = if (isSelected) {
                                         selectedPodcastUuids - podcast.uuid
@@ -591,15 +601,19 @@ fun PodcastsScreen(
                                     onOpenPodcast(podcast.uuid)
                                 }
                             },
-                            onLongClick = {
-                                selectedPodcastUuids = if (isSelected) {
-                                    selectedPodcastUuids - podcast.uuid
-                                } else {
-                                    selectedPodcastUuids + podcast.uuid
-                                }
-                            },
                             onAssignFolder = { folderDialogPodcast = podcast },
                             onUnsubscribe = { confirmUnsubscribe = podcast },
+                            onQueue = {
+                                queueViewModel.enqueue(podcast.uuid)
+                                scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
+                            },
+                            onTogglePlayed = {
+                                viewModel.markPodcastsPlayed(setOf(podcast.uuid))
+                                scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
+                            },
+                            scope = scope,
+                            viewModel = viewModel,
+                            onShowMessage = { scope.launch { snackbarHostState.showSnackbar(it) } },
                         )
                     }
                 }
@@ -613,12 +627,12 @@ fun PodcastsScreen(
                 ) {
                     items(visiblePodcasts, key = { it.uuid }) { podcast ->
                         val isSelected = podcast.uuid in selectedPodcastUuids
-                        PodcastCard(
+                        SwipeablePodcastCard(
                             podcast = podcast,
                             folderName = podcastFolders[podcast.uuid].orEmpty(),
                             inSelectionMode = inSelectionMode,
                             isSelected = isSelected,
-                            onClick = {
+                            onOpen = {
                                 if (inSelectionMode) {
                                     selectedPodcastUuids = if (isSelected) {
                                         selectedPodcastUuids - podcast.uuid
@@ -629,15 +643,19 @@ fun PodcastsScreen(
                                     onOpenPodcast(podcast.uuid)
                                 }
                             },
-                            onLongClick = {
-                                selectedPodcastUuids = if (isSelected) {
-                                    selectedPodcastUuids - podcast.uuid
-                                } else {
-                                    selectedPodcastUuids + podcast.uuid
-                                }
-                            },
                             onAssignFolder = { folderDialogPodcast = podcast },
                             onUnsubscribe = { confirmUnsubscribe = podcast },
+                            onQueue = {
+                                queueViewModel.enqueue(podcast.uuid)
+                                scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
+                            },
+                            onTogglePlayed = {
+                                viewModel.markPodcastsPlayed(setOf(podcast.uuid))
+                                scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
+                            },
+                            scope = scope,
+                            viewModel = viewModel,
+                            onShowMessage = { scope.launch { snackbarHostState.showSnackbar(it) } },
                         )
                     }
                 }
@@ -796,6 +814,122 @@ private fun AddFeedDialog(
             }
         },
     )
+}
+
+/**
+ * Wraps a podcast row in a slide-to-act box.
+ *
+ * Slide right (StartToEnd) reveals: Add to Up Next, Mark Listened/Unplayed,
+ * Assign Folder. Slide left (EndToStart) reveals: Download/Remove Download,
+ * Remove Show.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeablePodcastCard(
+    podcast: PodcastEntity,
+    folderName: String,
+    inSelectionMode: Boolean,
+    isSelected: Boolean,
+    onOpen: () -> Unit,
+    onAssignFolder: () -> Unit,
+    onUnsubscribe: () -> Unit,
+    onQueue: () -> Unit,
+    onTogglePlayed: () -> Unit,
+    scope: CoroutineScope,
+    viewModel: SubscriptionsViewModel,
+    onShowMessage: (String) -> Unit,
+) {
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value -> false }, // always settle back; actions are tapped in the background
+    )
+
+    val startBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+    val endBg = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f)
+
+    SwipeToDismissBox(
+        state = state,
+        backgroundContent = {
+            val dir = state.dismissDirection
+            val bg = when (dir) {
+                SwipeToDismissBoxValue.StartToEnd -> startBg
+                SwipeToDismissBoxValue.EndToStart -> endBg
+                else -> Color.Transparent
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(bg)
+                    .padding(horizontal = 16.dp),
+            ) {
+                if (dir == SwipeToDismissBoxValue.StartToEnd) {
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        IconButton(
+                            onClick = {
+                                onQueue()
+                                onTogglePlayed()
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = "Add to Up Next",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = onTogglePlayed,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Mark listened",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                } else if (dir == SwipeToDismissBoxValue.EndToStart) {
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        IconButton(
+                            onClick = {
+                                scope.launch { viewModel.unsubscribe(podcast.uuid) }
+                                onShowMessage("Unsubscribed from ${podcast.title}")
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteOutline,
+                                contentDescription = "Unsubscribe",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    ) {
+        PodcastCard(
+            podcast = podcast,
+            folderName = folderName,
+            inSelectionMode = inSelectionMode,
+            isSelected = isSelected,
+            onClick = onOpen,
+            onLongClick = {},
+            onAssignFolder = onAssignFolder,
+            onUnsubscribe = onUnsubscribe,
+        )
+    }
 }
 
 @Composable
