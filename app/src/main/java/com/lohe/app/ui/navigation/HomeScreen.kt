@@ -752,12 +752,6 @@ private fun ContinueCard(
                             .padding(top = 8.dp),
                     )
                 }
-                TextButton(onClick = onOpenShow) {
-                    Text(
-                        text = stringResource(R.string.home_recent_shows),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
             }
 
             IconButton(onClick = onPlay) {

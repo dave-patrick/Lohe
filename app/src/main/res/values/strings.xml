@@ -88,7 +88,7 @@
 
     <string name="episodes_add_to_queue">Add to queue</string>
     <string name="episodes_queued">In queue</string>
-    <string name="episodes_download">Download for offline</string>
+    <string name="episodes_download">Download</string>
     <string name="episodes_downloaded">Downloaded</string>
 
     <string name="home_continue">Continue listening</string>

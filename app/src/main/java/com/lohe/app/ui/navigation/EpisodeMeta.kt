@@ -1,6 +1,7 @@
 package com.lohe.app.ui.navigation
 
 import com.lohe.app.data.db.entity.EpisodeEntity
+import kotlin.math.roundToInt
 
 /**
  * Secondary lines for episode lists.
@@ -52,12 +53,41 @@ object EpisodeMeta {
         }
     }
 
+    /** "HH:mm" today, "12 Oct" within this year, "12 Oct 2024" for older. */
+    fun publishedCompact(epochMillis: Long, now: Long): String {
+        if (epochMillis <= 0L) return ""
+        val days = ((now - epochMillis) / DAY_MS).toInt()
+        return when {
+            days <= 0 -> timeOfDay(epochMillis)
+            days == 1 -> "Yesterday"
+            days < 7 -> "${days}d ago"
+            else -> absoluteDate(epochMillis, now)
+        }
+    }
+
     /** "12 Oct" within this year, "12 Oct 2024" for older. */
     fun absoluteDate(epochMillis: Long, now: Long): String {
         if (epochMillis <= 0L) return ""
         val month = MONTHS[monthIndex(epochMillis)]
         val day = dayOfMonth(epochMillis)
         return if (year(epochMillis) == year(now)) "$day $month" else "$day $month ${year(epochMillis)}"
+    }
+
+    /** The "09:45" portion of a publication timestamp. */
+    fun timeOfDay(epochMillis: Long): String {
+        val instant = java.time.Instant.ofEpochMilli(epochMillis)
+        val local = instant.atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+        return "%02d:%02d".format(local.hour, local.minute)
+    }
+
+    /** "72% played" or "New". */
+    fun progress(episode: EpisodeEntity): String {
+        val duration = episode.durationSeconds ?: return "New"
+        if (duration <= 0) return "New"
+        if (episode.isPlayed) return "Played"
+        if (episode.playedUpToSeconds <= 0) return "New"
+        val pct = (episode.playedUpToSeconds.toFloat() / duration * 100).roundToInt()
+        return "$pct% played"
     }
 
     /**

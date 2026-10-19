@@ -1,21 +1,33 @@
 package com.lohe.app.ui.navigation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -24,6 +36,8 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -38,6 +52,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,12 +73,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.data.FeedImportState
 import com.lohe.app.data.OpmlImportState
@@ -77,6 +95,8 @@ import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.GlassRow
 import kotlinx.coroutines.launch
+
+private const val ALL_FOLDERS = "__ALL__"
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -93,6 +113,7 @@ fun PodcastsScreen(
     val scope = rememberCoroutineScope()
     val podcasts by viewModel.podcasts.collectAsState()
     val allEpisodes by viewModel.allEpisodes.collectAsState()
+    val podcastFolders by queueViewModel.podcastFolders.collectAsState()
     val query by viewModel.searchQueryState.collectAsState()
     val import by viewModel.feedImport.collectAsState()
     val opml by viewModel.opmlImport.collectAsState()
@@ -102,9 +123,29 @@ fun PodcastsScreen(
     var showAddFeed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
+    var isGridView by rememberSaveable { mutableStateOf(false) }
+    var selectedFolder by rememberSaveable { mutableStateOf(ALL_FOLDERS) }
+    var folderDialogPodcast by remember { mutableStateOf<PodcastEntity?>(null) }
+    var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
+
     var selectedPodcastUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedPodcastUuids.isNotEmpty()
     var playlistPickerUuids by remember { mutableStateOf<List<String>?>(null) }
+
+    val availableFolders = remember(podcastFolders) {
+        podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    if (selectedFolder != ALL_FOLDERS && selectedFolder !in availableFolders) {
+        selectedFolder = ALL_FOLDERS
+    }
+
+    val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder) {
+        if (selectedFolder == ALL_FOLDERS) {
+            podcasts
+        } else {
+            podcasts.filter { podcastFolders[it.uuid] == selectedFolder }
+        }
+    }
 
     LaunchedEffect(import) {
         when (val state = import) {
@@ -218,10 +259,10 @@ fun PodcastsScreen(
 
                             TextButton(
                                 onClick = {
-                                    selectedPodcastUuids = if (selectedPodcastUuids.size == podcasts.size) {
+                                    selectedPodcastUuids = if (selectedPodcastUuids.size == visiblePodcasts.size) {
                                         emptySet()
                                     } else {
-                                        podcasts.map { it.uuid }.toSet()
+                                        visiblePodcasts.map { it.uuid }.toSet()
                                     }
                                 },
                             ) {
@@ -232,7 +273,7 @@ fun PodcastsScreen(
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Text(
-                                    if (selectedPodcastUuids.size == podcasts.size) "Deselect All" else "Select All",
+                                    if (selectedPodcastUuids.size == visiblePodcasts.size) "Deselect All" else "Select All",
                                 )
                             }
                         }
@@ -324,7 +365,7 @@ fun PodcastsScreen(
                                     viewModel.unsubscribeBatch(selectedPodcastUuids)
                                     selectedPodcastUuids = emptySet()
                                     scope.launch {
-                                        snackbarHostState.showSnackbar("Deleted $count show${if (count == 1) "" else "s"}")
+                                        snackbarHostState.showSnackbar("Unsubscribed from $count show${if (count == 1) "" else "s"}")
                                     }
                                 },
                                 leadingIcon = {
@@ -335,7 +376,7 @@ fun PodcastsScreen(
                                         modifier = Modifier.size(16.dp),
                                     )
                                 },
-                                label = { Text("Delete") },
+                                label = { Text("Remove Shows") },
                             )
                         }
                     }
@@ -353,6 +394,17 @@ fun PodcastsScreen(
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = { isGridView = !isGridView },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+                            contentDescription = if (isGridView) "Switch to list view" else "Switch to grid view",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                     IconButton(onClick = { showAddFeed = true }, modifier = Modifier.size(40.dp)) {
                         Icon(
                             imageVector = Icons.Filled.RssFeed,
@@ -468,28 +520,64 @@ fun PodcastsScreen(
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
             )
 
-            if (podcasts.isEmpty()) {
+            // Folder filter bar (shown in both List and Grid view)
+            if (availableFolders.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = selectedFolder == ALL_FOLDERS,
+                        onClick = { selectedFolder = ALL_FOLDERS },
+                        label = { Text("All (${podcasts.size})", maxLines = 1) },
+                    )
+                    availableFolders.forEach { folder ->
+                        val count = podcasts.count { podcastFolders[it.uuid] == folder }
+                        FilterChip(
+                            selected = selectedFolder == folder,
+                            onClick = { selectedFolder = folder },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = { Text("$folder ($count)", maxLines = 1) },
+                        )
+                    }
+                }
+            }
+
+            if (visiblePodcasts.isEmpty()) {
                 EmptyPodcastsState(
                     onAddFeed = { showAddFeed = true },
                     onImportFolder = onAddLocalFolder,
                     query = query,
                     modifier = Modifier.fillMaxSize(),
                 )
-            } else {
-                LazyColumn(
+            } else if (isGridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 20.dp, end = 20.dp, bottom = 20.dp,
+                    contentPadding = PaddingValues(
+                        start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp,
                     ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(podcasts, key = { it.uuid }) { podcast ->
+                    items(visiblePodcasts, key = { it.uuid }) { podcast ->
                         val isSelected = podcast.uuid in selectedPodcastUuids
-                        PodcastCard(
+                        PodcastGridCard(
                             podcast = podcast,
+                            folderName = podcastFolders[podcast.uuid].orEmpty(),
                             inSelectionMode = inSelectionMode,
                             isSelected = isSelected,
                             onClick = {
@@ -510,6 +598,46 @@ fun PodcastsScreen(
                                     selectedPodcastUuids + podcast.uuid
                                 }
                             },
+                            onAssignFolder = { folderDialogPodcast = podcast },
+                            onUnsubscribe = { confirmUnsubscribe = podcast },
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(visiblePodcasts, key = { it.uuid }) { podcast ->
+                        val isSelected = podcast.uuid in selectedPodcastUuids
+                        PodcastCard(
+                            podcast = podcast,
+                            folderName = podcastFolders[podcast.uuid].orEmpty(),
+                            inSelectionMode = inSelectionMode,
+                            isSelected = isSelected,
+                            onClick = {
+                                if (inSelectionMode) {
+                                    selectedPodcastUuids = if (isSelected) {
+                                        selectedPodcastUuids - podcast.uuid
+                                    } else {
+                                        selectedPodcastUuids + podcast.uuid
+                                    }
+                                } else {
+                                    onOpenPodcast(podcast.uuid)
+                                }
+                            },
+                            onLongClick = {
+                                selectedPodcastUuids = if (isSelected) {
+                                    selectedPodcastUuids - podcast.uuid
+                                } else {
+                                    selectedPodcastUuids + podcast.uuid
+                                }
+                            },
+                            onAssignFolder = { folderDialogPodcast = podcast },
+                            onUnsubscribe = { confirmUnsubscribe = podcast },
                         )
                     }
                 }
@@ -519,6 +647,45 @@ fun PodcastsScreen(
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+
+    folderDialogPodcast?.let { target ->
+        FolderAssignDialog(
+            title = "Folder for \"${target.title}\"",
+            currentFolder = podcastFolders[target.uuid].orEmpty(),
+            existingFolders = availableFolders,
+            onSave = { folder ->
+                queueViewModel.setPodcastFolder(target.uuid, folder)
+                folderDialogPodcast = null
+            },
+            onDismiss = { folderDialogPodcast = null },
+        )
+    }
+
+    confirmUnsubscribe?.let { target ->
+        AlertDialog(
+            onDismissRequest = { confirmUnsubscribe = null },
+            title = { Text("Remove \"${target.title}\"?") },
+            text = { Text("Unsubscribes from this podcast and removes its episode list from your library.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.unsubscribe(target.uuid)
+                        confirmUnsubscribe = null
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Removed ${target.title}")
+                        }
+                    },
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUnsubscribe = null }) {
+                    Text(stringResource(R.string.no))
+                }
+            },
         )
     }
 
@@ -534,6 +701,59 @@ fun PodcastsScreen(
             onDismiss = { playlistPickerUuids = null },
         )
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FolderAssignDialog(
+    title: String,
+    currentFolder: String,
+    existingFolders: List<String>,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var folderText by remember(currentFolder) { mutableStateOf(currentFolder) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = folderText,
+                    onValueChange = { folderText = it },
+                    label = { Text("Folder name (leave blank for none)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (existingFolders.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        existingFolders.forEach { f ->
+                            FilterChip(
+                                selected = folderText.trim() == f,
+                                onClick = { folderText = f },
+                                label = { Text(f) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(folderText.trim()) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable
@@ -637,10 +857,13 @@ private fun EmptyPodcastsState(
 @Composable
 private fun PodcastCard(
     podcast: PodcastEntity,
+    folderName: String,
     inSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onAssignFolder: () -> Unit,
+    onUnsubscribe: () -> Unit,
 ) {
     GlassRow(
         accent = if (isSelected) ElectricBlue else null,
@@ -692,12 +915,172 @@ private fun PodcastCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (podcast.uuid.startsWith("local:")) {
-                Text(
-                    text = stringResource(R.string.podcasts_local_badge),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (folderName.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = "📁 $folderName",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                if (podcast.uuid.startsWith("local:")) {
+                    Text(
+                        text = stringResource(R.string.podcasts_local_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+
+        IconButton(onClick = onAssignFolder, modifier = Modifier.size(34.dp)) {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = "Assign folder",
+                tint = if (folderName.isNotBlank()) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        IconButton(onClick = onUnsubscribe, modifier = Modifier.size(34.dp)) {
+            Icon(
+                imageVector = Icons.Filled.DeleteOutline,
+                contentDescription = "Unsubscribe",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PodcastGridCard(
+    podcast: PodcastEntity,
+    folderName: String,
+    inSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onAssignFolder: () -> Unit,
+    onUnsubscribe: () -> Unit,
+) {
+    GlassCard(
+        accent = if (isSelected) ElectricBlue else null,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        contentPadding = 12.dp,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(14.dp)),
+            ) {
+                RemoteImage(
+                    url = podcast.artworkUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
                 )
+
+                if (inSelectionMode) {
+                    Icon(
+                        imageVector = if (isSelected) {
+                            Icons.Filled.CheckCircle
+                        } else {
+                            Icons.Outlined.RadioButtonUnchecked
+                        },
+                        contentDescription = null,
+                        tint = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.White
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(22.dp),
+                    )
+                }
+
+                if (folderName.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = "📁 $folderName",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = podcast.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = podcast.author.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+
+                IconButton(onClick = onAssignFolder, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = "Assign folder",
+                        tint = if (folderName.isNotBlank()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+
+                IconButton(onClick = onUnsubscribe, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.DeleteOutline,
+                        contentDescription = "Unsubscribe",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
         }
     }

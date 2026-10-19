@@ -24,7 +24,7 @@ object EpisodeFilter {
                 ALL -> "All"
                 UNPLAYED -> "Unplayed"
                 IN_PROGRESS -> "Listening"
-                DOWNLOADED -> "Offline"
+                DOWNLOADED -> "Downloaded"
                 STARRED -> "Starred"
             }
     }

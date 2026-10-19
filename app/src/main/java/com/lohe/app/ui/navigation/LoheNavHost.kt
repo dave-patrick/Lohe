@@ -148,6 +148,7 @@ fun LoheNavHost(
     // Shared by Home, Episodes, and Queue so a "queue" action from any of them
     // is reflected in all of them immediately.
     val queueViewModel: QueueViewModel = viewModel(factory = QueueViewModelFactory())
+    val inProgress by queueViewModel.continueListening.collectAsState()
     val discoveryViewModel: DiscoveryViewModel = viewModel(
         factory = DiscoveryViewModelFactory(),
     )
@@ -247,11 +248,46 @@ fun LoheNavHost(
         bottomBar = {
             Column {
                 if (currentRoute != Dest.PLAYER.route) {
+                    val fallbackEntry = inProgress.firstOrNull()
                     NowPlayingBar(
                         connection = playerConnection,
                         transport = transport.value,
-                        artworkUrl = nowPlaying?.artworkUrl ?: transport.value.artworkUrl.takeIf { it.isNotBlank() },
-                        onOpenPlayer = { navController.navigate(Dest.PLAYER.route) },
+                        artworkUrl = nowPlaying?.artworkUrl
+                            ?: transport.value.artworkUrl.takeIf { it.isNotBlank() }
+                            ?: fallbackEntry?.episode?.artworkUrl,
+                        fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
+                        fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
+                        fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
+                        onPlayFallback = {
+                            val target = fallbackEntry ?: return@NowPlayingBar
+                            if (!target.episode.isDownloaded && !target.episode.isDownloading) {
+                                ServiceLocator.downloadManager().start(target.episode)
+                            }
+                            nowPlaying = NowPlaying(
+                                title = target.episode.title,
+                                uri = target.episode.playbackUri,
+                                showTitle = target.showTitle,
+                                episodeId = target.episode.uuid,
+                                artworkUrl = target.episode.artworkUrl,
+                                description = target.episode.description,
+                                knownDurationSeconds = target.episode.durationSeconds,
+                            )
+                            navController.navigate(Dest.PLAYER.route)
+                        },
+                        onOpenPlayer = {
+                            if (nowPlaying == null && fallbackEntry != null) {
+                                nowPlaying = NowPlaying(
+                                    title = fallbackEntry.episode.title,
+                                    uri = fallbackEntry.episode.playbackUri,
+                                    showTitle = fallbackEntry.showTitle,
+                                    episodeId = fallbackEntry.episode.uuid,
+                                    artworkUrl = fallbackEntry.episode.artworkUrl,
+                                    description = fallbackEntry.episode.description,
+                                    knownDurationSeconds = fallbackEntry.episode.durationSeconds,
+                                )
+                            }
+                            navController.navigate(Dest.PLAYER.route)
+                        },
                     )
                 }
 
@@ -298,6 +334,9 @@ fun LoheNavHost(
                     onOpenDiscover = { navController.navigate(Dest.DISCOVER.route) },
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
+                        if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
+                            ServiceLocator.downloadManager().start(entry.episode)
+                        }
                         nowPlaying = NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
@@ -364,6 +403,9 @@ fun LoheNavHost(
                     },
                     onShowMessage = { msg -> importMessage = msg },
                     onPlay = { episode ->
+                        if (!episode.isDownloaded && !episode.isDownloading) {
+                            ServiceLocator.downloadManager().start(episode)
+                        }
                         // A downloaded copy plays offline; playbackUri prefers it.
                         nowPlaying = NowPlaying(
                             title = episode.title,
@@ -392,6 +434,9 @@ fun LoheNavHost(
                 PlaylistsScreen(
                     viewModel = queueViewModel,
                     onPlay = { entry ->
+                        if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
+                            ServiceLocator.downloadManager().start(entry.episode)
+                        }
                         nowPlaying = NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
@@ -411,6 +456,9 @@ fun LoheNavHost(
                 QueueScreen(
                     viewModel = queueViewModel,
                     onPlay = { entry ->
+                        if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
+                            ServiceLocator.downloadManager().start(entry.episode)
+                        }
                         nowPlaying = NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
@@ -431,6 +479,7 @@ fun LoheNavHost(
                     connection = playerConnection,
                     appearance = appearance,
                     onToggleAppearance = onToggleAppearance,
+                    onShrink = { navController.popBackStack() },
                     mediaUri = nowPlaying?.uri,
                     mediaEpisodeId = nowPlaying?.episodeId,
                     mediaTitle = nowPlaying?.title.orEmpty(),

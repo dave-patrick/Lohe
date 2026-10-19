@@ -5,9 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -23,6 +26,8 @@ data class ResolvedPlaylist(
     val id: String,
     val name: String,
     val entries: List<QueueEntry>,
+    val folder: String = "",
+    val autoDownload: Boolean = true,
 ) {
     val totalSeconds: Long
         get() = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
@@ -151,6 +156,38 @@ class QueueViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
 
+    private val _autoDownloadUpNext = MutableStateFlow(true)
+    val autoDownloadUpNext: StateFlow<Boolean> = _autoDownloadUpNext.asStateFlow()
+
+    val podcastFolders: StateFlow<Map<String, String>> = playlistRepository.podcastFolders
+
+    fun setAutoDownloadUpNext(enabled: Boolean) {
+        _autoDownloadUpNext.value = enabled
+        if (enabled) {
+            viewModelScope.launch {
+                queue.value.forEach { triggerDownloadIfNeeded(it.episode) }
+            }
+        }
+    }
+
+    fun setPodcastFolder(podcastUuid: String, folder: String) {
+        playlistRepository.setPodcastFolder(podcastUuid, folder)
+    }
+
+    private suspend fun triggerDownloadByUuids(uuids: Collection<String>) {
+        if (uuids.isEmpty()) return
+        val all = repository.observeAllEpisodes().firstOrNull().orEmpty().associateBy { it.uuid }
+        uuids.forEach { id ->
+            all[id]?.let(::triggerDownloadIfNeeded)
+        }
+    }
+
+    private fun triggerDownloadIfNeeded(ep: EpisodeEntity) {
+        if (!ep.isDownloaded && !ep.isDownloading) {
+            runCatching { ServiceLocator.downloadManager().start(ep) }
+        }
+    }
+
     fun dequeue(uuid: String) = viewModelScope.launch { repository.dequeue(uuid) }
 
     fun dequeueBatch(uuids: Collection<String>) = viewModelScope.launch {
@@ -168,15 +205,26 @@ class QueueViewModel(
     /** "Played up to here": drops this entry and everything after it. */
     fun clearFrom(uuid: String) = viewModelScope.launch { repository.clearQueueFrom(uuid) }
 
-    fun enqueue(uuid: String) = viewModelScope.launch { repository.enqueue(uuid) }
+    fun enqueue(uuid: String) = viewModelScope.launch {
+        repository.enqueue(uuid)
+        if (_autoDownloadUpNext.value) {
+            triggerDownloadByUuids(listOf(uuid))
+        }
+    }
 
     fun enqueueAll(uuids: Collection<String>) = viewModelScope.launch {
         uuids.forEach { repository.enqueue(it) }
+        if (_autoDownloadUpNext.value) {
+            triggerDownloadByUuids(uuids)
+        }
     }
 
     fun addPlaylistToUpNext(playlistId: String) = viewModelScope.launch {
         val pl = playlistRepository.playlists.value.firstOrNull { it.id == playlistId } ?: return@launch
         pl.episodeUuids.forEach { repository.enqueue(it) }
+        if (_autoDownloadUpNext.value || pl.autoDownload) {
+            triggerDownloadByUuids(pl.episodeUuids)
+        }
     }
 
     val userPlaylists: StateFlow<List<ResolvedPlaylist>> = combine(
@@ -201,6 +249,8 @@ class QueueViewModel(
                 id = pl.id,
                 name = pl.name,
                 entries = resolvedEntries,
+                folder = pl.folder,
+                autoDownload = pl.autoDownload,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -208,12 +258,39 @@ class QueueViewModel(
     fun createPlaylist(
         name: String,
         initialEpisodeUuids: Collection<String> = emptyList(),
-    ): UserPlaylist = playlistRepository.createPlaylist(name, initialEpisodeUuids)
+        folder: String = "",
+        autoDownload: Boolean = true,
+    ): UserPlaylist {
+        val created = playlistRepository.createPlaylist(name, initialEpisodeUuids, folder, autoDownload)
+        if (autoDownload && initialEpisodeUuids.isNotEmpty()) {
+            viewModelScope.launch { triggerDownloadByUuids(initialEpisodeUuids) }
+        }
+        return created
+    }
 
     fun deletePlaylist(playlistId: String) = playlistRepository.deletePlaylist(playlistId)
 
-    fun addEpisodesToPlaylist(playlistId: String, episodeUuids: Collection<String>) =
+    fun movePlaylist(playlistId: String, delta: Int) =
+        playlistRepository.movePlaylist(playlistId, delta)
+
+    fun setPlaylistFolder(playlistId: String, folder: String) =
+        playlistRepository.setPlaylistFolder(playlistId, folder)
+
+    fun setPlaylistAutoDownload(playlistId: String, enabled: Boolean) {
+        playlistRepository.setPlaylistAutoDownload(playlistId, enabled)
+        if (enabled) {
+            val pl = playlistRepository.playlists.value.firstOrNull { it.id == playlistId } ?: return
+            viewModelScope.launch { triggerDownloadByUuids(pl.episodeUuids) }
+        }
+    }
+
+    fun addEpisodesToPlaylist(playlistId: String, episodeUuids: Collection<String>) {
         playlistRepository.addEpisodes(playlistId, episodeUuids)
+        val pl = playlistRepository.playlists.value.firstOrNull { it.id == playlistId }
+        if (pl?.autoDownload == true) {
+            viewModelScope.launch { triggerDownloadByUuids(episodeUuids) }
+        }
+    }
 
     fun removeEpisodeFromPlaylist(playlistId: String, episodeUuid: String) =
         playlistRepository.removeEpisode(playlistId, episodeUuid)

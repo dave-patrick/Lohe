@@ -1,13 +1,18 @@
 package com.lohe.app.ui.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,19 +20,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -44,6 +56,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,29 +64,31 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.data.QueueEntry
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
+import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.GlassCard
+
+private const val ALL_PLAYLIST_FOLDERS = "__ALL__"
 
 /**
  * Dedicated "Up Next" tab screen (far right on the bottom bar).
- *
- * Supports full queue reordering (Move Up, Move Down, Move to Top), removing
- * single or multi-selected episodes, clearing from an item or clearing the
- * entire queue, and appending any named Playlist directly into Up Next.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -85,6 +100,8 @@ fun QueueScreen(
     val queue by viewModel.queue.collectAsState()
     val queuedSeconds by viewModel.queuedSeconds.collectAsState()
     val userPlaylists by viewModel.userPlaylists.collectAsState()
+    val autoDownloadUpNext by viewModel.autoDownloadUpNext.collectAsState()
+    val now = remember { System.currentTimeMillis() }
 
     var confirmClearFrom by remember { mutableStateOf<String?>(null) }
     var confirmClearAll by remember { mutableStateOf(false) }
@@ -194,7 +211,29 @@ fun QueueScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = autoDownloadUpNext,
+                        onClick = {
+                            val next = !autoDownloadUpNext
+                            viewModel.setAutoDownloadUpNext(next)
+                            onShowMessage(
+                                if (next) "Auto-download on for Up Next" else "Auto-download off for Up Next",
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                            )
+                        },
+                        label = { Text("Auto-DL", maxLines = 1) },
+                    )
+
                     if (userPlaylists.isNotEmpty()) {
                         OutlinedButton(
                             onClick = { showAddPlaylistDialog = true },
@@ -255,6 +294,7 @@ fun QueueScreen(
                     isTail = index == queue.lastIndex,
                     inSelectionMode = inSelectionMode,
                     isSelected = isSelected,
+                    now = now,
                     onPlay = {
                         if (inSelectionMode) {
                             selectedUuids = if (isSelected) {
@@ -388,8 +428,11 @@ fun QueueScreen(
 }
 
 /**
- * Dedicated "Playlists" tab screen for creating, editing, rearranging, playing,
- * and adding custom named playlists to the Up Next queue.
+ * Redesigned "Playlists" tab screen:
+ *  - Supports List / Grid toggle and Folder grouping for managing many playlists
+ *  - Visual playlist cards with 2x2 episode artwork mosaics, reordering,
+ *    auto-download toggle, and one-tap "Add to Up Next" / "Play"
+ *  - Drilling into a playlist shows its episode list with reordering & removal
  */
 @Composable
 fun PlaylistsScreen(
@@ -397,213 +440,391 @@ fun PlaylistsScreen(
     onPlay: (QueueEntry) -> Unit,
     onShowMessage: (String) -> Unit = {},
 ) {
+    val now = remember { System.currentTimeMillis() }
     val userPlaylists by viewModel.userPlaylists.collectAsState()
 
-    var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
+    var openedPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+    var isGridView by rememberSaveable { mutableStateOf(true) }
+    var selectedFolder by rememberSaveable { mutableStateOf(ALL_PLAYLIST_FOLDERS) }
+    var folderDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
+
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
+    var newPlaylistFolder by remember { mutableStateOf("") }
+    var newPlaylistAutoDl by remember { mutableStateOf(true) }
 
-    val activePlaylist: ResolvedPlaylist? = userPlaylists.firstOrNull { it.id == selectedPlaylistId }
-        ?: userPlaylists.firstOrNull()
+    val availableFolders = remember(userPlaylists) {
+        userPlaylists.map { it.folder }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    if (selectedFolder != ALL_PLAYLIST_FOLDERS && selectedFolder !in availableFolders) {
+        selectedFolder = ALL_PLAYLIST_FOLDERS
+    }
+
+    val visiblePlaylists = remember(userPlaylists, selectedFolder) {
+        if (selectedFolder == ALL_PLAYLIST_FOLDERS) {
+            userPlaylists
+        } else {
+            userPlaylists.filter { it.folder == selectedFolder }
+        }
+    }
+
+    val openedPlaylist: ResolvedPlaylist? = userPlaylists.firstOrNull { it.id == openedPlaylistId }
+    if (openedPlaylistId != null && openedPlaylist == null) {
+        openedPlaylistId = null
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 20.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "Playlists",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-
-            OutlinedButton(
-                onClick = { showCreateDialog = true },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text("New Playlist", style = MaterialTheme.typography.labelMedium)
-            }
-        }
-
-        if (userPlaylists.isEmpty()) {
-            EmptyQueue(
-                title = "No playlists yet",
-                hint = "Tap \"New Playlist\" or long-press episodes in any podcast to create one.",
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            LazyRow(
+        if (openedPlaylist != null) {
+            // --- Playlist Detail View ---
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(top = 16.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(userPlaylists, key = { it.id }) { pl ->
-                    FilterChip(
-                        selected = activePlaylist?.id == pl.id,
-                        onClick = { selectedPlaylistId = pl.id },
-                        label = { Text("${pl.name} (${pl.entries.size})") },
+                IconButton(onClick = { openedPlaylistId = null }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to Playlists",
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = openedPlaylist.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = buildString {
+                            if (openedPlaylist.folder.isNotBlank()) append("📁 ${openedPlaylist.folder} · ")
+                            append("${openedPlaylist.entries.size} episodes · ${openedPlaylist.totalSeconds / 60L} min")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { folderDialogTarget = openedPlaylist }) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = "Assign folder",
+                        tint = if (openedPlaylist.folder.isNotBlank()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        val name = openedPlaylist.name
+                        viewModel.deletePlaylist(openedPlaylist.id)
+                        openedPlaylistId = null
+                        onShowMessage("Deleted playlist \"$name\"")
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DeleteOutline,
+                        contentDescription = "Delete playlist",
+                        tint = MaterialTheme.colorScheme.error,
                     )
                 }
             }
 
-            if (activePlaylist != null) {
-                GlassCard(
-                    contentPadding = 12.dp,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassCard(
+                contentPadding = 12.dp,
+                modifier = Modifier.padding(bottom = 12.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Auto-download playlist episodes",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Download all episodes in this playlist for offline listening",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = openedPlaylist.autoDownload,
+                            onCheckedChange = {
+                                viewModel.setPlaylistAutoDownload(openedPlaylist.id, it)
+                            },
+                        )
+                    }
+
+                    if (openedPlaylist.entries.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = activePlaylist.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Text(
-                                    text = "${activePlaylist.entries.size} episodes · ${activePlaylist.totalSeconds / 60L} min",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-
-                            IconButton(
+                            OutlinedButton(
                                 onClick = {
-                                    val name = activePlaylist.name
-                                    viewModel.deletePlaylist(activePlaylist.id)
-                                    selectedPlaylistId = null
-                                    onShowMessage("Deleted playlist \"$name\"")
+                                    viewModel.addPlaylistToUpNext(openedPlaylist.id)
+                                    onShowMessage("Added \"${openedPlaylist.name}\" (${openedPlaylist.entries.size} ep) to Up Next")
                                 },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.DeleteOutline,
-                                    contentDescription = "Delete playlist",
-                                    tint = MaterialTheme.colorScheme.error,
+                                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
                                 )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Add to Up Next", style = MaterialTheme.typography.labelMedium)
                             }
-                        }
 
-                        if (activePlaylist.entries.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            Button(
+                                onClick = {
+                                    viewModel.addPlaylistToUpNext(openedPlaylist.id)
+                                    onPlay(openedPlaylist.entries.first())
+                                },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.addPlaylistToUpNext(activePlaylist.id)
-                                        onShowMessage("Added \"${activePlaylist.name}\" (${activePlaylist.entries.size} ep) to Up Next")
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Add to Up Next", style = MaterialTheme.typography.labelMedium)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        viewModel.addPlaylistToUpNext(activePlaylist.id)
-                                        onPlay(activePlaylist.entries.first())
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Play Playlist", style = MaterialTheme.typography.labelMedium)
-                                }
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Play Playlist", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
                 }
+            }
 
-                if (activePlaylist.entries.isEmpty()) {
-                    EmptyQueue(
-                        title = "\"${activePlaylist.name}\" is empty",
-                        hint = "Long-press episodes in any podcast and choose Add to Playlist.",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        itemsIndexed(
-                            activePlaylist.entries,
-                            key = { _, entry -> "${activePlaylist.id}-${entry.episode.uuid}" },
-                        ) { index, entry ->
-                            QueueRow(
-                                positionNumber = index + 1,
-                                entry = entry,
-                                isHead = index == 0,
-                                isTail = index == activePlaylist.entries.lastIndex,
-                                inSelectionMode = false,
-                                isSelected = false,
-                                onPlay = { onPlay(entry) },
-                                onLongPress = {},
-                                onMoveUp = if (index > 0) {
-                                    {
-                                        viewModel.moveEpisodeInPlaylist(
-                                            activePlaylist.id,
-                                            entry.episode.uuid,
-                                            -1,
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                                onMoveDown = if (index < activePlaylist.entries.lastIndex) {
-                                    {
-                                        viewModel.moveEpisodeInPlaylist(
-                                            activePlaylist.id,
-                                            entry.episode.uuid,
-                                            +1,
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                                onPromote = null,
-                                onRemove = {
-                                    viewModel.removeEpisodeFromPlaylist(
-                                        activePlaylist.id,
+            if (openedPlaylist.entries.isEmpty()) {
+                EmptyQueue(
+                    title = "\"${openedPlaylist.name}\" is empty",
+                    hint = "Long-press episodes in any podcast and choose Add to Playlist.",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(
+                        openedPlaylist.entries,
+                        key = { _, entry -> "${openedPlaylist.id}-${entry.episode.uuid}" },
+                    ) { index, entry ->
+                        QueueRow(
+                            positionNumber = index + 1,
+                            entry = entry,
+                            isHead = index == 0,
+                            isTail = index == openedPlaylist.entries.lastIndex,
+                            inSelectionMode = false,
+                            isSelected = false,
+                            now = now,
+                            onPlay = { onPlay(entry) },
+                            onLongPress = {},
+                            onMoveUp = if (index > 0) {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
                                         entry.episode.uuid,
+                                        -1,
                                     )
-                                },
-                                onClearFrom = null,
-                            )
-                        }
+                                }
+                            } else {
+                                null
+                            },
+                            onMoveDown = if (index < openedPlaylist.entries.lastIndex) {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
+                                        entry.episode.uuid,
+                                        +1,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onPromote = null,
+                            onRemove = {
+                                viewModel.removeEpisodeFromPlaylist(
+                                    openedPlaylist.id,
+                                    entry.episode.uuid,
+                                )
+                            },
+                            onClearFrom = null,
+                        )
+                    }
+                }
+            }
+        } else {
+            // --- Playlists Overview (Grid / List + Folders) ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Playlists",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(
+                        onClick = { isGridView = !isGridView },
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+                            contentDescription = if (isGridView) "Switch to list view" else "Switch to grid view",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { showCreateDialog = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("New Playlist", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            if (availableFolders.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = selectedFolder == ALL_PLAYLIST_FOLDERS,
+                        onClick = { selectedFolder = ALL_PLAYLIST_FOLDERS },
+                        label = { Text("All (${userPlaylists.size})", maxLines = 1) },
+                    )
+                    availableFolders.forEach { folder ->
+                        val count = userPlaylists.count { it.folder == folder }
+                        FilterChip(
+                            selected = selectedFolder == folder,
+                            onClick = { selectedFolder = folder },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = { Text("$folder ($count)", maxLines = 1) },
+                        )
+                    }
+                }
+            }
+
+            if (visiblePlaylists.isEmpty()) {
+                EmptyQueue(
+                    title = "No playlists yet",
+                    hint = "Tap \"New Playlist\" or long-press episodes in any podcast to create one.",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (isGridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
+                        PlaylistGridCard(
+                            playlist = pl,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < visiblePlaylists.lastIndex,
+                            onOpen = { openedPlaylistId = pl.id },
+                            onPlayAll = {
+                                if (pl.entries.isNotEmpty()) {
+                                    viewModel.addPlaylistToUpNext(pl.id)
+                                    onPlay(pl.entries.first())
+                                }
+                            },
+                            onAddToUpNext = {
+                                viewModel.addPlaylistToUpNext(pl.id)
+                                onShowMessage("Added \"${pl.name}\" to Up Next")
+                            },
+                            onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
+                            onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
+                            onAssignFolder = { folderDialogTarget = pl },
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
+                        PlaylistListCard(
+                            playlist = pl,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < visiblePlaylists.lastIndex,
+                            onOpen = { openedPlaylistId = pl.id },
+                            onPlayAll = {
+                                if (pl.entries.isNotEmpty()) {
+                                    viewModel.addPlaylistToUpNext(pl.id)
+                                    onPlay(pl.entries.first())
+                                }
+                            },
+                            onAddToUpNext = {
+                                viewModel.addPlaylistToUpNext(pl.id)
+                                onShowMessage("Added \"${pl.name}\" to Up Next")
+                            },
+                            onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
+                            onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
+                            onAssignFolder = { folderDialogTarget = pl },
+                        )
                     }
                 }
             }
         }
+    }
+
+    folderDialogTarget?.let { target ->
+        FolderAssignDialog(
+            title = "Folder for \"${target.name}\"",
+            currentFolder = target.folder,
+            existingFolders = availableFolders,
+            onSave = { folder ->
+                viewModel.setPlaylistFolder(target.id, folder)
+                folderDialogTarget = null
+            },
+            onDismiss = { folderDialogTarget = null },
+        )
     }
 
     if (showCreateDialog) {
@@ -611,23 +832,49 @@ fun PlaylistsScreen(
             onDismissRequest = {
                 showCreateDialog = false
                 newPlaylistName = ""
+                newPlaylistFolder = ""
             },
             title = { Text("New Playlist") },
             text = {
-                OutlinedTextField(
-                    value = newPlaylistName,
-                    onValueChange = { newPlaylistName = it },
-                    label = { Text("Playlist name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        label = { Text("Playlist name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = newPlaylistFolder,
+                        onValueChange = { newPlaylistFolder = it },
+                        label = { Text("Folder (optional, e.g. Sports, Daily)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Auto-download episodes", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = newPlaylistAutoDl,
+                            onCheckedChange = { newPlaylistAutoDl = it },
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val created = viewModel.createPlaylist(newPlaylistName)
-                        selectedPlaylistId = created.id
+                        val created = viewModel.createPlaylist(
+                            name = newPlaylistName,
+                            folder = newPlaylistFolder,
+                            autoDownload = newPlaylistAutoDl,
+                        )
+                        openedPlaylistId = created.id
                         newPlaylistName = ""
+                        newPlaylistFolder = ""
                         showCreateDialog = false
                     },
                 ) {
@@ -639,12 +886,268 @@ fun PlaylistsScreen(
                     onClick = {
                         showCreateDialog = false
                         newPlaylistName = ""
+                        newPlaylistFolder = ""
                     },
                 ) {
                     Text("Cancel")
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun PlaylistArtworkMosaic(
+    entries: List<QueueEntry>,
+    modifier: Modifier = Modifier,
+) {
+    val urls = remember(entries) {
+        entries.mapNotNull { it.episode.artworkUrl?.takeIf { u -> u.isNotBlank() } }.distinct().take(4)
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.linearGradient(listOf(ElectricBlue.copy(alpha = 0.45f), ElectricCyan.copy(alpha = 0.25f))),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            urls.isEmpty() -> {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+            urls.size < 4 -> {
+                RemoteImage(
+                    url = urls.first(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            else -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        RemoteImage(url = urls[0], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[1], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        RemoteImage(url = urls[2], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[3], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistGridCard(
+    playlist: ResolvedPlaylist,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onOpen: () -> Unit,
+    onPlayAll: () -> Unit,
+    onAddToUpNext: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onAssignFolder: () -> Unit,
+) {
+    GlassCard(onClick = onOpen, contentPadding = 12.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
+            ) {
+                PlaylistArtworkMosaic(
+                    entries = playlist.entries,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                if (playlist.folder.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = "📁 ${playlist.folder}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = Color.White,
+                        )
+                    }
+                }
+
+                if (playlist.autoDownload) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ElectricBlue.copy(alpha = 0.85f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = "AUTO-DL",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = playlist.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Text(
+                text = "${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onAssignFolder, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = "Folder",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                if (canMoveUp) {
+                    IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowUp,
+                            contentDescription = "Move playlist earlier",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                if (canMoveDown) {
+                    IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Move playlist later",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                IconButton(onClick = onAddToUpNext, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = "Add to Up Next",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(onClick = onPlayAll, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Play playlist",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistListCard(
+    playlist: ResolvedPlaylist,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onOpen: () -> Unit,
+    onPlayAll: () -> Unit,
+    onAddToUpNext: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onAssignFolder: () -> Unit,
+) {
+    GlassCard(onClick = onOpen, contentPadding = 12.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PlaylistArtworkMosaic(
+                entries = playlist.entries,
+                modifier = Modifier.size(58.dp),
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${playlist.entries.size} episodes · ${playlist.totalSeconds / 60L} min",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (playlist.folder.isNotBlank()) {
+                    Text(
+                        text = "📁 ${playlist.folder}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            if (canMoveUp) {
+                IconButton(onClick = onMoveUp, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(18.dp))
+                }
+            }
+            if (canMoveDown) {
+                IconButton(onClick = onMoveDown, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(18.dp))
+                }
+            }
+            IconButton(onClick = onAssignFolder, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(18.dp))
+            }
+            IconButton(onClick = onAddToUpNext, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                    contentDescription = "Add to Up Next",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            IconButton(onClick = onPlayAll, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Play playlist",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 
@@ -797,6 +1300,7 @@ private fun QueueRow(
     isTail: Boolean,
     inSelectionMode: Boolean,
     isSelected: Boolean,
+    now: Long,
     onPlay: () -> Unit,
     onLongPress: () -> Unit,
     onMoveUp: (() -> Unit)?,
@@ -805,6 +1309,20 @@ private fun QueueRow(
     onRemove: () -> Unit,
     onClearFrom: (() -> Unit)?,
 ) {
+    val ep = entry.episode
+    val pubDateStr = remember(ep.published, now) {
+        if (ep.published > 0L) {
+            "${EpisodeMeta.absoluteDate(ep.published, now)} · ${EpisodeMeta.timeOfDay(ep.published)}"
+        } else {
+            ""
+        }
+    }
+    val playedAmountStr = remember(ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus) {
+        val total = EpisodeMeta.duration(ep.durationSeconds).ifBlank { "--" }
+        val played = EpisodeMeta.duration(ep.playedUpToSeconds.toInt()).ifBlank { "0s" }
+        "$played / $total (${EpisodeMeta.progress(ep)})"
+    }
+
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = 12.dp,
@@ -850,7 +1368,7 @@ private fun QueueRow(
                 }
 
                 RemoteImage(
-                    url = entry.episode.artworkUrl,
+                    url = ep.artworkUrl,
                     contentDescription = null,
                     size = 44.dp,
                     cornerRadius = 10.dp,
@@ -862,7 +1380,7 @@ private fun QueueRow(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = entry.episode.title,
+                        text = ep.title,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
@@ -877,6 +1395,23 @@ private fun QueueRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    if (pubDateStr.isNotBlank()) {
+                        Text(
+                            text = "Published $pubDateStr",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = playedAmountStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
 
                 if (onPromote != null) {
@@ -926,9 +1461,9 @@ private fun QueueRow(
                 }
             }
 
-            if (entry.episode.completionFraction > 0f) {
+            if (ep.completionFraction > 0f) {
                 LinearProgressIndicator(
-                    progress = { entry.episode.completionFraction },
+                    progress = { ep.completionFraction },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),

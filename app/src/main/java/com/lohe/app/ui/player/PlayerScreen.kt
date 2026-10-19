@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -102,6 +103,7 @@ fun PlayerScreen(
     connection: PlayerConnection,
     appearance: Appearance,
     onToggleAppearance: () -> Unit,
+    onShrink: () -> Unit = {},
     onEnded: () -> Unit = {},
     /** Media to play. Null leaves whatever is already loaded alone. */
     mediaUri: String? = null,
@@ -206,6 +208,7 @@ fun PlayerScreen(
         ) {
             HeaderRow(
                 appearance = appearance,
+                onShrink = onShrink,
                 onToggleAppearance = onToggleAppearance,
                 onOpenSleepTimer = { sleepTimerOpen = true },
                 onOpenNotes = { notesSheetOpen = true },
@@ -312,6 +315,7 @@ fun PlayerScreen(
 @Composable
 private fun HeaderRow(
     appearance: Appearance,
+    onShrink: () -> Unit,
     onToggleAppearance: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenNotes: () -> Unit,
@@ -323,11 +327,30 @@ private fun HeaderRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = stringResource(R.string.player_now_playing).uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onShrink)
+                .padding(end = 8.dp),
+        ) {
+            IconButton(
+                onClick = onShrink,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Shrink player",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Text(
+                text = stringResource(R.string.player_now_playing).uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
