@@ -958,7 +958,7 @@ private fun KaniHero(
         ) {
             KaniMascot(
                 contentDescription = stringResource(R.string.home_mascot_description),
-                size = 66.dp,
+                size = 92.dp,
             )
 
             Column(
@@ -966,14 +966,18 @@ private fun KaniHero(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The meter leads the line: an on-air indicator belongs in
+                    // front of the name, not floating off on its own.
+                    SignalBars()
+                    Spacer(Modifier.width(9.dp))
                     Text(
                         text = stringResource(R.string.home_kani_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.width(8.dp))
-                    SignalBars()
                 }
                 Text(
                     text = statusLine,

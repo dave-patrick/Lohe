@@ -106,11 +106,12 @@ fun KaniMascot(
     ) {
         // --- Glow: the light he is standing in ---
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = px * (0.40f + 0.07f * breathe)
+            val radius = px * (0.46f + 0.08f * breathe)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        ElectricCyan.copy(alpha = 0.20f + 0.12f * breathe),
+                        ElectricCyan.copy(alpha = 0.13f + 0.07f * breathe),
+                        ElectricCyan.copy(alpha = 0.04f),
                         Color.Transparent,
                     ),
                     radius = radius,
@@ -126,9 +127,9 @@ fun KaniMascot(
                 val radius = px * (0.16f + 0.34f * phase)
                 val fade = (1f - phase) * (1f - phase)
                 drawCircle(
-                    color = ElectricBlue.copy(alpha = 0.55f * fade),
+                    color = ElectricBlue.copy(alpha = 0.38f * fade),
                     radius = radius,
-                    style = Stroke(width = px * 0.022f),
+                    style = Stroke(width = px * 0.02f),
                 )
             }
         }
