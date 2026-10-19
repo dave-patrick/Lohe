@@ -40,7 +40,27 @@ class RssPodcastFetcher(
         withContext(io) {
             val parsed = parser.parse(feedUrl, download(feedUrl))
             podcastDao.upsert(parsed.podcast)
-            episodeDao.upsertAll(parsed.episodes)
+
+            // Preserve user-controlled fields from existing episodes so a feed
+            // refresh never wipes out played status, resume position, downloads,
+            // or queue position.
+            val existing = episodeDao.byPodcastOnce(parsed.podcast.uuid)
+                .associateBy { it.uuid }
+            val mergedEpisodes = parsed.episodes.map { ep ->
+                existing[ep.uuid]?.let { old ->
+                    ep.copy(
+                        playingStatus = old.playingStatus,
+                        playedUpToSeconds = old.playedUpToSeconds,
+                        starred = old.starred,
+                        queuePosition = old.queuePosition,
+                        lastPlayedAt = old.lastPlayedAt,
+                        localPath = old.localPath,
+                        downloadState = old.downloadState,
+                        isDeleted = old.isDeleted,
+                    )
+                } ?: ep
+            }
+            episodeDao.upsertAll(mergedEpisodes)
             parsed.podcast
         }
     }
