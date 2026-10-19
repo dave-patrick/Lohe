@@ -127,6 +127,7 @@ data class ShowActivity(
 class QueueViewModel(
     private val repository: SubscriptionRepository,
     private val playlistRepository: PlaylistRepository = PlaylistRepository(),
+    private val settingsStore: com.lohe.app.ui.theme.SettingsStore? = null,
 ) : ViewModel() {
 
     /**
@@ -137,6 +138,14 @@ class QueueViewModel(
      * the playlists just as a manual mark does.
      */
     init {
+        viewModelScope.launch {
+            // The auto-download choice is a setting, not a toggle on the
+            // queue's own header: it is about data, and it should still be
+            // there the next time the app is opened.
+            settingsStore?.settings?.collect { prefs ->
+                _autoDownloadUpNext.value = prefs.autoDownloadQueue
+            }
+        }
         viewModelScope.launch {
             repository.observeAllEpisodes().collect { episodes ->
                 val playedUuids = episodes
@@ -311,6 +320,7 @@ class QueueViewModel(
 
     fun setAutoDownloadUpNext(enabled: Boolean) {
         _autoDownloadUpNext.value = enabled
+        viewModelScope.launch { settingsStore?.setAutoDownloadQueue(enabled) }
         if (enabled) {
             viewModelScope.launch {
                 queue.value.forEach { triggerDownloadIfNeeded(it.episode) }
@@ -346,6 +356,11 @@ class QueueViewModel(
 
     fun moveInQueue(uuid: String, delta: Int) = viewModelScope.launch {
         repository.moveInQueue(uuid, delta)
+    }
+
+    /** Writes a new queue order, in full, after a row has been dragged. */
+    fun reorderQueue(uuids: List<String>) = viewModelScope.launch {
+        repository.reorderQueue(uuids)
     }
 
     fun clearAllQueue() = viewModelScope.launch { repository.clearAllQueue() }
@@ -511,6 +526,10 @@ class QueueViewModel(
     fun moveEpisodeInPlaylist(playlistId: String, episodeUuid: String, delta: Int) =
         playlistRepository.moveEpisode(playlistId, episodeUuid, delta)
 
+    /** Writes a new episode order for a playlist, after a row has been dragged. */
+    fun reorderPlaylistEpisodes(playlistId: String, episodeUuids: List<String>) =
+        playlistRepository.reorderEpisodes(playlistId, episodeUuids)
+
     /** Total remaining time across the queue, in seconds; unknown durations ignored. */
     val queuedSeconds: StateFlow<Long> = queue
         .map { entries ->
@@ -528,5 +547,6 @@ class QueueViewModelFactory : ViewModelProvider.Factory {
         QueueViewModel(
             ServiceLocator.subscriptionRepository(),
             ServiceLocator.playlistRepository(),
+            ServiceLocator.settingsStore(),
         ) as T
 }

@@ -190,6 +190,22 @@ class PlaylistRepository(
         }
     }
 
+    /**
+     * Rewrites a playlist's episode order wholesale.
+     *
+     * Used when a row is dragged to a new position: the order is written once,
+     * when the row is dropped, rather than nudged one step at a time.
+     */
+    fun reorderEpisodes(playlistId: String, episodeUuids: List<String>) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) pl.copy(episodeUuids = episodeUuids) else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
     private fun loadFromDisk(): List<UserPlaylist> {
         val target = file ?: return emptyList()
         if (!target.exists()) return emptyList()

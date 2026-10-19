@@ -80,6 +80,7 @@
     <string name="queue_empty_title">Your queue is clear.</string>
     <string name="queue_empty_hint">Add episodes from a show to line them up.</string>
     <string name="queue_move_up">Move to the front</string>
+    <string name="queue_drag_handle">Drag to reorder</string>
     <string name="queue_remove">Remove from queue</string>
     <string name="queue_clear_from_here">Played up to here</string>
     <string name="queue_clear_title">Clear the queue?</string>

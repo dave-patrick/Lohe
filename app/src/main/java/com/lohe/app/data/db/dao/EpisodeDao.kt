@@ -89,6 +89,18 @@ interface EpisodeDao {
         items.forEachIndexed { index, episode -> renumber(episode.uuid, index) }
     }
 
+    /**
+     * Rewrites the whole queue order in one go.
+     *
+     * Used when a row is dragged to a new position: nudging the rows either
+     * side of it one at a time would write the queue over and over, and each
+     * write would reshuffle the list underneath the finger being dragged.
+     */
+    @Transaction
+    suspend fun reorderQueue(uuids: List<String>) {
+        uuids.forEachIndexed { index, uuid -> renumber(uuid, index) }
+    }
+
     @Query("UPDATE episodes SET queuePosition = :position WHERE uuid = :uuid")
     suspend fun renumber(uuid: String, position: Int)
 

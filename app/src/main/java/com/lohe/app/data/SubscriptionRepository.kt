@@ -99,6 +99,14 @@ class SubscriptionRepository internal constructor(
         episodes.rewriteQueue(current)
     }
 
+    /**
+     * Rewrites the queue order wholesale.
+     *
+     * A dragged row lands in one position, not in a series of nudges, so the
+     * whole order is written at once when the row is dropped.
+     */
+    suspend fun reorderQueue(uuids: List<String>) = episodes.reorderQueue(uuids)
+
     /** Empties the entire Up Next queue. */
     suspend fun clearAllQueue() {
         episodes.queueSnapshot().forEach { episodes.dequeue(it.uuid) }
@@ -356,6 +364,16 @@ object ServiceLocator {
         }
 
     @Volatile private var searcher: CatalogSearcher? = null
+
+    /** Durable user preferences, shared by every screen that needs them. */
+    @Volatile private var settingsStore: com.lohe.app.ui.theme.SettingsStore? = null
+
+    fun settingsStore(): com.lohe.app.ui.theme.SettingsStore =
+        settingsStore ?: synchronized(this) {
+            settingsStore ?: com.lohe.app.ui.theme.SettingsStore(
+                context ?: error("ServiceLocator not initialized"),
+            ).also { settingsStore = it }
+        }
 
     fun catalogSearcher(): CatalogSearcher =
         searcher ?: synchronized(this) {

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SelectAll
@@ -49,6 +51,9 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,10 +61,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +80,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,48 +231,53 @@ fun QueueScreen(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    FilterChip(
-                        selected = autoDownloadUpNext,
-                        onClick = {
-                            val next = !autoDownloadUpNext
-                            viewModel.setAutoDownloadUpNext(next)
-                            onShowMessage(
-                                if (next) "Auto-download on for Up Next" else "Auto-download off for Up Next",
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Download,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                            )
-                        },
-                        label = { Text("Auto-DL", maxLines = 1) },
-                    )
+                    // The header carries the queue's own actions and nothing
+                    // else. Auto-download is a setting and lives in Settings;
+                    // adding a whole playlist to the queue is rare enough to
+                    // sit behind an overflow.
+                    var menuOpen by remember { mutableStateOf(false) }
 
-                    if (userPlaylists.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { showAddPlaylistDialog = true },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        ) {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add Playlist", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-
-                    if (queue.isNotEmpty()) {
-                        IconButton(onClick = { confirmClearAll = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteSweep,
-                                contentDescription = "Clear Up Next",
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "More options",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                        ) {
+                            if (userPlaylists.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Add Playlist to Up Next") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        menuOpen = false
+                                        showAddPlaylistDialog = true
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Clear Up Next") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.DeleteSweep,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    confirmClearAll = true
+                                },
                             )
                         }
                     }
@@ -286,21 +303,61 @@ fun QueueScreen(
             return@Column
         }
 
+        // The list the screen actually draws. It is a copy of the queue so a
+        // dragged row can be moved around without writing to the database on
+        // every pixel of the drag; the new order is written once, on drop.
+        var items by remember { mutableStateOf(queue) }
+        val listState = rememberLazyListState()
+        val dragState = rememberDragReorderState(
+            listState = listState,
+            onMove = { from, to ->
+                items = items.toMutableList().apply { add(to, removeAt(from)) }
+            },
+            onDrop = {
+                viewModel.reorderQueue(items.map { it.episode.uuid })
+            },
+        )
+
+        // Keep the copy in step with the queue, unless a drag is in progress
+        // and the list is deliberately out of step with the database.
+        LaunchedEffect(queue) {
+            if (!dragState.isDragging) items = queue
+        }
+
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            itemsIndexed(queue, key = { _, entry -> entry.episode.uuid }) { index, entry ->
+            itemsIndexed(items, key = { _, entry -> entry.episode.uuid }) { index, entry ->
                 val isSelected = entry.episode.uuid in selectedUuids
+                val dragging = dragState.draggedIndex == index
                 QueueRow(
                     positionNumber = index + 1,
                     entry = entry,
                     isHead = index == 0,
-                    isTail = index == queue.lastIndex,
                     inSelectionMode = inSelectionMode,
                     isSelected = isSelected,
                     now = now,
+                    dragHandle = {
+                        DragHandle(state = dragState, index = index, key = entry.episode.uuid)
+                    },
+                    modifier = Modifier
+                        .then(
+                            if (dragging) {
+                                Modifier.zIndex(1f)
+                            } else {
+                                Modifier.animateItem()
+                            },
+                        )
+                        .graphicsLayer {
+                            if (dragging) {
+                                translationY = dragState.draggedOffset
+                                scaleX = 1.02f
+                                scaleY = 1.02f
+                            }
+                        },
                     onPlay = {
                         if (inSelectionMode) {
                             selectedUuids = if (isSelected) {
@@ -328,15 +385,19 @@ fun QueueScreen(
                     } else {
                         null
                     },
-                    onMoveDown = if (index < queue.lastIndex) {
+                    onMoveDown = if (index < items.lastIndex) {
                         { viewModel.moveInQueue(entry.episode.uuid, +1) }
                     } else {
                         null
                     },
-                    onPromote = if (index > 0) {
-                        { viewModel.promote(entry.episode.uuid) }
-                    } else {
-                        null
+                    onTogglePlayed = {
+                        if (entry.episode.isPlayed) {
+                            viewModel.reopenEpisode(entry.episode.uuid)
+                            onShowMessage("Marked unlistened")
+                        } else {
+                            viewModel.markPlayed(entry.episode.uuid)
+                            onShowMessage("Marked listened")
+                        }
                     },
                     onRemove = { viewModel.dequeue(entry.episode.uuid) },
                     onClearFrom = if (index == 0 && queue.size > 1) {
@@ -350,18 +411,29 @@ fun QueueScreen(
     }
 
     actionEpisode?.let { entry ->
-        EpisodeActionSheet(
-            episode = entry.episode,
-            artworkUrl = entry.episode.artworkUrl,
-            showTitle = entry.showTitle,
+        val index = queue.indexOfFirst { it.episode.uuid == entry.episode.uuid }
+        QueueActionSheet(
+            entry = entry,
             onDismiss = { actionEpisode = null },
             onPlay = {
                 actionEpisode = null
                 onPlay(entry)
             },
-            onAddToUpNext = {
-                actionEpisode = null
-                onShowMessage("Already in Up Next")
+            onMoveUp = if (index > 0) {
+                {
+                    actionEpisode = null
+                    viewModel.moveInQueue(entry.episode.uuid, -1)
+                }
+            } else {
+                null
+            },
+            onMoveDown = if (index in 0 until queue.lastIndex) {
+                {
+                    actionEpisode = null
+                    viewModel.moveInQueue(entry.episode.uuid, +1)
+                }
+            } else {
+                null
             },
             onTogglePlayed = {
                 actionEpisode = null
@@ -373,29 +445,10 @@ fun QueueScreen(
                     onShowMessage("Marked listened")
                 }
             },
-            onToggleDownload = {
-                actionEpisode = null
-                val dm = ServiceLocator.downloadManager()
-                if (entry.episode.isDownloaded) {
-                    onShowMessage("Removed download")
-                } else {
-                    dm.start(entry.episode)
-                    onShowMessage("Downloading")
-                }
-            },
-            onAddToPlaylist = {
-                actionEpisode = null
-                addToPlaylistEpisode = entry
-            },
-            onRemoveFromPlaylist = {
+            onRemove = {
                 actionEpisode = null
                 viewModel.dequeue(entry.episode.uuid)
                 onShowMessage("Removed from Up Next")
-            },
-            onDelete = {
-                actionEpisode = null
-                viewModel.deleteEpisode(entry.episode.uuid)
-                onShowMessage("Deleted ${entry.episode.title}")
             },
         )
     }
@@ -704,23 +757,65 @@ fun PlaylistsScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
+                // A copy of the playlist's episodes so a dragged row can be
+                // moved around without rewriting the playlist on every pixel;
+                // the new order is written once, on drop.
+                var items by remember(openedPlaylist.id) {
+                    mutableStateOf(openedPlaylist.entries)
+                }
+                val listState = rememberLazyListState()
+                val dragState = rememberDragReorderState(
+                    listState = listState,
+                    onMove = { from, to ->
+                        items = items.toMutableList().apply { add(to, removeAt(from)) }
+                    },
+                    onDrop = {
+                        viewModel.reorderPlaylistEpisodes(
+                            openedPlaylist.id,
+                            items.map { it.episode.uuid },
+                        )
+                    },
+                )
+                LaunchedEffect(openedPlaylist.entries) {
+                    if (!dragState.isDragging) items = openedPlaylist.entries
+                }
+
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     itemsIndexed(
-                        openedPlaylist.entries,
+                        items,
                         key = { _, entry -> "${openedPlaylist.id}-${entry.episode.uuid}" },
                     ) { index, entry ->
+                        val dragging = dragState.draggedIndex == index
                         QueueRow(
                             positionNumber = index + 1,
                             entry = entry,
                             isHead = index == 0,
-                            isTail = index == openedPlaylist.entries.lastIndex,
                             inSelectionMode = false,
                             isSelected = false,
                             now = now,
+                            dragHandle = {
+                                DragHandle(state = dragState, index = index, key = entry.episode.uuid)
+                            },
+                            modifier = Modifier
+                                .then(
+                                    if (dragging) {
+                                        Modifier.zIndex(1f)
+                                    } else {
+                                        Modifier.animateItem()
+                                    },
+                                )
+                                .graphicsLayer {
+                                    if (dragging) {
+                                        translationY = dragState.draggedOffset
+                                        scaleX = 1.02f
+                                        scaleY = 1.02f
+                                    }
+                                },
                             onPlay = { onPlay(entry) },
                             onLongPress = { actionEpisode = entry },
                             onMoveUp = if (index > 0) {
@@ -734,7 +829,7 @@ fun PlaylistsScreen(
                             } else {
                                 null
                             },
-                            onMoveDown = if (index < openedPlaylist.entries.lastIndex) {
+                            onMoveDown = if (index < items.lastIndex) {
                                 {
                                     viewModel.moveEpisodeInPlaylist(
                                         openedPlaylist.id,
@@ -745,7 +840,15 @@ fun PlaylistsScreen(
                             } else {
                                 null
                             },
-                            onPromote = null,
+                            onTogglePlayed = {
+                                if (entry.episode.isPlayed) {
+                                    viewModel.reopenEpisode(entry.episode.uuid)
+                                    onShowMessage("Marked unlistened")
+                                } else {
+                                    viewModel.markPlayed(entry.episode.uuid)
+                                    onShowMessage("Marked listened")
+                                }
+                            },
                             onRemove = {
                                 viewModel.removeEpisodeFromPlaylist(
                                     openedPlaylist.id,
@@ -1454,12 +1557,12 @@ private fun EmptyQueue(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QueueRow(
     positionNumber: Int,
     entry: QueueEntry,
     isHead: Boolean,
-    isTail: Boolean,
     inSelectionMode: Boolean,
     isSelected: Boolean,
     now: Long,
@@ -1467,204 +1570,230 @@ private fun QueueRow(
     onLongPress: () -> Unit,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
-    onPromote: (() -> Unit)?,
-    onRemove: () -> Unit,
+    onTogglePlayed: (() -> Unit)?,
+    onRemove: (() -> Unit)?,
     onClearFrom: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    dragHandle: @Composable (() -> Unit)? = null,
 ) {
     val ep = entry.episode
-    val pubStr = remember(ep.published, now) {
-        val pub = EpisodeMeta.publishedCompact(ep.published, now)
-        if (pub.isNotEmpty()) {
-            val leftMs = ep.durationSeconds?.let { dur ->
-                ((dur - ep.playedUpToSeconds.coerceAtLeast(0L)) * 1000L).coerceAtLeast(0L)
-            } ?: 0L
-            "$pub · ${EpisodeMeta.duration((leftMs / 1000).toInt()).takeIf { it.isNotEmpty() } ?: "?"} left"
-        } else {
-            ""
-        }
-    }
-    val playedStr = remember(ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus) {
-        val played = EpisodeMeta.duration(ep.playedUpToSeconds.toInt()).ifBlank { "0s" }
-        if (ep.isPlayed) {
-            "$played (Played)"
-        } else {
-            "$played (${EpisodeMeta.progress(ep)})"
+
+    // One line, not four. The runtime, the date and where the episode is up
+    // to come first and the show name last: a long show title would
+    // otherwise push out the number the listener is actually reading.
+    val metaLine = remember(entry.showTitle, ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus, ep.published, now) {
+        val state = EpisodeMeta.line(ep, now)
+        val show = entry.showTitle.trim()
+        when {
+            state.isNotEmpty() && show.isNotEmpty() -> "$state · $show"
+            state.isNotEmpty() -> state
+            else -> show
         }
     }
 
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = 8.dp,
-        accent = when {
-            isSelected -> ElectricBlue
-            isHead -> ElectricBlue.copy(alpha = 0.5f)
-            else -> null
-        },
-        onClick = onPlay,
-        onLongClick = onLongPress,
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+    val dismissState = rememberSwipeToDismissBoxState(
+        // Always settle back: the swipe reveals actions, it does not dismiss.
+        confirmValueChange = { false },
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = modifier,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            val background = when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
+                else -> Color.Transparent
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(background)
+                    .padding(horizontal = 14.dp),
             ) {
-                if (inSelectionMode) {
-                    Icon(
-                        imageVector = if (isSelected) {
-                            Icons.Filled.CheckCircle
-                        } else {
-                            Icons.Outlined.RadioButtonUnchecked
-                        },
-                        contentDescription = null,
-                        tint = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(22.dp),
-                    )
-                } else {
-                    Text(
-                        text = "#$positionNumber",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isHead) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-
-                RemoteImage(
-                    url = ep.artworkUrl,
-                    contentDescription = null,
-                    size = 40.dp,
-                    cornerRadius = 10.dp,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = ep.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (entry.showTitle.isNotBlank()) {
-                        Text(
-                            text = "${entry.showTitle} · $pubStr",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    } else {
-                        Text(
-                            text = pubStr,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (onMoveUp != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.queue_move_up),
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = onMoveUp,
+                            )
+                        }
+                        if (onMoveDown != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "Move down",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = onMoveDown,
+                            )
+                        }
+                        if (onTogglePlayed != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.CheckCircle,
+                                contentDescription = "Mark listened",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = onTogglePlayed,
+                            )
+                        }
                     }
+                } else if (direction == SwipeToDismissBoxValue.EndToStart && onRemove != null) {
+                    SwipeActionButton(
+                        icon = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.queue_remove),
+                        tint = MaterialTheme.colorScheme.error,
+                        onClick = onRemove,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
                 }
-
+            }
+        },
+    ) {
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = 7.dp,
+            accent = when {
+                isSelected -> ElectricBlue
+                isHead -> ElectricBlue.copy(alpha = 0.5f)
+                else -> null
+            },
+            onClick = onPlay,
+            onLongClick = onLongPress,
+        ) {
+            Column {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (onPromote != null) {
-                        IconButton(onClick = onPromote, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.VerticalAlignTop,
-                                contentDescription = "Move to top",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                    if (onMoveUp != null) {
-                        IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowUp,
-                                contentDescription = stringResource(R.string.queue_move_up),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                    if (onMoveDown != null) {
-                        IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Move down",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                    IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+                    if (inSelectionMode) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.queue_remove),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
+                            imageVector = if (isSelected) {
+                                Icons.Filled.CheckCircle
+                            } else {
+                                Icons.Outlined.RadioButtonUnchecked
+                            },
+                            contentDescription = null,
+                            tint = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(20.dp),
+                        )
+                    } else {
+                        Text(
+                            text = "$positionNumber",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isHead) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                         )
                     }
-                    IconButton(onClick = onPlay, modifier = Modifier.size(32.dp)) {
+
+                    RemoteImage(
+                        url = ep.artworkUrl,
+                        contentDescription = null,
+                        size = 34.dp,
+                        cornerRadius = 9.dp,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(9.dp)),
+                    )
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = ep.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (metaLine.isNotBlank()) {
+                            Text(
+                                text = metaLine,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (ep.completionFraction > 0f) {
+                            // Inside the text column, so it reads as a
+                            // progress bar for the episode rather than a rule
+                            // drawn across the card.
+                            LinearProgressIndicator(
+                                progress = { ep.completionFraction },
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .fillMaxWidth()
+                                    .height(2.dp),
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onPlay, modifier = Modifier.size(30.dp)) {
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = stringResource(R.string.player_now_playing),
                             tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+
+                    if (dragHandle != null) {
+                        Box(
                             modifier = Modifier.size(24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            dragHandle()
+                        }
+                    }
+                }
+
+                if (isHead && onClearFrom != null) {
+                    TextButton(
+                        onClick = onClearFrom,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.padding(top = 2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.queue_clear_from_here),
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
             }
-
-            if (playedStr.isNotBlank()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = playedStr,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
-            if (ep.completionFraction > 0f) {
-                LinearProgressIndicator(
-                    progress = { ep.completionFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
-            }
-
-            if (isHead && onClearFrom != null) {
-                TextButton(
-                    onClick = onClearFrom,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.padding(top = 2.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.queue_clear_from_here),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
         }
+    }
+}
+
+/** One of the actions revealed by swiping a row. */
+@Composable
+private fun SwipeActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    IconButton(onClick = onClick, modifier = modifier.size(34.dp)) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(19.dp),
+        )
     }
 }

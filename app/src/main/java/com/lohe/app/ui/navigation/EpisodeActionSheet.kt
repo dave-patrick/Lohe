@@ -167,80 +167,21 @@ fun EpisodeActionSheet(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            ) {
-                actions.forEachIndexed { index, action ->
-                    if (index > 0) {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
-                            modifier = Modifier.padding(start = 54.dp),
-                        )
-                    }
-                    SheetActionRow(action)
-                }
-            }
+            SheetActionGroup(actions)
 
             if (onDelete != null) {
                 Spacer(Modifier.padding(top = 10.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                ) {
-                    SheetActionRow(
+                SheetActionGroup(
+                    listOf(
                         SheetAction(
                             icon = Icons.Filled.DeleteOutline,
                             label = "Delete episode",
                             accent = MaterialTheme.colorScheme.error,
                             onClick = onDelete,
                         ),
-                    )
-                }
+                    ),
+                )
             }
         }
-    }
-}
-
-private data class SheetAction(
-    val icon: ImageVector,
-    val label: String,
-    val accent: Color,
-    val onClick: () -> Unit,
-)
-
-@Composable
-private fun SheetActionRow(action: SheetAction) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = action.onClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(action.accent.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = action.icon,
-                contentDescription = null,
-                tint = action.accent,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = action.label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = action.accent,
-        )
     }
 }
