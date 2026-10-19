@@ -100,10 +100,6 @@ implementation(libs.androidx.compose.foundation)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.room.testing)
-
-    // Android Automotive OS: the in-car app. It browses the same library the
-    // phone publishes over the media browser service.
-    implementation(libs.androidx.car.app)
 }
 
 /**

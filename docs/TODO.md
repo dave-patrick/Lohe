@@ -5,7 +5,38 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
-## 0. ~~Feed refresh silently wiped every episode's state~~ — **done**
+## 0b. The in-car app (Android Automotive OS) is not built
+
+**Severity: medium. The phone side of Android Auto is done and tested; this
+is the other half.**
+
+Android Auto on a phone reaches the app over the media browser service: the
+car browses the library and asks for episodes to be played. That half is
+built and covered by `MediaLibraryBrowseTest`, which walks the tree the way a
+car does and checks that a tap resolves to something playable.
+
+A car running Android Automotive OS does not work that way. It runs the app
+itself, as a native car app, and wants a template it can render. That is a
+separate app surface with its own plumbing:
+
+- a `CarAppService` whose session returns a screen
+- a `MediaPlaybackTemplate` and a `MediaPlaybackManager`, which hands the
+  car's media host a `MediaSessionCompat` token so the hardware buttons
+  reach the app
+- a `HostValidator` carrying the head unit's certificate digest
+- `res/xml/automotive_app_desc.xml` and the manifest registration
+
+**Why it was not built blind:** `androidx.car.app` ships the plumbing but
+not the media app itself, so the screen and session have to be written by
+hand, and none of it can be exercised without a head unit or an automotive
+emulator. Guessing at a host validator and a screen contract, with no way to
+see the result, is how a car app ends up registered but blank.
+
+**To do it:** get an automotive emulator (or a car), build the service
+against `androidx.car.app:app-automotive`, and verify that the same library
+tree the phone publishes comes up in the car.
+
+---
 
 **Was:** the worst bug in the app, and it had been there the whole time.
 
