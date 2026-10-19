@@ -123,7 +123,6 @@ class QueueViewModel(
         podcasts,
         repository.observeAllEpisodes(),
     ) { shows, allEpisodes ->
-        val activeEpisodes = allEpisodes.filter { !it.isDeleted }
         var totalRemaining = 0L
         var totalPlayed = 0L
         var totalDuration = 0L
@@ -132,30 +131,33 @@ class QueueViewModel(
         var inProgressCount = 0
 
         for (ep in allEpisodes) {
-            // Deleted episodes still count toward played stats — their
-            // listening time shouldn't disappear just because the row was
-            // soft-deleted.
+            // Deleted items that were never played should not be in any count.
+            if (ep.isDeleted && !ep.isPlayed) continue
+
             if (ep.isPlayed) playedCount++
 
-            val dur = (ep.durationSeconds?.toLong() ?: 0L).coerceAtLeast(ep.playedUpToSeconds)
-            val played = if (ep.isPlayed) dur else ep.playedUpToSeconds.coerceIn(0L, dur)
-
-            totalPlayed += played
-            totalDuration += dur
-
-            // Non-deleted episodes only count toward library-level stats.
+            // Only non-deleted episodes count toward library-level stats.
             if (!ep.isDeleted) {
                 if (ep.isDownloaded) downloaded++
                 if (ep.isInProgress) inProgressCount++
+            }
 
+            // Time stats: played episodes count even if deleted; non-deleted
+            // episodes count too.
+            if (!ep.isDeleted || ep.isPlayed) {
+                val dur = (ep.durationSeconds?.toLong() ?: 0L).coerceAtLeast(ep.playedUpToSeconds)
+                val played = if (ep.isPlayed) dur else ep.playedUpToSeconds.coerceIn(0L, dur)
                 val rem = if (ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
+
+                totalDuration += dur
+                totalPlayed += played
                 totalRemaining += rem
             }
         }
 
         HomeDashboardStats(
             subscriptionCount = shows.size,
-            totalEpisodes = activeEpisodes.size,
+            totalEpisodes = allEpisodes.count { !it.isDeleted || it.isPlayed },
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
             inProgressCount = inProgressCount,
