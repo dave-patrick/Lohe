@@ -611,6 +611,16 @@ fun PodcastsScreen(
                                 viewModel.markPodcastsPlayed(setOf(podcast.uuid))
                                 scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
                             },
+                            onAddToPlaylist = {
+                                val episodeUuids = allEpisodes
+                                    .filter { it.podcastUuid == podcast.uuid && !it.isDeleted }
+                                    .map { it.uuid }
+                                if (episodeUuids.isNotEmpty()) {
+                                    playlistPickerUuids = episodeUuids
+                                } else {
+                                    scope.launch { snackbarHostState.showSnackbar("No episodes to add") }
+                                }
+                            },
                             scope = scope,
                             viewModel = viewModel,
                             onShowMessage = { scope.launch { snackbarHostState.showSnackbar(it) } },
@@ -663,6 +673,16 @@ fun PodcastsScreen(
                             onTogglePlayed = {
                                 viewModel.markPodcastsPlayed(setOf(podcast.uuid))
                                 scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
+                            },
+                            onAddToPlaylist = {
+                                val episodeUuids = allEpisodes
+                                    .filter { it.podcastUuid == podcast.uuid && !it.isDeleted }
+                                    .map { it.uuid }
+                                if (episodeUuids.isNotEmpty()) {
+                                    playlistPickerUuids = episodeUuids
+                                } else {
+                                    scope.launch { snackbarHostState.showSnackbar("No episodes to add") }
+                                }
                             },
                             scope = scope,
                             viewModel = viewModel,
@@ -841,9 +861,9 @@ private fun AddFeedDialog(
 /**
  * Wraps a podcast row in a slide-to-act box.
  *
- * Slide right (StartToEnd) reveals: Add to Up Next, Mark Listened/Unplayed,
- * Assign Folder. Slide left (EndToStart) reveals: Download/Remove Download,
- * Remove Show.
+ * Slide right (StartToEnd) reveals: Add to Up Next, Add to Playlist,
+ * Mark Listened/Unplayed, Assign Folder. Slide left (EndToStart) reveals:
+ * Download/Remove Download, Remove Show.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -857,6 +877,7 @@ private fun SwipeablePodcastCard(
     onUnsubscribe: () -> Unit,
     onQueue: () -> Unit,
     onTogglePlayed: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     scope: CoroutineScope,
     viewModel: SubscriptionsViewModel,
     onShowMessage: (String) -> Unit,
@@ -901,6 +922,17 @@ private fun SwipeablePodcastCard(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                                 contentDescription = "Add to Up Next",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = onAddToPlaylist,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = "Add to Playlist",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp),
                             )

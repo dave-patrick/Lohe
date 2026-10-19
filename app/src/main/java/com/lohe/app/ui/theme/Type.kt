@@ -9,9 +9,8 @@ import androidx.compose.ui.unit.sp
 /**
  * Lohe type scale.
  *
- * No bundled typeface yet — this uses the platform default so the first build
- * has zero font dependencies. Tight tracking on the display sizes gives the
- * "elite developer" read; swap [LoheFontFamily] in when a face is chosen.
+ * Uses the platform default font family so the app has zero font dependencies.
+ * Tight tracking on the display sizes gives the "elite developer" read.
  */
 val LoheFontFamily = FontFamily.Default
 

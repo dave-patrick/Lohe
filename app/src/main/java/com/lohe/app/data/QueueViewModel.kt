@@ -131,18 +131,26 @@ class QueueViewModel(
         var playedCount = 0
         var inProgressCount = 0
 
-        for (ep in activeEpisodes) {
-            if (ep.isDownloaded) downloaded++
+        for (ep in allEpisodes) {
+            // Deleted episodes still count toward played stats — their
+            // listening time shouldn't disappear just because the row was
+            // soft-deleted.
             if (ep.isPlayed) playedCount++
-            if (ep.isInProgress) inProgressCount++
 
             val dur = (ep.durationSeconds?.toLong() ?: 0L).coerceAtLeast(ep.playedUpToSeconds)
             val played = if (ep.isPlayed) dur else ep.playedUpToSeconds.coerceIn(0L, dur)
-            val rem = if (ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
 
-            totalDuration += dur
             totalPlayed += played
-            totalRemaining += rem
+            totalDuration += dur
+
+            // Non-deleted episodes only count toward library-level stats.
+            if (!ep.isDeleted) {
+                if (ep.isDownloaded) downloaded++
+                if (ep.isInProgress) inProgressCount++
+
+                val rem = if (ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
+                totalRemaining += rem
+            }
         }
 
         HomeDashboardStats(
