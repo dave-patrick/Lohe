@@ -52,16 +52,28 @@ fun NowPlayingBar(
     fallbackTitle: String? = null,
     fallbackShowTitle: String? = null,
     fallbackProgress: Float = 0f,
+    nextUpTitle: String? = null,
+    nextUpShowTitle: String? = null,
     onPlayFallback: (() -> Unit)? = null,
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val hasActive = transport.hasMedia || !fallbackTitle.isNullOrBlank()
+    // Visible when something is playing, when there is something to resume,
+    // or when the queue has an episode ready to play next.
+    val hasActive = transport.hasMedia ||
+        !fallbackTitle.isNullOrBlank() ||
+        !nextUpTitle.isNullOrBlank()
     if (!hasActive) return
 
-    val shownTitle = transport.title.ifBlank { fallbackTitle.orEmpty() }
+    val shownTitle = transport.title.ifBlank {
+        fallbackTitle?.takeIf { it.isNotBlank() } ?: nextUpTitle.orEmpty()
+    }
     val shownShow = transport.showTitle.ifBlank { fallbackShowTitle.orEmpty() }
     val shownProgress = if (transport.hasMedia) transport.progress else fallbackProgress
+
+    // The "next up" line is only meaningful when something else is playing
+    // now; when the queue head is the title itself, showing it twice is noise.
+    val nextUpLabel = nextUpTitle?.takeIf { it.isNotBlank() && it != shownTitle }
 
     val shape = RoundedCornerShape(16.dp)
     Column(
@@ -120,6 +132,18 @@ fun NowPlayingBar(
                         text = shownShow,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // The episode that plays once this one finishes, so the queue
+                // is visible without a trip to the Up Next tab.
+                if (!nextUpLabel.isNullOrBlank()) {
+                    Text(
+                        text = "Next up · $nextUpLabel",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

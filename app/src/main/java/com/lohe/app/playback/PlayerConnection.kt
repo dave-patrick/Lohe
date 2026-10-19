@@ -27,6 +27,8 @@ data class TransportState(
     val showTitle: String = "",
     val artworkUrl: String = "",
     val playbackSpeed: Float = 1f,
+    /** Media id of the currently loaded item, for "next up" matching. */
+    val mediaId: String = "",
 ) {
     /** 0f..1f, or 0f when the duration is not known yet. */
     val progress: Float
@@ -189,6 +191,7 @@ fun rememberTransportState(connection: PlayerConnection): State<TransportState> 
                     showTitle = c.mediaMetadata.artist?.toString().orEmpty(),
                     artworkUrl = c.mediaMetadata.artworkUri?.toString().orEmpty(),
                     playbackSpeed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
+                    mediaId = c.currentMediaItem?.mediaId.orEmpty(),
                 )
             }
             delay(POLL_MS)

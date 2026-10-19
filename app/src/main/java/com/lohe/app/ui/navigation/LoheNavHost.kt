@@ -162,6 +162,7 @@ fun LoheNavHost(
     // is reflected in all of them immediately.
     val queueViewModel: QueueViewModel = viewModel(factory = QueueViewModelFactory())
     val inProgress by queueViewModel.continueListening.collectAsState()
+    val upNext by queueViewModel.queue.collectAsState()
     val discoveryViewModel: DiscoveryViewModel = viewModel(
         factory = DiscoveryViewModelFactory(),
     )
@@ -261,6 +262,16 @@ fun LoheNavHost(
         bottomBar = {
             Column {
                 val fallbackEntry = inProgress.firstOrNull()
+                // The episode that plays once the current one finishes: the
+                // head of Up Next, skipping whatever is playing right now.
+                // The in-progress episode counts as current even when the
+                // player has not been handed it yet.
+                val currentEpisodeId = nowPlaying?.episodeId
+                    ?: transport.value.mediaId.takeIf { it.isNotBlank() }
+                    ?: fallbackEntry?.episode?.uuid
+                val nextUp = upNext.firstOrNull { entry ->
+                    entry.episode.uuid != currentEpisodeId
+                }
                 NowPlayingBar(
                     connection = playerConnection,
                     transport = transport.value,
@@ -270,6 +281,8 @@ fun LoheNavHost(
                     fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
                     fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
                     fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
+                    nextUpTitle = nextUp?.episode?.title,
+                    nextUpShowTitle = nextUp?.showTitle,
                     onPlayFallback = {
                         val target = fallbackEntry ?: return@NowPlayingBar
                         if (!target.episode.isDownloaded && !target.episode.isDownloading) {
@@ -287,16 +300,23 @@ fun LoheNavHost(
                         navController.navigate(Dest.PLAYER.route)
                     },
                     onOpenPlayer = {
-                        if (nowPlaying == null && fallbackEntry != null) {
-                            nowPlaying = NowPlaying(
-                                title = fallbackEntry.episode.title,
-                                uri = fallbackEntry.episode.playbackUri,
-                                showTitle = fallbackEntry.showTitle,
-                                episodeId = fallbackEntry.episode.uuid,
-                                artworkUrl = fallbackEntry.episode.artworkUrl,
-                                description = fallbackEntry.episode.description,
-                                knownDurationSeconds = fallbackEntry.episode.durationSeconds,
-                            )
+                        // Nothing loaded and nothing in progress: open the
+                        // episode that is ready to play rather than an empty
+                        // player.
+                        if (nowPlaying == null) {
+                            val episode = fallbackEntry?.episode ?: nextUp?.episode
+                            val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
+                            if (episode != null) {
+                                nowPlaying = NowPlaying(
+                                    title = episode.title,
+                                    uri = episode.playbackUri,
+                                    showTitle = showTitle,
+                                    episodeId = episode.uuid,
+                                    artworkUrl = episode.artworkUrl,
+                                    description = episode.description,
+                                    knownDurationSeconds = episode.durationSeconds,
+                                )
+                            }
                         }
                         navController.navigate(Dest.PLAYER.route)
                     },

@@ -1396,7 +1396,7 @@ private fun QueueRow(
                     )
                     if (entry.showTitle.isNotBlank()) {
                         Text(
-                            text = "$entry.showTitle · $pubStr",
+                            text = "${entry.showTitle} · $pubStr",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
