@@ -138,9 +138,9 @@
     <string name="about_version">Version %1$s</string>
     <string name="about_version_unknown">Version unavailable</string>
     <string name="about_name_heading">The name</string>
-    <string name="about_name_body">Lohe (lōhe) is a Hawaiian word. It means to listen — to hear something on purpose.</string>
+    <string name="about_name_body">Lohe (lōhe) is a Hawaiian word. It means to listen, to hear, and to mind. Lohe is the app itself: the shows you keep, and a record of what you have heard.</string>
     <string name="about_kani_heading">Kani</string>
-    <string name="about_kani_body">Kani is the firefly on the home screen. His name is Hawaiian for listening, too.</string>
+    <string name="about_kani_body">Kani (kāni) is the dragonfly on the home screen. His name means attentive listening, the quiet kind you do on someone else\'s behalf. He watches the library and tells you what is waiting.</string>
     <string name="about_credits_heading">Credits</string>
     <string name="about_studio">An Atomic 22 Industries app.</string>
     <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Atomic 22 Design</string>

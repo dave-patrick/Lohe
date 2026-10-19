@@ -858,7 +858,7 @@ private fun PlaybackSpeedSheet(
 // A preview cannot bind a real MediaSession, so it gets a detached handle:
 // controller stays null, the transport renders its empty snapshot, and nothing
 // tries to play. Enough to check layout and type.
-@Preview(name = "Player — dark", showBackground = true)
+@Preview(name = "Player (dark)", showBackground = true)
 @Composable
 private fun PlayerDarkPreview() {
     val context = LocalContext.current
@@ -870,7 +870,7 @@ private fun PlayerDarkPreview() {
     }
 }
 
-@Preview(name = "Player — light", showBackground = true)
+@Preview(name = "Player (light)", showBackground = true)
 @Composable
 private fun PlayerLightPreview() {
     val context = LocalContext.current
