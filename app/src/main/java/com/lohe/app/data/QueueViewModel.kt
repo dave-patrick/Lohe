@@ -144,6 +144,8 @@ class QueueViewModel(
             // there the next time the app is opened.
             settingsStore?.settings?.collect { prefs ->
                 _autoDownloadUpNext.value = prefs.autoDownloadQueue
+                _podcastSort.value = prefs.podcastSort
+                _playlistSort.value = prefs.playlistSort
             }
         }
         viewModelScope.launch {
@@ -315,6 +317,22 @@ class QueueViewModel(
 
     private val _autoDownloadUpNext = MutableStateFlow(true)
     val autoDownloadUpNext: StateFlow<Boolean> = _autoDownloadUpNext.asStateFlow()
+
+    private val _podcastSort = MutableStateFlow(PodcastSort.TITLE)
+    val podcastSort: StateFlow<PodcastSort> = _podcastSort.asStateFlow()
+
+    private val _playlistSort = MutableStateFlow(PlaylistSort.MANUAL)
+    val playlistSort: StateFlow<PlaylistSort> = _playlistSort.asStateFlow()
+
+    fun setPodcastSort(sort: PodcastSort) {
+        _podcastSort.value = sort
+        viewModelScope.launch { settingsStore?.setPodcastSort(sort) }
+    }
+
+    fun setPlaylistSort(sort: PlaylistSort) {
+        _playlistSort.value = sort
+        viewModelScope.launch { settingsStore?.setPlaylistSort(sort) }
+    }
 
     val podcastFolders: StateFlow<Map<String, String>> = playlistRepository.podcastFolders
 
@@ -522,6 +540,27 @@ class QueueViewModel(
 
     fun removeEpisodeFromPlaylist(playlistId: String, episodeUuid: String) =
         playlistRepository.removeEpisode(playlistId, episodeUuid)
+
+    /** Marks a batch of episodes as listened to. */
+    fun markPlayedBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.markPlayed(it) }
+    }
+
+    /**
+     * Marks a batch as not listened to.
+     *
+     * This is how a listener clears the Played list: an episode that is no
+     * longer played leaves it, because the list is derived from the library
+     * rather than stored.
+     */
+    fun markUnplayedBatch(uuids: Collection<String>) = viewModelScope.launch {
+        uuids.forEach { repository.reopenEpisode(it) }
+    }
+
+    /** Takes a batch of episodes out of a playlist. */
+    fun removeEpisodesFromPlaylist(playlistId: String, uuids: Collection<String>) {
+        uuids.forEach { playlistRepository.removeEpisode(playlistId, it) }
+    }
 
     fun moveEpisodeInPlaylist(playlistId: String, episodeUuid: String, delta: Int) =
         playlistRepository.moveEpisode(playlistId, episodeUuid, delta)

@@ -32,6 +32,17 @@ data class PlaybackSettings(
      * as a chip on the queue's own header.
      */
     val autoDownloadQueue: Boolean = true,
+    /**
+     * The sleep-timer length the listener last chose, in minutes.
+     *
+     * Remembered so the sheet opens on the choice they keep making instead of
+     * making them find it again every time.
+     */
+    val sleepTimerMinutes: Int = 30,
+    /** How the library is ordered. */
+    val podcastSort: com.lohe.app.data.PodcastSort = com.lohe.app.data.PodcastSort.TITLE,
+    /** How the playlists are ordered. */
+    val playlistSort: com.lohe.app.data.PlaylistSort = com.lohe.app.data.PlaylistSort.MANUAL,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -61,6 +72,9 @@ class SettingsStore(private val context: Context) {
         val skipForward = intPreferencesKey("skip_forward")
         val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
         val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
+        val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
+        val podcastSort = stringPreferencesKey("podcast_sort")
+        val playlistSort = stringPreferencesKey("playlist_sort")
     }
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
@@ -80,6 +94,18 @@ class SettingsStore(private val context: Context) {
                 .coerceIn(5, 120),
             markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
             autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
+            sleepTimerMinutes = (prefs[Keys.sleepTimerMinutes] ?: 30)
+                .coerceIn(1, 24 * 60),
+            podcastSort = prefs[Keys.podcastSort]
+                ?.let { name ->
+                    com.lohe.app.data.PodcastSort.entries.firstOrNull { it.name == name }
+                }
+                ?: com.lohe.app.data.PodcastSort.TITLE,
+            playlistSort = prefs[Keys.playlistSort]
+                ?.let { name ->
+                    com.lohe.app.data.PlaylistSort.entries.firstOrNull { it.name == name }
+                }
+                ?: com.lohe.app.data.PlaylistSort.MANUAL,
         )
     }
 
@@ -112,6 +138,15 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setAutoDownloadQueue(value: Boolean) =
         edit { it[Keys.autoDownloadQueue] = value }
+
+    suspend fun setSleepTimerMinutes(value: Int) =
+        edit { it[Keys.sleepTimerMinutes] = value.coerceIn(1, 24 * 60) }
+
+    suspend fun setPodcastSort(value: com.lohe.app.data.PodcastSort) =
+        edit { it[Keys.podcastSort] = value.name }
+
+    suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
+        edit { it[Keys.playlistSort] = value.name }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsStore.edit(block)

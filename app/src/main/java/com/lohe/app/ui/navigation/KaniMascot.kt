@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.ui.theme.ElectricBlue
-import com.lohe.app.ui.theme.ElectricCyan
+import com.lohe.app.ui.theme.ElectricBlueMid
 
 /**
  * Kani, in motion.
@@ -110,8 +110,8 @@ fun KaniMascot(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        ElectricCyan.copy(alpha = 0.13f + 0.07f * breathe),
-                        ElectricCyan.copy(alpha = 0.04f),
+                        ElectricBlueMid.copy(alpha = 0.13f + 0.07f * breathe),
+                        ElectricBlueMid.copy(alpha = 0.04f),
                         Color.Transparent,
                     ),
                     radius = radius,
@@ -191,7 +191,7 @@ fun SignalBars(
                     .height((15f * level).dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(
-                        Brush.verticalGradient(listOf(ElectricCyan, ElectricBlue)),
+                        Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue)),
                     ),
             )
         }

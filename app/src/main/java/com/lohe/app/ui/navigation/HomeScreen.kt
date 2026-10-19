@@ -71,7 +71,7 @@ import com.lohe.app.data.ShowActivity
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
-import com.lohe.app.ui.theme.ElectricCyan
+import com.lohe.app.ui.theme.ElectricBlueMid
 import com.lohe.app.ui.theme.GlassCard
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -222,7 +222,7 @@ private fun HomeTelemetryDashboard(
                                 .size(7.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Brush.linearGradient(listOf(ElectricCyan, ElectricBlue)),
+                                    Brush.linearGradient(listOf(ElectricBlueMid, ElectricBlue)),
                                 ),
                         )
                         Spacer(Modifier.width(9.dp))
@@ -231,7 +231,7 @@ private fun HomeTelemetryDashboard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.6.sp,
-                            color = if (isLight) ElectricBlue else ElectricCyan,
+                            color = if (isLight) ElectricBlue else ElectricBlueMid,
                         )
                     }
                     Text(
@@ -267,7 +267,7 @@ private fun HomeTelemetryDashboard(
                             label = "STILL TO HEAR",
                             value = formatDashboardDuration(stats.totalRemainingSeconds),
                             caption = "${(stats.totalEpisodes - stats.playedEpisodesCount).coerceAtLeast(0)} episodes waiting",
-                            accent = ElectricCyan,
+                            accent = ElectricBlueMid,
                         )
                     }
                 }
@@ -350,7 +350,7 @@ private fun HomeTelemetryDashboard(
                 value = stats.totalEpisodes.toString(),
                 sublabel = "${stats.inProgressCount} in progress",
                 progress = stats.completedEpisodesFraction,
-                accent = ElectricCyan,
+                accent = ElectricBlueMid,
                 modifier = Modifier.weight(1f),
             )
             MetricBentoTile(
@@ -359,7 +359,7 @@ private fun HomeTelemetryDashboard(
                 value = stats.downloadedCount.toString(),
                 sublabel = "${(stats.downloadedFraction * 100).roundToInt()}% offline",
                 progress = stats.downloadedFraction,
-                accent = ElectricCyan,
+                accent = ElectricBlueMid,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -375,7 +375,7 @@ private fun HomeTelemetryDashboard(
                 primaryValue = formatDashboardDuration(stats.totalRemainingSeconds),
                 caption = "Left across all files",
                 fraction = (1f - stats.listenedFraction).coerceIn(0f, 1f),
-                accent = ElectricCyan,
+                accent = ElectricBlueMid,
                 modifier = Modifier.weight(1f),
             )
             TimeDetailCard(
@@ -420,7 +420,7 @@ private fun SignalGauge(
             // Soft halo behind the whole instrument.
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(ElectricCyan.copy(alpha = 0.16f), Color.Transparent),
+                    colors = listOf(ElectricBlueMid.copy(alpha = 0.16f), Color.Transparent),
                     center = center,
                     radius = size.minDimension / 2f,
                 ),
@@ -451,7 +451,7 @@ private fun SignalGauge(
             )
             if (outerSweep > 0f) {
                 drawArc(
-                    brush = Brush.sweepGradient(listOf(ElectricBlue, ElectricCyan, ElectricBlue)),
+                    brush = Brush.sweepGradient(listOf(ElectricBlue, ElectricBlueMid, ElectricBlue)),
                     startAngle = 135f,
                     sweepAngle = outerSweep,
                     useCenter = false,
@@ -464,7 +464,7 @@ private fun SignalGauge(
                 val cx = size.width / 2f + (radius * cos(angleRad)).toFloat()
                 val cy = size.height / 2f + (radius * sin(angleRad)).toFloat()
                 drawCircle(
-                    color = ElectricCyan.copy(alpha = 0.35f),
+                    color = ElectricBlueMid.copy(alpha = 0.35f),
                     radius = strokeOuter * 0.95f,
                     center = Offset(cx, cy),
                 )
@@ -480,7 +480,7 @@ private fun SignalGauge(
             )
             if (innerSweep > 0f) {
                 drawArc(
-                    brush = Brush.sweepGradient(listOf(ElectricCyan, ElectricBlue, ElectricCyan)),
+                    brush = Brush.sweepGradient(listOf(ElectricBlueMid, ElectricBlue, ElectricBlueMid)),
                     startAngle = 135f,
                     sweepAngle = innerSweep,
                     useCenter = false,
@@ -582,12 +582,12 @@ private fun ActivityChart(
                         .clip(RoundedCornerShape(4.dp))
                         .background(
                             if (value > 0) {
-                                Brush.verticalGradient(listOf(ElectricCyan, ElectricBlue))
+                                Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue))
                             } else {
                                 val idle = if (isLight) {
                                     ElectricBlue.copy(alpha = 0.10f)
                                 } else {
-                                    ElectricCyan.copy(alpha = 0.12f)
+                                    ElectricBlueMid.copy(alpha = 0.12f)
                                 }
                                 Brush.verticalGradient(listOf(idle, idle))
                             },
@@ -637,7 +637,7 @@ private fun TopShowsChart(
                             if (isLight) {
                                 ElectricBlue.copy(alpha = 0.08f)
                             } else {
-                                ElectricCyan.copy(alpha = 0.10f)
+                                ElectricBlueMid.copy(alpha = 0.10f)
                             },
                         ),
                 ) {
@@ -646,7 +646,7 @@ private fun TopShowsChart(
                             .fillMaxWidth(show.episodeCount.toFloat() / peak)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(3.dp))
-                            .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricCyan))),
+                            .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
                     )
                 }
             }
@@ -686,12 +686,12 @@ private fun FrequencySpectrumBar(
                     .clip(RoundedCornerShape(3.dp))
                     .background(
                         if (isLit) {
-                            Brush.verticalGradient(listOf(ElectricCyan, ElectricBlue))
+                            Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue))
                         } else {
                             val idle = if (isLight) {
                                 ElectricBlue.copy(alpha = 0.18f)
                             } else {
-                                ElectricCyan.copy(alpha = 0.18f)
+                                ElectricBlueMid.copy(alpha = 0.18f)
                             }
                             Brush.verticalGradient(listOf(idle, idle))
                         },
@@ -773,7 +773,7 @@ private fun MetricBentoTile(
                         .fillMaxWidth(progress.coerceIn(0.06f, 1f))
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricCyan))),
+                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
                 )
             }
         }
@@ -844,7 +844,7 @@ private fun TimeDetailCard(
                         .fillMaxWidth(fraction.coerceIn(0.05f, 1f))
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(3.dp))
-                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricCyan))),
+                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
                 )
             }
         }

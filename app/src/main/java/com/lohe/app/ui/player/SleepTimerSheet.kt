@@ -19,6 +19,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import com.lohe.app.data.ServiceLocator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -48,6 +55,15 @@ fun SleepTimerSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
+
+    // The length the listener last chose, remembered. Most people set the
+    // same one every night, and making them find it again every time is the
+    // sort of small friction that stops a feature being used.
+    val scope = rememberCoroutineScope()
+    val store = remember { ServiceLocator.settingsStore() }
+    val savedMinutes by remember(store) {
+        store.settings.map { it.sleepTimerMinutes }
+    }.collectAsState(30)
 
     LoheSheet(
         onDismiss = onDismiss,
@@ -96,8 +112,10 @@ fun SleepTimerSheet(
 
             PresetGrid(
                 enabled = !current.stopsAtEpisodeEnd,
+                rememberedMinutes = savedMinutes,
                 onPick = {
                     onArm(SleepTimer.Mode.Duration(it))
+                    scope.launch { store.setSleepTimerMinutes(it) }
                     onDismiss()
                 },
             )
@@ -132,22 +150,39 @@ fun SleepTimerSheet(
 }
 
 @Composable
-private fun PresetGrid(enabled: Boolean, onPick: (Int) -> Unit) {
+private fun PresetGrid(
+    enabled: Boolean,
+    rememberedMinutes: Int,
+    onPick: (Int) -> Unit,
+) {
+    // The remembered length is offered even when it is not one of the
+    // presets, so a listener who used 90 minutes keeps 90 minutes.
+    val choices = (PRESET_MINUTES + rememberedMinutes).distinct().sorted()
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        PRESET_MINUTES.chunked(3).forEach { row ->
+        choices.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { minutes ->
+                    val remembered = minutes == rememberedMinutes
                     Surface(
                         onClick = { onPick(minutes) },
                         enabled = enabled,
                         shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        color = if (remembered) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
                             text = stringResource(R.string.sleep_timer_minutes, minutes),
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (remembered) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
                             modifier = Modifier.padding(vertical = 14.dp),
                             textAlign = TextAlign.Center,
                         )

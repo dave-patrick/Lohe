@@ -46,6 +46,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
@@ -94,6 +96,7 @@ import com.lohe.app.R
 import com.lohe.app.data.DOWNLOADED_ID
 import com.lohe.app.data.PLAYED_ID
 import com.lohe.app.data.QueueEntry
+import com.lohe.app.data.PlaylistSort
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
 import com.lohe.app.data.ServiceLocator
@@ -568,6 +571,8 @@ fun PlaylistsScreen(
 
     var openedPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var isGridView by rememberSaveable { mutableStateOf(true) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    val playlistSort by viewModel.playlistSort.collectAsState()
     var selectedFolder by rememberSaveable { mutableStateOf(ALL_PLAYLIST_FOLDERS) }
     var folderDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
 
@@ -577,6 +582,14 @@ fun PlaylistsScreen(
     var newPlaylistAutoDl by remember { mutableStateOf(true) }
     var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
+
+    /**
+     * Episodes picked inside a playlist.
+     *
+     * The Played list in particular is thousands of episodes long, and
+     * picking through them one at a time is not a thing anyone would do.
+     */
+    var selectedEpisodeUuids by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val availableFolders = remember(userPlaylists) {
         userPlaylists.filterNot { it.system }
@@ -589,11 +602,18 @@ fun PlaylistsScreen(
         selectedFolder = ALL_PLAYLIST_FOLDERS
     }
 
-    val visiblePlaylists = remember(userPlaylists, selectedFolder) {
-        if (selectedFolder == ALL_PLAYLIST_FOLDERS) {
+    val visiblePlaylists = remember(userPlaylists, selectedFolder, playlistSort) {
+        val filtered = if (selectedFolder == ALL_PLAYLIST_FOLDERS) {
             userPlaylists
         } else {
             userPlaylists.filter { !it.system && it.folder == selectedFolder }
+        }
+        when (playlistSort) {
+            // The listener arranged these; leave them where they put them.
+            PlaylistSort.MANUAL -> filtered
+            PlaylistSort.NAME -> filtered.sortedBy { it.name.lowercase() }
+            PlaylistSort.NEWEST -> filtered.sortedByDescending { it.id }
+            PlaylistSort.MOST_EPISODES -> filtered.sortedByDescending { it.entries.size }
         }
     }
 
@@ -749,6 +769,128 @@ fun PlaylistsScreen(
                 }
             }
 
+            if (selectedEpisodeUuids.isNotEmpty()) {
+                GlassCard(
+                    accent = ElectricBlue,
+                    contentPadding = 12.dp,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { selectedEpisodeUuids = emptySet() },
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Exit selection",
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "${selectedEpisodeUuids.size} selected",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            TextButton(
+                                onClick = {
+                                    val all = openedPlaylist.entries.map { it.episode.uuid }
+                                    selectedEpisodeUuids = if (selectedEpisodeUuids.size == all.size) {
+                                        emptySet()
+                                    } else {
+                                        all.toSet()
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Filled.SelectAll,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    if (selectedEpisodeUuids.size == openedPlaylist.entries.size) {
+                                        "Deselect All"
+                                    } else {
+                                        "Select All"
+                                    },
+                                )
+                            }
+                        }
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            AssistChip(
+                                onClick = {
+                                    val count = selectedEpisodeUuids.size
+                                    viewModel.markUnplayedBatch(selectedEpisodeUuids)
+                                    selectedEpisodeUuids = emptySet()
+                                    onShowMessage("Marked $count unlistened")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = { Text("Mark unlistened") },
+                            )
+
+                            AssistChip(
+                                onClick = {
+                                    val count = selectedEpisodeUuids.size
+                                    viewModel.markPlayedBatch(selectedEpisodeUuids)
+                                    selectedEpisodeUuids = emptySet()
+                                    onShowMessage("Marked $count listened")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = { Text("Mark listened") },
+                            )
+
+                            if (!openedPlaylist.system) {
+                                AssistChip(
+                                    onClick = {
+                                        val count = selectedEpisodeUuids.size
+                                        viewModel.removeEpisodesFromPlaylist(
+                                            openedPlaylist.id,
+                                            selectedEpisodeUuids,
+                                        )
+                                        selectedEpisodeUuids = emptySet()
+                                        onShowMessage("Removed $count from ${openedPlaylist.name}")
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.DeleteOutline,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                    label = { Text("Remove from playlist") },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (openedPlaylist.entries.isEmpty()) {
                 EmptyQueue(
                     title = "\"${openedPlaylist.name}\" is empty",
@@ -790,12 +932,13 @@ fun PlaylistsScreen(
                         key = { _, entry -> "${openedPlaylist.id}-${entry.episode.uuid}" },
                     ) { index, entry ->
                         val dragging = dragState.draggedIndex == index
+                        val isSelected = entry.episode.uuid in selectedEpisodeUuids
                         QueueRow(
                             positionNumber = index + 1,
                             entry = entry,
                             isHead = index == 0,
-                            inSelectionMode = false,
-                            isSelected = false,
+                            inSelectionMode = selectedEpisodeUuids.isNotEmpty(),
+                            isSelected = isSelected,
                             now = now,
                             dragHandle = {
                                 DragHandle(state = dragState, index = index, key = entry.episode.uuid)
@@ -816,7 +959,14 @@ fun PlaylistsScreen(
                                     }
                                 },
                             onPlay = { onPlay(entry) },
-                            onLongPress = { actionEpisode = entry },
+                            onLongPress = {
+                                val uuid = entry.episode.uuid
+                                selectedEpisodeUuids = if (uuid in selectedEpisodeUuids) {
+                                    selectedEpisodeUuids - uuid
+                                } else {
+                                    selectedEpisodeUuids + uuid
+                                }
+                            },
                             onMoveUp = if (index > 0) {
                                 {
                                     viewModel.moveEpisodeInPlaylist(
@@ -878,6 +1028,46 @@ fun PlaylistsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    Box {
+                        IconButton(
+                            onClick = { sortMenuOpen = true },
+                            modifier = Modifier.size(38.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Sort,
+                                contentDescription = "Sort playlists",
+                                tint = if (playlistSort != PlaylistSort.MANUAL) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuOpen,
+                            onDismissRequest = { sortMenuOpen = false },
+                        ) {
+                            PlaylistSort.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    leadingIcon = {
+                                        if (option == playlistSort) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        sortMenuOpen = false
+                                        viewModel.setPlaylistSort(option)
+                                    },
+                                )
+                            }
+                        }
+                    }
+
                     IconButton(
                         onClick = { isGridView = !isGridView },
                         modifier = Modifier.size(38.dp),

@@ -44,6 +44,8 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
@@ -89,6 +91,7 @@ import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.data.FeedImportState
 import com.lohe.app.data.OpmlImportState
+import com.lohe.app.data.PodcastSort
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.RefreshState
 import com.lohe.app.data.ServiceLocator
@@ -128,6 +131,8 @@ fun PodcastsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddFeed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    val podcastSort by queueViewModel.podcastSort.collectAsState()
 
     var isGridView by rememberSaveable { mutableStateOf(false) }
     var selectedFolder by rememberSaveable { mutableStateOf(ALL_FOLDERS) }
@@ -145,11 +150,28 @@ fun PodcastsScreen(
         selectedFolder = ALL_FOLDERS
     }
 
-    val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder) {
-        if (selectedFolder == ALL_FOLDERS) {
+    // Counts and freshness per show, for the two orders that need them.
+    val showStats = remember(allEpisodes) {
+        allEpisodes.groupBy { it.podcastUuid }
+            .mapValues { (_, episodes) ->
+                episodes.size to episodes.maxOf { it.published }
+            }
+    }
+
+    val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder, podcastSort, showStats) {
+        val filtered = if (selectedFolder == ALL_FOLDERS) {
             podcasts
         } else {
             podcasts.filter { podcastFolders[it.uuid] == selectedFolder }
+        }
+        when (podcastSort) {
+            PodcastSort.TITLE -> filtered.sortedBy { it.title.lowercase() }
+            PodcastSort.MOST_EPISODES -> filtered.sortedByDescending {
+                showStats[it.uuid]?.first ?: 0
+            }
+            PodcastSort.RECENT -> filtered.sortedByDescending {
+                showStats[it.uuid]?.second ?: 0L
+            }
         }
     }
 
@@ -405,6 +427,50 @@ fun PodcastsScreen(
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Spacer(Modifier.weight(1f))
+
+                    // Sort. The library is a pile, and which order it reads
+                    // best in depends on what the listener is looking for.
+                    Box {
+                        IconButton(
+                            onClick = { sortMenuOpen = true },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Sort,
+                                contentDescription = "Sort shows",
+                                tint = if (podcastSort != PodcastSort.TITLE) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuOpen,
+                            onDismissRequest = { sortMenuOpen = false },
+                        ) {
+                            PodcastSort.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    leadingIcon = {
+                                        if (option == podcastSort) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        sortMenuOpen = false
+                                        queueViewModel.setPodcastSort(option)
+                                    },
+                                )
+                            }
+                        }
+                    }
+
                     IconButton(
                         onClick = { isGridView = !isGridView },
                         modifier = Modifier.size(40.dp),

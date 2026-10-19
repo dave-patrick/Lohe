@@ -138,10 +138,12 @@
     <string name="about_version">Version %1$s</string>
     <string name="about_version_unknown">Version unavailable</string>
     <string name="about_name_heading">The name</string>
-    <string name="about_name_body">Lohe (lōhe) is a Hawaiian transitive verb: to hear, to listen to, to mind. The name marks the move from background noise to deliberate listening.</string>
+    <string name="about_name_body">Lohe (lōhe) is a Hawaiian word. It means to listen — to hear something on purpose.</string>
+    <string name="about_kani_heading">Kani</string>
+    <string name="about_kani_body">Kani is the firefly on the home screen. His name is Hawaiian for listening, too.</string>
     <string name="about_credits_heading">Credits</string>
     <string name="about_studio">An Atomic 22 Industries app.</string>
-    <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Lohe Brand System</string>
+    <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Atomic 22 Design</string>
     <string name="about_mark_description">Lohe hero mark</string>
     <string name="about_wordmark_description">Lohe</string>
     <string name="about_studio_logo_description">Atomic 22 Industries</string>

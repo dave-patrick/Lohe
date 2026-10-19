@@ -2,6 +2,7 @@ package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -148,6 +149,11 @@ fun AboutScreen(
         )
 
         AboutBlock(
+            heading = stringResource(R.string.about_kani_heading),
+            body = stringResource(R.string.about_kani_body),
+        )
+
+        AboutBlock(
             heading = stringResource(R.string.about_credits_heading),
             body = stringResource(R.string.about_studio),
         )
@@ -164,14 +170,20 @@ fun AboutScreen(
                 textAlign = TextAlign.Center,
             )
         } else {
-            Image(
-                painter = painterResource(id = R.drawable.atomic22),
-                contentDescription = stringResource(R.string.about_studio_logo_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth(0.72f)
-                    .height(64.dp),
-            )
+            // Centred rather than filling the width: the mark has a fixed
+            // shape, and a 72%-wide image hung off the left edge reads as
+            // something that failed to load.
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.atomic22),
+                    contentDescription = stringResource(R.string.about_studio_logo_description),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.height(56.dp),
+                )
+            }
         }
 
         Spacer(Modifier.height(14.dp))

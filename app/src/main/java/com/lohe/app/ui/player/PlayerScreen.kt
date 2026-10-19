@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -804,6 +805,15 @@ private fun PlaybackSpeedSheet(
                         selected = selected,
                         onClick = { onSelectSpeed(preset) },
                         label = { Text(formatSpeedLabel(preset)) },
+                        // The default selected chip is the teal
+                        // secondaryContainer, which reads as a different
+                        // colour from everything else on the sheet. The
+                        // selected speed is the accent, like every other
+                        // selection in the app.
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ElectricBlue.copy(alpha = 0.22f),
+                            selectedLabelColor = MaterialTheme.colorScheme.primary,
+                        ),
                     )
                 }
             }
