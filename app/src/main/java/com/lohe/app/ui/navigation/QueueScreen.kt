@@ -82,6 +82,7 @@ import com.lohe.app.data.PLAYED_ID
 import com.lohe.app.data.QueueEntry
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
+import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricCyan
@@ -109,6 +110,8 @@ fun QueueScreen(
     var confirmClearAll by remember { mutableStateOf(false) }
     var showAddPlaylistDialog by remember { mutableStateOf(false) }
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
+    var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
+    var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     val inSelectionMode = selectedUuids.isNotEmpty()
 
     Column(
@@ -309,10 +312,14 @@ fun QueueScreen(
                         }
                     },
                     onLongPress = {
-                        selectedUuids = if (isSelected) {
-                            selectedUuids - entry.episode.uuid
+                        if (inSelectionMode) {
+                            selectedUuids = if (isSelected) {
+                                selectedUuids - entry.episode.uuid
+                            } else {
+                                selectedUuids + entry.episode.uuid
+                            }
                         } else {
-                            selectedUuids + entry.episode.uuid
+                            actionEpisode = entry
                         }
                     },
                     onMoveUp = if (index > 0) {
@@ -339,6 +346,67 @@ fun QueueScreen(
                 )
             }
         }
+    }
+
+    actionEpisode?.let { entry ->
+        EpisodeActionSheet(
+            episode = entry.episode,
+            onDismiss = { actionEpisode = null },
+            onPlay = {
+                actionEpisode = null
+                onPlay(entry)
+            },
+            onAddToUpNext = {
+                actionEpisode = null
+                onShowMessage("Already in Up Next")
+            },
+            onTogglePlayed = {
+                actionEpisode = null
+                if (entry.episode.isPlayed) {
+                    viewModel.reopenEpisode(entry.episode.uuid)
+                    onShowMessage("Marked unlistened")
+                } else {
+                    viewModel.markPlayed(entry.episode.uuid)
+                    onShowMessage("Marked listened")
+                }
+            },
+            onToggleDownload = {
+                actionEpisode = null
+                val dm = ServiceLocator.downloadManager()
+                if (entry.episode.isDownloaded) {
+                    onShowMessage("Removed download")
+                } else {
+                    dm.start(entry.episode)
+                    onShowMessage("Downloading")
+                }
+            },
+            onAddToPlaylist = {
+                actionEpisode = null
+                addToPlaylistEpisode = entry
+            },
+            onRemoveFromPlaylist = {
+                actionEpisode = null
+                viewModel.dequeue(entry.episode.uuid)
+                onShowMessage("Removed from Up Next")
+            },
+            onDelete = {
+                actionEpisode = null
+                viewModel.deleteEpisode(entry.episode.uuid)
+                onShowMessage("Deleted ${entry.episode.title}")
+            },
+        )
+    }
+
+    addToPlaylistEpisode?.let { entry ->
+        AddToPlaylistDialog(
+            episodeUuids = listOf(entry.episode.uuid),
+            queueViewModel = viewModel,
+            onAdded = { msg ->
+                addToPlaylistEpisode = null
+                onShowMessage(msg)
+            },
+            onDismiss = { addToPlaylistEpisode = null },
+        )
     }
 
     if (showAddPlaylistDialog) {
@@ -454,6 +522,8 @@ fun PlaylistsScreen(
     var newPlaylistName by remember { mutableStateOf("") }
     var newPlaylistFolder by remember { mutableStateOf("") }
     var newPlaylistAutoDl by remember { mutableStateOf(true) }
+    var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
+    var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
 
     val availableFolders = remember(userPlaylists) {
         userPlaylists.filterNot { it.system }
@@ -657,7 +727,7 @@ fun PlaylistsScreen(
                             isSelected = false,
                             now = now,
                             onPlay = { onPlay(entry) },
-                            onLongPress = {},
+                            onLongPress = { actionEpisode = entry },
                             onMoveUp = if (index > 0) {
                                 {
                                     viewModel.moveEpisodeInPlaylist(
@@ -835,6 +905,75 @@ fun PlaylistsScreen(
                 }
             }
         }
+    }
+
+    actionEpisode?.let { entry ->
+        EpisodeActionSheet(
+            episode = entry.episode,
+            onDismiss = { actionEpisode = null },
+            onPlay = {
+                actionEpisode = null
+                onPlay(entry)
+            },
+            onAddToUpNext = {
+                actionEpisode = null
+                viewModel.enqueue(entry.episode.uuid)
+                onShowMessage("Added to Up Next")
+            },
+            onTogglePlayed = {
+                actionEpisode = null
+                if (entry.episode.isPlayed) {
+                    viewModel.reopenEpisode(entry.episode.uuid)
+                    onShowMessage("Marked unlistened")
+                } else {
+                    viewModel.markPlayed(entry.episode.uuid)
+                    onShowMessage("Marked listened")
+                }
+            },
+            onToggleDownload = {
+                actionEpisode = null
+                val dm = ServiceLocator.downloadManager()
+                if (entry.episode.isDownloaded) {
+                    onShowMessage("Removed download")
+                } else {
+                    dm.start(entry.episode)
+                    onShowMessage("Downloading")
+                }
+            },
+            onAddToPlaylist = {
+                actionEpisode = null
+                addToPlaylistEpisode = entry
+            },
+            onRemoveFromPlaylist = if (openedPlaylist != null && !openedPlaylist.system) {
+                {
+                    actionEpisode = null
+                    viewModel.removeEpisodeFromPlaylist(
+                        openedPlaylist.id,
+                        entry.episode.uuid,
+                    )
+                    onShowMessage("Removed from ${openedPlaylist.name}")
+                }
+            } else {
+                null
+            },
+            onDelete = {
+                actionEpisode = null
+                viewModel.deleteEpisode(entry.episode.uuid)
+                onShowMessage("Deleted ${entry.episode.title}")
+            },
+        )
+    }
+
+    addToPlaylistEpisode?.let { entry ->
+        AddToPlaylistDialog(
+            episodeUuids = listOf(entry.episode.uuid),
+            queueViewModel = viewModel,
+            onAdded = { msg ->
+                addToPlaylistEpisode = null
+                onShowMessage(msg)
+            },
+            onDismiss = { addToPlaylistEpisode = null },
+        )
     }
 
     folderDialogTarget?.let { target ->
@@ -1053,6 +1192,7 @@ private fun PlaylistGridCard(
                 text = playlist.name,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1145,6 +1285,7 @@ private fun PlaylistListCard(
                     text = playlist.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

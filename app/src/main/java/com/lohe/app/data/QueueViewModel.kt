@@ -363,6 +363,23 @@ class QueueViewModel(
         playlistRepository.removeEpisodeFromAll(uuid)
     }
 
+    /** Marks an episode listened, which also takes it out of the playlists. */
+    fun markPlayed(uuid: String) = viewModelScope.launch {
+        repository.markPlayed(uuid)
+        playlistRepository.removeEpisodeFromAll(uuid)
+    }
+
+    /** Undoes [markPlayed]. */
+    fun reopenEpisode(uuid: String) = viewModelScope.launch {
+        repository.reopenEpisode(uuid)
+    }
+
+    /** Soft-deletes an episode and drops it from the playlists. */
+    fun deleteEpisode(uuid: String) = viewModelScope.launch {
+        repository.deleteEpisode(uuid)
+        playlistRepository.removeEpisodeFromAll(uuid)
+    }
+
     fun createPlaylist(
         name: String,
         initialEpisodeUuids: Collection<String> = emptyList(),

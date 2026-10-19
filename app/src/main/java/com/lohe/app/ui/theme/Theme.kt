@@ -3,7 +3,9 @@ package com.lohe.app.ui.theme
 import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -43,6 +45,16 @@ fun LoheTheme(
     MaterialTheme(
         colorScheme = colors,
         typography = LoheTypography,
-        content = content,
+        content = {
+            // Material3's default LocalContentColor is Color.Black, and
+            // Scaffold with a transparent container does not replace it. Any
+            // Text that does not set an explicit colour therefore came out
+            // black on the charcoal surfaces — playlist names, for one.
+            // Setting it here fixes that everywhere at once.
+            CompositionLocalProvider(
+                LocalContentColor provides colors.onSurface,
+                content = content,
+            )
+        },
     )
 }
