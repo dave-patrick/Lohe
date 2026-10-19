@@ -161,13 +161,6 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                HomeTelemetryDashboard(
-                    stats = stats,
-                    isLight = isLight,
-                    onOpenLibrary = onOpenLibrary,
-                )
-            }
-            item {
                 KaniHero(
                     onOpenDiscover = onOpenDiscover,
                     onOpenLibrary = onOpenLibrary,
