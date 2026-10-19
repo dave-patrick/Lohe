@@ -631,7 +631,13 @@ fun PodcastsScreen(
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
                                 onClick = { onOpen() },
-                                onLongClick = {},
+                                onLongClick = {
+                                    selectedPodcastUuids = if (isSelected) {
+                                        selectedPodcastUuids - podcast.uuid
+                                    } else {
+                                        selectedPodcastUuids + podcast.uuid
+                                    }
+                                },
                                 onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
                             )
@@ -694,7 +700,13 @@ fun PodcastsScreen(
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
                                 onClick = { onOpen() },
-                                onLongClick = {},
+                                onLongClick = {
+                                    selectedPodcastUuids = if (isSelected) {
+                                        selectedPodcastUuids - podcast.uuid
+                                    } else {
+                                        selectedPodcastUuids + podcast.uuid
+                                    }
+                                },
                                 onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
                             )
