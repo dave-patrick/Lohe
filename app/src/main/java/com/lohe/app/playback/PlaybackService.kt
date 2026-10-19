@@ -10,8 +10,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import com.lohe.app.MainActivity
 import com.lohe.app.data.ServiceLocator
 import kotlinx.coroutines.CoroutineScope
@@ -31,10 +37,16 @@ import kotlinx.coroutines.withContext
  * check another tab is not a podcast player. The MediaSession gives the system
  * (and any connected UI) a handle, and lets the platform notification drive
  * playback without this class knowing about Compose.
+ *
+ * It is a [MediaLibraryService] rather than a plain session service so that
+ * Android Auto has something to browse. A session on its own is a player with
+ * no library: the car can play what the app hands it, but there is no way to
+ * choose what that is. The browse tree is in [LibraryCatalog].
  */
-class PlaybackService : MediaSessionService() {
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+class PlaybackService : MediaLibraryService() {
 
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var loudnessSessionId: Int = C.AUDIO_SESSION_ID_UNSET
@@ -60,7 +72,7 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        session = MediaSession.Builder(this, player)
+        session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(openAppIntent())
             .build()
 
@@ -70,7 +82,7 @@ class PlaybackService : MediaSessionService() {
         startProgressReporting()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Swiping the app away should not leave audio playing with no way to
@@ -100,6 +112,111 @@ class PlaybackService : MediaSessionService() {
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+    }
+
+    /**
+     * The browse tree Android Auto walks.
+     *
+     * Every method here is called by a browser — Android Auto, Car Assistant,
+     * a smartwatch, the system notification shade — and none of them may block
+     * the main thread, so the work happens off it and the answer arrives as a
+     * future.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> = future {
+            val root = catalog()?.rootItem()
+            if (root == null) {
+                LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            } else {
+                LibraryResult.ofItem(root, params)
+            }
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            val all = catalog()?.children(parentId).orEmpty()
+            val from = page * pageSize
+            val slice = if (from >= all.size) {
+                emptyList()
+            } else {
+                all.subList(from, minOf(from + pageSize, all.size))
+            }
+            LibraryResult.ofItemList(ImmutableList.copyOf(slice), params)
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = future {
+            val item = catalog()?.item(mediaId)
+                ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            LibraryResult.ofItem(item, null)
+        }
+
+        /**
+         * Turns the ids a browser sends back into playable episodes.
+         *
+         * A browser holds only what it was given — an id, a title and
+         * whatever artwork it cached — and the URI is deliberately not part of
+         * it. So the episode is looked up again here and rebuilt with the
+         * address, the show and the artwork the player needs.
+         */
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+        ): ListenableFuture<MutableList<MediaItem>> = future {
+            val catalog = catalog() ?: return@future mutableListOf()
+            val shows = catalog.showsByUuid()
+            val resolved = mediaItems.mapNotNull { item ->
+                catalog.playable(item.mediaId, shows)
+            }
+            resolved.toMutableList()
+        }
+    }
+
+    /**
+     * The catalogue, built on demand.
+     *
+     * The service can be started by the system before anything in the app has
+     * run, so the repository is resolved lazily and a failure to resolve it
+     * leaves the car with an empty library rather than a crashed service.
+     */
+    private fun catalog(): LibraryCatalog? {
+        val repository = runCatching { ServiceLocator.subscriptionRepository() }
+            .getOrNull() ?: return null
+        val playlists = runCatching { ServiceLocator.playlistRepository() }
+            .getOrNull() ?: return null
+        return LibraryCatalog(repository, playlists)
+    }
+
+    /**
+     * Runs a piece of work off the main thread and hands the answer back as
+     * a future, which is what a browse callback has to return.
+     */
+    private fun <T> future(block: suspend () -> T): ListenableFuture<T> {
+        val future = SettableFuture.create<T>()
+        scope.launch(Dispatchers.IO) {
+            try {
+                future.set(block())
+            } catch (e: Throwable) {
+                future.setException(e)
+            }
+        }
+        return future
     }
 
     /**

@@ -84,6 +84,13 @@ class SubscriptionRepository internal constructor(
 
     suspend fun dequeue(uuid: String) = episodes.dequeue(uuid)
 
+    /** A single episode, looked up by uuid. */
+    suspend fun episodeOnce(uuid: String): EpisodeEntity? = episodes.get(uuid)
+
+    /** Several episodes by uuid, in the order asked for. */
+    suspend fun episodesOnce(uuids: Collection<String>): List<EpisodeEntity> =
+        uuids.mapNotNull { episodes.get(it) }
+
     /** Moves a queued episode to the front of the queue. */
     suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
 
