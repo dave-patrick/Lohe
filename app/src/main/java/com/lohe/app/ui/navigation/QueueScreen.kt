@@ -77,6 +77,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
+import com.lohe.app.data.DOWNLOADED_ID
+import com.lohe.app.data.PLAYED_ID
 import com.lohe.app.data.QueueEntry
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
@@ -454,7 +456,11 @@ fun PlaylistsScreen(
     var newPlaylistAutoDl by remember { mutableStateOf(true) }
 
     val availableFolders = remember(userPlaylists) {
-        userPlaylists.map { it.folder }.filter { it.isNotBlank() }.distinct().sorted()
+        userPlaylists.filterNot { it.system }
+            .map { it.folder }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
     }
     if (selectedFolder != ALL_PLAYLIST_FOLDERS && selectedFolder !in availableFolders) {
         selectedFolder = ALL_PLAYLIST_FOLDERS
@@ -464,7 +470,7 @@ fun PlaylistsScreen(
         if (selectedFolder == ALL_PLAYLIST_FOLDERS) {
             userPlaylists
         } else {
-            userPlaylists.filter { it.folder == selectedFolder }
+            userPlaylists.filter { !it.system && it.folder == selectedFolder }
         }
     }
 
@@ -509,7 +515,10 @@ fun PlaylistsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = { folderDialogTarget = openedPlaylist }) {
+                IconButton(
+                    onClick = { folderDialogTarget = openedPlaylist },
+                    enabled = !openedPlaylist.system,
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Folder,
                         contentDescription = "Assign folder",
@@ -520,19 +529,21 @@ fun PlaylistsScreen(
                         },
                     )
                 }
-                IconButton(
-                    onClick = {
-                        val name = openedPlaylist.name
-                        viewModel.deletePlaylist(openedPlaylist.id)
-                        openedPlaylistId = null
-                        onShowMessage("Deleted playlist \"$name\"")
-                    },
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.DeleteOutline,
-                        contentDescription = "Delete playlist",
-                        tint = MaterialTheme.colorScheme.error,
-                    )
+                if (!openedPlaylist.system) {
+                    IconButton(
+                        onClick = {
+                            val name = openedPlaylist.name
+                            viewModel.deletePlaylist(openedPlaylist.id)
+                            openedPlaylistId = null
+                            onShowMessage("Deleted playlist \"$name\"")
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteOutline,
+                            contentDescription = "Delete playlist",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
 
@@ -541,28 +552,40 @@ fun PlaylistsScreen(
                 modifier = Modifier.padding(bottom = 12.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Auto-download playlist episodes",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Download all episodes in this playlist for offline listening",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (!openedPlaylist.system) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto-download playlist episodes",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Download all episodes in this playlist for offline listening",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = openedPlaylist.autoDownload,
+                                onCheckedChange = {
+                                    viewModel.setPlaylistAutoDownload(openedPlaylist.id, it)
+                                },
                             )
                         }
-                        Switch(
-                            checked = openedPlaylist.autoDownload,
-                            onCheckedChange = {
-                                viewModel.setPlaylistAutoDownload(openedPlaylist.id, it)
+                    } else {
+                        Text(
+                            text = when (openedPlaylist.id) {
+                                PLAYED_ID -> "Episodes you have already listened to. They leave your other playlists as you finish them."
+                                DOWNLOADED_ID -> "Episodes saved on this device for offline listening."
+                                else -> ""
                             },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
@@ -763,8 +786,8 @@ fun PlaylistsScreen(
                     itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
                         PlaylistGridCard(
                             playlist = pl,
-                            canMoveUp = index > 0,
-                            canMoveDown = index < visiblePlaylists.lastIndex,
+                            canMoveUp = !pl.system && index > 0,
+                            canMoveDown = !pl.system && index < visiblePlaylists.lastIndex,
                             onOpen = { openedPlaylistId = pl.id },
                             onPlayAll = {
                                 if (pl.entries.isNotEmpty()) {
@@ -791,8 +814,8 @@ fun PlaylistsScreen(
                     itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
                         PlaylistListCard(
                             playlist = pl,
-                            canMoveUp = index > 0,
-                            canMoveDown = index < visiblePlaylists.lastIndex,
+                            canMoveUp = !pl.system && index > 0,
+                            canMoveDown = !pl.system && index < visiblePlaylists.lastIndex,
                             onOpen = { openedPlaylistId = pl.id },
                             onPlayAll = {
                                 if (pl.entries.isNotEmpty()) {
@@ -987,7 +1010,7 @@ private fun PlaylistGridCard(
                     }
                 }
 
-                if (playlist.autoDownload) {
+                if (playlist.autoDownload && !playlist.system) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -998,6 +1021,25 @@ private fun PlaylistGridCard(
                     ) {
                         Text(
                             text = "AUTO-DL",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+
+                if (playlist.system) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = if (playlist.id == PLAYED_ID) "PLAYED" else "OFFLINE",
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
@@ -1195,7 +1237,9 @@ fun AddToPlaylistDialog(
                     }
                 }
 
-                playlists.forEach { pl ->
+                // The built-in Played and Downloaded lists are derived from the
+                // library, so there is nothing to add to them.
+                playlists.filterNot { it.system }.forEach { pl ->
                     GlassCard(
                         onClick = {
                             queueViewModel.addEpisodesToPlaylist(pl.id, episodeUuids)

@@ -28,10 +28,21 @@ data class ResolvedPlaylist(
     val entries: List<QueueEntry>,
     val folder: String = "",
     val autoDownload: Boolean = true,
+    /**
+     * True for the built-in Played and Downloaded lists.
+     *
+     * They are derived from the library rather than stored, so they cannot be
+     * renamed, reordered, deleted, or filed into a folder.
+     */
+    val system: Boolean = false,
 ) {
     val totalSeconds: Long
         get() = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
 }
+
+/** Ids of the two built-in playlists. */
+const val PLAYED_ID = "__system_played__"
+const val DOWNLOADED_ID = "__system_downloaded__"
 
 /**
  * Library-wide telemetry for the Home dashboard.
@@ -82,6 +93,29 @@ class QueueViewModel(
     private val repository: SubscriptionRepository,
     private val playlistRepository: PlaylistRepository = PlaylistRepository(),
 ) : ViewModel() {
+
+    /**
+     * Moves listened episodes out of the playlists they were added to.
+     *
+     * Driven by the library rather than by the individual "mark listened"
+     * actions, so an episode that finishes on its own during playback leaves
+     * the playlists just as a manual mark does.
+     */
+    init {
+        viewModelScope.launch {
+            repository.observeAllEpisodes().collect { episodes ->
+                val playedUuids = episodes
+                    .filter { it.isPlayed }
+                    .mapTo(mutableSetOf()) { it.uuid }
+                if (playedUuids.isEmpty()) return@collect
+                playlistRepository.playlists.value.forEach { pl ->
+                    pl.episodeUuids
+                        .filter { it in playedUuids }
+                        .forEach { playlistRepository.removeEpisode(pl.id, it) }
+                }
+            }
+        }
+    }
 
     private val podcasts: StateFlow<List<PodcastEntity>> = repository
         .observePodcasts()
@@ -246,13 +280,25 @@ class QueueViewModel(
     }
 
     fun addPlaylistToUpNext(playlistId: String) = viewModelScope.launch {
-        val pl = playlistRepository.playlists.value.firstOrNull { it.id == playlistId } ?: return@launch
-        pl.episodeUuids.forEach { repository.enqueue(it) }
-        if (_autoDownloadUpNext.value || pl.autoDownload) {
-            triggerDownloadByUuids(pl.episodeUuids)
+        // Resolved through userPlaylists so the built-in Played and Downloaded
+        // lists work the same way as the ones the user made.
+        val entries = userPlaylists.value.firstOrNull { it.id == playlistId }
+            ?.entries
+            ?: return@launch
+        val uuids = entries.map { it.episode.uuid }
+        uuids.forEach { repository.enqueue(it) }
+        if (_autoDownloadUpNext.value) {
+            triggerDownloadByUuids(uuids)
         }
     }
 
+    /**
+     * Every playlist, including the two system ones.
+     *
+     * [PLAYED_ID] and [DOWNLOADED_ID] are computed rather than stored: they
+     * are defined by the state of the library, so they cannot drift out of
+     * date the way a stored list would.
+     */
     val userPlaylists: StateFlow<List<ResolvedPlaylist>> = combine(
         playlistRepository.playlists,
         repository.observeAllEpisodes(),
@@ -260,16 +306,24 @@ class QueueViewModel(
     ) { rawPlaylists, allEpisodes, shows ->
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
-        rawPlaylists.map { pl ->
+
+        fun resolve(ep: EpisodeEntity): QueueEntry {
+            val show = showMap[ep.podcastUuid]
+            val withArt = if (ep.artworkUrl.isNullOrBlank() && !show?.artworkUrl.isNullOrBlank()) {
+                ep.copy(artworkUrl = show?.artworkUrl)
+            } else {
+                ep
+            }
+            return QueueEntry(withArt, show?.title.orEmpty())
+        }
+
+        val custom = rawPlaylists.map { pl ->
             val resolvedEntries = pl.episodeUuids.mapNotNull { epId ->
                 val ep = epMap[epId] ?: return@mapNotNull null
-                val show = showMap[ep.podcastUuid]
-                val withArt = if (ep.artworkUrl.isNullOrBlank() && !show?.artworkUrl.isNullOrBlank()) {
-                    ep.copy(artworkUrl = show?.artworkUrl)
-                } else {
-                    ep
-                }
-                QueueEntry(withArt, show?.title.orEmpty())
+                // Episodes already listened to leave the playlist and show up
+                // in Played instead, so the list only holds what is left to
+                // hear.
+                if (ep.isPlayed) null else resolve(ep)
             }
             ResolvedPlaylist(
                 id = pl.id,
@@ -279,7 +333,35 @@ class QueueViewModel(
                 autoDownload = pl.autoDownload,
             )
         }
+
+        val live = allEpisodes.filter { !it.isDeleted }
+        val played = live.filter { it.isPlayed }.map(::resolve)
+        val downloaded = live.filter { it.isDownloaded }.map(::resolve)
+
+        custom + listOf(
+            ResolvedPlaylist(
+                id = PLAYED_ID,
+                name = "Played",
+                entries = played,
+                folder = "",
+                autoDownload = false,
+                system = true,
+            ),
+            ResolvedPlaylist(
+                id = DOWNLOADED_ID,
+                name = "Downloaded",
+                entries = downloaded,
+                folder = "",
+                autoDownload = false,
+                system = true,
+            ),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Drops [uuid] from every user playlist — it has been listened to. */
+    fun onEpisodePlayed(uuid: String) {
+        playlistRepository.removeEpisodeFromAll(uuid)
+    }
 
     fun createPlaylist(
         name: String,

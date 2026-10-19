@@ -141,6 +141,28 @@ class PlaylistRepository(
         }
     }
 
+    /**
+     * Removes [episodeUuid] from every playlist.
+     *
+     * Used when an episode is marked listened: it leaves the playlists it was
+     * added to and shows up in the Played list instead.
+     */
+    fun removeEpisodeFromAll(episodeUuid: String) {
+        synchronized(lock) {
+            val current = _playlists.value
+            if (current.none { pl -> episodeUuid in pl.episodeUuids }) return
+            val next = current.map { pl ->
+                if (episodeUuid in pl.episodeUuids) {
+                    pl.copy(episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid })
+                } else {
+                    pl
+                }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
     fun moveEpisode(playlistId: String, episodeUuid: String, delta: Int) {
         synchronized(lock) {
             val next = _playlists.value.map { pl ->
