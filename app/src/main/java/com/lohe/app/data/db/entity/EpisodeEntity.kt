@@ -44,6 +44,15 @@ data class EpisodeEntity(
     /** 0 = unplayed, 1 = in progress, 2 = played. */
     val playingStatus: Int = 0,
     val playedUpToSeconds: Long = 0,
+    /**
+     * Actual time spent listening, accumulated across sessions.
+     *
+     * Separate from [playedUpToSeconds] because that field is a resume
+     * position: it is zeroed when an episode is marked played, so it cannot
+     * answer "how much did I actually listen to". Marking an episode listened
+     * without playing it must not add its full runtime to the listening total.
+     */
+    val listenedSeconds: Long = 0,
     val starred: Boolean = false,
     val isDeleted: Boolean = false,
     /**

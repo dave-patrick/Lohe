@@ -4,6 +4,7 @@ import android.content.Context
 import com.lohe.app.data.db.AppDatabase
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.ListeningHistoryEntity
 import com.lohe.app.data.fetch.CatalogSearcher
 import com.lohe.app.data.fetch.OpmlCodec
 import com.lohe.app.data.fetch.PodcastFetcher
@@ -37,6 +38,7 @@ const val CONTENT_SCHEME = "content://"
 class SubscriptionRepository internal constructor(
     private val podcasts: com.lohe.app.data.db.dao.PodcastDao,
     private val episodes: com.lohe.app.data.db.dao.EpisodeDao,
+    private val history: com.lohe.app.data.db.dao.ListeningHistoryDao,
     private val fetcher: PodcastFetcher,
     private val autoDownload: (EpisodeEntity) -> Unit = {},
 ) {
@@ -47,6 +49,14 @@ class SubscriptionRepository internal constructor(
         else podcasts.observeSearchResults(query)
 
     fun observeAllEpisodes(): Flow<List<EpisodeEntity>> = episodes.observeAll()
+
+    /**
+     * Listening time recorded for episodes that have left the library.
+     *
+     * Unsubscribing cascades the episode rows away, so this is the only place
+     * the time actually spent listening can still live.
+     */
+    fun observeListeningHistory(): Flow<List<ListeningHistoryEntity>> = history.observeAll()
 
     /** Episodes belonging to one podcast, newest first. */
     fun observeEpisodesFor(podcastUuid: String): Flow<List<EpisodeEntity>> =
@@ -147,7 +157,23 @@ class SubscriptionRepository internal constructor(
 
     suspend fun subscribe(podcast: PodcastEntity) = podcasts.upsert(podcast)
 
-    suspend fun unsubscribe(uuid: String) = podcasts.deleteByUuid(uuid)
+    suspend fun unsubscribe(uuid: String) {
+        // Archive the listening time before the rows cascade away.
+        val orphaned = episodes.byPodcastOnce(uuid)
+            .filter { it.listenedSeconds > 0 }
+            .map {
+                ListeningHistoryEntity(
+                    episodeUuid = it.uuid,
+                    listenedSeconds = it.listenedSeconds,
+                    durationSeconds = it.durationSeconds,
+                    title = it.title,
+                )
+            }
+        if (orphaned.isNotEmpty()) {
+            history.upsertAll(orphaned)
+        }
+        podcasts.deleteByUuid(uuid)
+    }
 
     /** Finds an existing subscription by feed URL — how a catalog result is matched. */
     suspend fun subscriptionForFeed(feedUrl: String): PodcastEntity? =
@@ -308,6 +334,7 @@ object ServiceLocator {
         SubscriptionRepository(
             database().podcastDao(),
             database().episodeDao(),
+            database().listeningHistoryDao(),
             podcastFetcher(),
             // Resolved lazily on first auto-download, never during construction.
             // Calling downloadManager() here instead would recurse: it builds a
@@ -324,6 +351,7 @@ object ServiceLocator {
                     .build(),
                 podcastDao = database().podcastDao(),
                 episodeDao = database().episodeDao(),
+                historyDao = database().listeningHistoryDao(),
             ).also { fetcher = it }
         }
 

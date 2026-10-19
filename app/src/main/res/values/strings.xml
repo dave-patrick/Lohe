@@ -99,6 +99,8 @@
     <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
     <string name="home_cta_discover">Find a show</string>
     <string name="home_cta_import">Import from this device</string>
+    <string name="home_kani_title">Catch the frequency.</string>
+    <string name="home_kani_body">Kani has been counting your listening. Here is where it stands.</string>
 
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>

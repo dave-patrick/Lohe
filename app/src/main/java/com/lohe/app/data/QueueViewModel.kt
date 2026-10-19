@@ -122,7 +122,10 @@ class QueueViewModel(
     val dashboardStats: StateFlow<HomeDashboardStats> = combine(
         podcasts,
         repository.observeAllEpisodes(),
-    ) { shows, allEpisodes ->
+        repository.observeListeningHistory(),
+    ) { shows, allEpisodes, history ->
+        val activeEpisodes = allEpisodes.filter { !it.isDeleted }
+        val liveUuids = allEpisodes.mapTo(mutableSetOf()) { it.uuid }
         var totalRemaining = 0L
         var totalPlayed = 0L
         var totalDuration = 0L
@@ -146,7 +149,10 @@ class QueueViewModel(
             // episodes count too.
             if (!ep.isDeleted || ep.isPlayed) {
                 val dur = (ep.durationSeconds?.toLong() ?: 0L).coerceAtLeast(ep.playedUpToSeconds)
-                val played = if (ep.isPlayed) dur else ep.playedUpToSeconds.coerceIn(0L, dur)
+                // Actual listening time, not the full runtime: marking an
+                // episode listened without playing it must not add its whole
+                // duration to the total.
+                val played = ep.listenedSeconds.coerceIn(0L, dur)
                 val rem = if (ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
 
                 totalDuration += dur
@@ -155,9 +161,18 @@ class QueueViewModel(
             }
         }
 
+        // Episodes whose podcast was removed keep their listening time in the
+        // history table, so the totals survive unsubscribing.
+        for (entry in history) {
+            if (entry.episodeUuid in liveUuids) continue
+            val dur = (entry.durationSeconds?.toLong() ?: 0L)
+            totalDuration += dur
+            totalPlayed += entry.listenedSeconds.coerceIn(0L, dur.coerceAtLeast(entry.listenedSeconds))
+        }
+
         HomeDashboardStats(
             subscriptionCount = shows.size,
-            totalEpisodes = allEpisodes.count { !it.isDeleted || it.isPlayed },
+            totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
             inProgressCount = inProgressCount,

@@ -350,8 +350,8 @@ private fun HomeTelemetryDashboard(
 
                         TelemetryTimeBlock(
                             label = "TOTAL TIME PLAYING ALTOGETHER",
-                            value = formatDashboardDuration(stats.totalDurationSeconds),
-                            subtitle = "${formatDashboardDuration(stats.totalPlayedSeconds)} listened so far",
+                            value = formatDashboardDuration(stats.totalPlayedSeconds),
+                            subtitle = "of ${formatDashboardDuration(stats.totalDurationSeconds)} in your library",
                             accent = ElectricBlue,
                         )
                     }
@@ -771,14 +771,14 @@ private fun KaniHero(
             )
             Spacer(Modifier.size(12.dp))
             Text(
-                text = stringResource(R.string.home_empty_title),
+                text = stringResource(R.string.home_kani_title),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                text = stringResource(R.string.home_empty_body),
+                text = stringResource(R.string.home_kani_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

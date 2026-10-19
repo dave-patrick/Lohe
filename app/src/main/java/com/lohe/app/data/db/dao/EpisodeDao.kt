@@ -134,12 +134,17 @@ interface EpisodeDao {
      * The `playingStatus < 2` guard matters: a finished episode must never be
      * dragged back to in-progress by a stray write from a player that is still
      * winding down.
+     *
+     * `listenedSeconds` accumulates only the forward progress made since the
+     * last save, so seeking ahead does not inflate the listening total and
+     * re-listening to a section counts again.
      */
     @Query(
         """
         UPDATE episodes
         SET playedUpToSeconds = :position,
             playingStatus = 1,
+            listenedSeconds = listenedSeconds + MAX(0, :position - playedUpToSeconds),
             durationSeconds = CASE
                 WHEN durationSeconds IS NULL OR durationSeconds = 0 THEN :duration
                 ELSE durationSeconds
@@ -149,7 +154,12 @@ interface EpisodeDao {
     )
     suspend fun saveProgress(uuid: String, position: Long, duration: Long)
 
-    /** Finishing also clears the resume point, so a replay starts from zero. */
+    /**
+     * Finishing also clears the resume point, so a replay starts from zero.
+     *
+     * `listenedSeconds` is deliberately left alone: it records what was
+     * actually heard, which is not the same as where to resume from.
+     */
     @Query("UPDATE episodes SET playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
     suspend fun markPlayedAndClearProgress(uuid: String)
 

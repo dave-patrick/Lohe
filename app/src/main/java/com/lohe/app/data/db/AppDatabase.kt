@@ -7,8 +7,10 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lohe.app.data.db.dao.EpisodeDao
+import com.lohe.app.data.db.dao.ListeningHistoryDao
 import com.lohe.app.data.db.dao.PodcastDao
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.ListeningHistoryEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 
 /**
@@ -19,14 +21,19 @@ import com.lohe.app.data.db.entity.PodcastEntity
  *   a user's entire library on upgrade, which is data loss, not a convenience.
  */
 @Database(
-    entities = [PodcastEntity::class, EpisodeEntity::class],
-    version = 5,
+    entities = [
+        PodcastEntity::class,
+        EpisodeEntity::class,
+        ListeningHistoryEntity::class,
+    ],
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters()
 abstract class AppDatabase : RoomDatabase() {
     abstract fun podcastDao(): PodcastDao
     abstract fun episodeDao(): EpisodeDao
+    abstract fun listeningHistoryDao(): ListeningHistoryDao
 
     companion object {
         @Volatile
@@ -82,6 +89,54 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * Actual listening time, tracked separately from the resume position.
+         *
+         * Seeded from `playedUpToSeconds` so a user who has been listening
+         * keeps their history: for an episode already played, the position was
+         * cleared to zero when it was marked played, so there is nothing left
+         * to carry over and the total starts from what the app knows today.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE episodes ADD COLUMN listenedSeconds INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL(
+                    "UPDATE episodes SET listenedSeconds = playedUpToSeconds " +
+                        "WHERE playingStatus = 1 AND playedUpToSeconds > 0",
+                )
+            }
+        }
+
+        /**
+         * Listening history for episodes whose podcast has been removed.
+         *
+         * Unsubscribing deletes the podcast row and the episode foreign key
+         * cascades from there, so without this table the accumulated listening
+         * time would be destroyed along with the show. Seeded from the
+         * episodes that still carry a listened time so totals do not drop on
+         * upgrade.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS listening_history (" +
+                        "episodeUuid TEXT NOT NULL, " +
+                        "listenedSeconds INTEGER NOT NULL, " +
+                        "durationSeconds INTEGER, " +
+                        "title TEXT, " +
+                        "PRIMARY KEY(episodeUuid))",
+                )
+                db.execSQL(
+                    "INSERT OR REPLACE INTO listening_history " +
+                        "(episodeUuid, listenedSeconds, durationSeconds, title) " +
+                        "SELECT uuid, listenedSeconds, durationSeconds, title " +
+                        "FROM episodes WHERE listenedSeconds > 0",
+                )
+            }
+        }
+
+        /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
          * throws on upgrade and the app dies on first launch.
@@ -117,6 +172,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_1_4,
                         MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
                     )
                     .build()
                     .also { instance = it }

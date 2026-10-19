@@ -1,10 +1,14 @@
 package com.lohe.app.data.fetch
 
 import com.lohe.app.data.db.dao.EpisodeDao
+import com.lohe.app.data.db.dao.ListeningHistoryDao
 import com.lohe.app.data.db.dao.PodcastDao
+import com.lohe.app.data.db.entity.ListeningHistoryEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,6 +23,19 @@ interface PodcastFetcher {
 }
 
 /**
+ * Stand-in used when no history store is supplied, so the fetcher stays
+ * constructible in unit tests that do not care about archived history.
+ */
+private object NoOpListeningHistoryDao : ListeningHistoryDao {
+    override fun observeAll(): Flow<List<ListeningHistoryEntity>> = flowOf(emptyList())
+    override suspend fun allOnce(): List<ListeningHistoryEntity> = emptyList()
+    override suspend fun get(uuid: String): ListeningHistoryEntity? = null
+    override suspend fun upsertAll(entries: List<ListeningHistoryEntity>) = Unit
+    override suspend fun delete(uuid: String) = Unit
+    override suspend fun clear() = Unit
+}
+
+/**
  * Network + persistence around a [FeedParser].
  *
  * All parsing lives in [FeedParser] so it stays unit-testable; this class only
@@ -28,6 +45,7 @@ class RssPodcastFetcher(
     private val client: OkHttpClient = OkHttpClient(),
     private val podcastDao: PodcastDao,
     private val episodeDao: EpisodeDao,
+    private val historyDao: ListeningHistoryDao = NoOpListeningHistoryDao,
     private val parser: FeedParser = FeedParser(),
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : PodcastFetcher {
@@ -47,10 +65,17 @@ class RssPodcastFetcher(
             val existing = episodeDao.byPodcastOnce(parsed.podcast.uuid)
                 .associateBy { it.uuid }
             val mergedEpisodes = parsed.episodes.map { ep ->
-                existing[ep.uuid]?.let { old ->
-                    ep.copy(
+                val old = existing[ep.uuid]
+                // A show that was re-subscribed brings back episodes whose
+                // listening time was archived when it was removed. Fold the
+                // archived time back in so it is not counted twice.
+                val archived = historyDao.get(ep.uuid)
+                val restored = when {
+                    archived != null -> ep.copy(listenedSeconds = archived.listenedSeconds)
+                    old != null -> ep.copy(
                         playingStatus = old.playingStatus,
                         playedUpToSeconds = old.playedUpToSeconds,
+                        listenedSeconds = old.listenedSeconds,
                         starred = old.starred,
                         queuePosition = old.queuePosition,
                         lastPlayedAt = old.lastPlayedAt,
@@ -58,7 +83,10 @@ class RssPodcastFetcher(
                         downloadState = old.downloadState,
                         isDeleted = old.isDeleted,
                     )
-                } ?: ep
+                    else -> ep
+                }
+                if (archived != null) historyDao.delete(ep.uuid)
+                restored
             }
             episodeDao.upsertAll(mergedEpisodes)
             parsed.podcast

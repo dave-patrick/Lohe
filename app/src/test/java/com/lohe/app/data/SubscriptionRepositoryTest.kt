@@ -199,7 +199,27 @@ class SubscriptionRepositoryTest {
         podcasts: FakePodcastDao = FakePodcastDao(),
         episodes: FakeEpisodeDao = FakeEpisodeDao(),
         autoDownload: (EpisodeEntity) -> Unit = {},
-    ) = SubscriptionRepository(podcasts, episodes, fetcher, autoDownload)
+    ) = SubscriptionRepository(podcasts, episodes, FakeHistoryDao(), fetcher, autoDownload)
+
+    /** In-memory stand-in for the archived listening history store. */
+    private class FakeHistoryDao : com.lohe.app.data.db.dao.ListeningHistoryDao {
+        private val rows = mutableMapOf<String, com.lohe.app.data.db.entity.ListeningHistoryEntity>()
+        override fun observeAll(): kotlinx.coroutines.flow.Flow<
+            List<com.lohe.app.data.db.entity.ListeningHistoryEntity>,
+            > = kotlinx.coroutines.flow.flowOf(rows.values.toList())
+        override suspend fun allOnce(): List<com.lohe.app.data.db.entity.ListeningHistoryEntity> =
+            rows.values.toList()
+        override suspend fun get(uuid: String) = rows[uuid]
+        override suspend fun upsertAll(
+            entries: List<com.lohe.app.data.db.entity.ListeningHistoryEntity>,
+        ) {
+            entries.forEach { rows[it.episodeUuid] = it }
+        }
+        override suspend fun delete(uuid: String) {
+            rows.remove(uuid)
+        }
+        override suspend fun clear() = rows.clear()
+    }
 
     private fun show(title: String, feedUrl: String) = PodcastEntity(
         uuid = title,
