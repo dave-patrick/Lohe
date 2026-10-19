@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -91,13 +92,6 @@ fun NowPlayingBar(
             )
             .clickable(onClick = onOpenPlayer),
     ) {
-        LinearProgressIndicator(
-            progress = { shownProgress.coerceIn(0f, 1f) },
-            color = ElectricBlue,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -184,5 +178,17 @@ fun NowPlayingBar(
                 )
             }
         }
+
+        // The progress line lives along the bottom edge of the bar. At the top
+        // it was clipped by the rounded corners and read as a stray blue mark
+        // in the corner rather than as a progress bar.
+        LinearProgressIndicator(
+            progress = { shownProgress.coerceIn(0f, 1f) },
+            color = ElectricBlue,
+            trackColor = Color.Transparent,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp),
+        )
     }
 }
