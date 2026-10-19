@@ -203,7 +203,9 @@ class PlaybackService : MediaSessionService() {
                     .getOrDefault(0L)
                 if (seconds <= 0L) return@launch
 
-                val durationMs = player.duration.takeIf { it > 0L } ?: 0L
+                val durationMs = withContext(Dispatchers.Main) {
+                    player.duration.takeIf { it > 0L } ?: 0L
+                }
                 val intoTail = durationMs > 0L &&
                     durationMs / 1_000L - seconds < PLAYED_TAIL_SECONDS
                 if (intoTail) return@launch
