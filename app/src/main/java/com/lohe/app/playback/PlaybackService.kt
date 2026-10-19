@@ -196,6 +196,10 @@ class PlaybackService : MediaSessionService() {
             if (resumedForMediaId == mediaId) return
             resumedForMediaId = mediaId
 
+            // player.duration must be read on the main thread (ExoPlayer requirement).
+            // resumeOnce() is called from onPlaybackStateChanged which runs on Main.
+            val durationMs = player.duration.takeIf { it > 0L } ?: 0L
+
             scope.launch(Dispatchers.IO) {
                 val repository = runCatching { ServiceLocator.subscriptionRepository() }
                     .getOrNull() ?: return@launch
@@ -203,9 +207,6 @@ class PlaybackService : MediaSessionService() {
                     .getOrDefault(0L)
                 if (seconds <= 0L) return@launch
 
-                val durationMs = withContext(Dispatchers.Main) {
-                    player.duration.takeIf { it > 0L } ?: 0L
-                }
                 val intoTail = durationMs > 0L &&
                     durationMs / 1_000L - seconds < PLAYED_TAIL_SECONDS
                 if (intoTail) return@launch
