@@ -70,6 +70,29 @@ class DownloadManager(
         downloadsBlocking().forEach { delete(it) }
     }
 
+    /**
+     * Forgets downloads whose file has gone missing.
+     *
+     * A download can disappear without the app being told: the user clears the
+     * app's storage, a restore brings back a database whose files did not come
+     * with it, or the system reclaims the space. The row keeps claiming the
+     * episode is available offline, the "Downloaded" list keeps showing it,
+     * and the storage screen keeps counting bytes that are not there.
+     *
+     * Returns how many rows were repaired.
+     */
+    suspend fun repairMissingDownloads(): Int = withContext(io) {
+        var repaired = 0
+        downloadsBlocking().forEach { episode ->
+            val path = episode.localPath
+            if (path.isNullOrBlank() || !File(path).exists()) {
+                repository.clearDownload(episode.uuid)
+                repaired++
+            }
+        }
+        repaired
+    }
+
     private suspend fun downloadsBlocking(): List<EpisodeEntity> =
         repository.observeDownloads().first()
 

@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.io.File
 
 /**
  * An episode belonging to a podcast. Only the subset needed to drive the UI
@@ -85,9 +86,20 @@ data class EpisodeEntity(
      * A downloaded copy is preferred: it starts immediately and does not depend
      * on the network. Falls back to the remote URL, which is also what makes a
      * partially-written file dangerous to use — only a committed path lands here.
+     *
+     * The local copy is only used if it is still there. Downloads can vanish
+     * without the app being told — the user clears the app's storage, a
+     * restore brings back a database whose files did not come with it — and
+     * handing the player a path that no longer resolves turns a missing file
+     * into an episode that will not play at all. Streaming is a much better
+     * failure than silence.
      */
     val playbackUri: String
-        get() = if (isDownloaded) localPath!! else audioUrl
+        get() {
+            val local = localPath
+            if (isDownloaded && !local.isNullOrBlank() && File(local).exists()) return local
+            return audioUrl
+        }
 
     /** Fraction listened, or 0 when the duration is unknown. */
     val completionFraction: Float

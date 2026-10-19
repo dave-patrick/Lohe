@@ -44,6 +44,15 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(persisted) {
                 appearance = persisted
             }
+
+            // A download can go missing without the app being told — cleared
+            // storage, a restore that brought back the database but not the
+            // files. Left alone, the row still claims the episode is available
+            // offline and the player tries to open a path that is not there.
+            LaunchedEffect(Unit) {
+                runCatching { ServiceLocator.downloadManager().repairMissingDownloads() }
+            }
+
             LoheTheme(appearance = appearance) {
                 if (showSplash) {
                     SplashScreen(onFinished = { showSplash = false })
