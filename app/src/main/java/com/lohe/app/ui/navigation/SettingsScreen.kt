@@ -156,6 +156,17 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(8.dp))
 
+        SettingsSection("Downloads") {
+            ToggleRow(
+                label = "Auto-download Up Next",
+                hint = "Download episodes as they are added to your queue, so they are ready offline.",
+                checked = settings.autoDownloadQueue,
+                onChange = { scope.launch { settingsStore.setAutoDownloadQueue(it) } },
+            )
+        }
+
+        Spacer(Modifier.size(8.dp))
+
         SettingsSection(stringResource(R.string.about_title)) {
             Row(
                 modifier = Modifier

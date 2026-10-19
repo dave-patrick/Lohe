@@ -25,6 +25,13 @@ data class PlaybackSettings(
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
     val markPlayedAtEnd: Boolean = true,
+    /**
+     * Whether episodes put in Up Next are downloaded as they are added.
+     *
+     * A choice about data, not about the queue, so it lives here rather than
+     * as a chip on the queue's own header.
+     */
+    val autoDownloadQueue: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -53,6 +60,7 @@ class SettingsStore(private val context: Context) {
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
         val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
+        val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
     }
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
@@ -71,6 +79,7 @@ class SettingsStore(private val context: Context) {
             skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
                 .coerceIn(5, 120),
             markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
+            autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
         )
     }
 
@@ -100,6 +109,9 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setMarkPlayedAtEnd(value: Boolean) =
         edit { it[Keys.markPlayedAtEnd] = value }
+
+    suspend fun setAutoDownloadQueue(value: Boolean) =
+        edit { it[Keys.autoDownloadQueue] = value }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsStore.edit(block)
