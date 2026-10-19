@@ -101,6 +101,8 @@
     <string name="home_cta_import">Import from this device</string>
     <string name="home_kani_title">Catch the frequency.</string>
     <string name="home_kani_body">Kani has been counting your listening. Here is where it stands.</string>
+    <string name="home_kani_in_progress">%1$d episode in progress. Pick up where you left off.</string>
+    <string name="home_kani_played">%1$d episodes listened to. Kani is impressed.</string>
 
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>

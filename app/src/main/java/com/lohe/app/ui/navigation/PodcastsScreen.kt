@@ -98,6 +98,7 @@ import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.GlassRow
+import com.lohe.app.ui.theme.LoheDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -736,28 +737,27 @@ fun PodcastsScreen(
     }
 
     confirmUnsubscribe?.let { target ->
-        AlertDialog(
-            onDismissRequest = { confirmUnsubscribe = null },
-            title = { Text("Remove \"${target.title}\"?") },
-            text = { Text("Unsubscribes from this podcast and removes its episode list from your library.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.unsubscribe(target.uuid)
-                        confirmUnsubscribe = null
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Removed ${target.title}")
-                        }
-                    },
-                ) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
+        LoheDialog(
+            onDismiss = { confirmUnsubscribe = null },
+            title = "Remove \"${target.title}\"?",
+            icon = Icons.Filled.DeleteOutline,
+            destructive = true,
+            body = {
+                Text(
+                    text = "Unsubscribes from this podcast and removes its episode list from your library.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmLabel = "Remove",
+            onConfirm = {
+                viewModel.unsubscribe(target.uuid)
+                confirmUnsubscribe = null
+                scope.launch {
+                    snackbarHostState.showSnackbar("Removed ${target.title}")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { confirmUnsubscribe = null }) {
-                    Text(stringResource(R.string.no))
-                }
-            },
+            dismissLabel = stringResource(R.string.no),
         )
     }
 
@@ -786,10 +786,11 @@ internal fun FolderAssignDialog(
 ) {
     var folderText by remember(currentFolder) { mutableStateOf(currentFolder) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
+    LoheDialog(
+        onDismiss = onDismiss,
+        title = title,
+        icon = Icons.Filled.Folder,
+        body = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = folderText,
@@ -815,16 +816,9 @@ internal fun FolderAssignDialog(
                 }
             }
         },
-        confirmButton = {
-            Button(onClick = { onSave(folderText.trim()) }) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
+        confirmLabel = "Save",
+        onConfirm = { onSave(folderText.trim()) },
+        dismissLabel = "Cancel",
     )
 }
 
@@ -836,10 +830,11 @@ private fun AddFeedDialog(
 ) {
     var url by rememberSaveable { mutableStateOf("") }
 
-    AlertDialog(
-        onDismissRequest = { if (!loading) onDismiss() },
-        title = { Text(stringResource(R.string.podcasts_add_feed)) },
-        text = {
+    LoheDialog(
+        onDismiss = { if (!loading) onDismiss() },
+        title = stringResource(R.string.podcasts_add_feed),
+        icon = Icons.Filled.RssFeed,
+        body = {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
@@ -850,23 +845,12 @@ private fun AddFeedDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = {
-            Button(
-                onClick = { onSubmit(url) },
-                enabled = url.isNotBlank() && !loading,
-            ) {
-                Text(
-                    text = stringResource(
-                        if (loading) R.string.podcasts_fetching else R.string.podcasts_add,
-                    ),
-                )
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss, enabled = !loading) {
-                Text(stringResource(R.string.no))
-            }
-        },
+        confirmLabel = stringResource(
+            if (loading) R.string.podcasts_fetching else R.string.podcasts_add,
+        ),
+        onConfirm = { onSubmit(url) },
+        confirmEnabled = url.isNotBlank() && !loading,
+        dismissLabel = stringResource(R.string.no),
     )
 }
 

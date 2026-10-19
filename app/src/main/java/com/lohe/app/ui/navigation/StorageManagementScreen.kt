@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Warning
+import com.lohe.app.ui.theme.LoheDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -258,16 +260,21 @@ private fun ConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(hint) },
-        confirmButton = {
-            Button(onClick = onConfirm) { Text(stringResource(R.string.yes)) }
+    LoheDialog(
+        onDismiss = onDismiss,
+        title = title,
+        icon = Icons.Filled.Warning,
+        destructive = true,
+        body = {
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
-        dismissButton = {
-            Button(onClick = onDismiss) { Text(stringResource(R.string.no)) }
-        },
+        confirmLabel = stringResource(R.string.yes),
+        onConfirm = onConfirm,
+        dismissLabel = stringResource(R.string.no),
     )
 }
 

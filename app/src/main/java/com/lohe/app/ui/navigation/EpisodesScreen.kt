@@ -77,6 +77,7 @@ import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.ui.player.EpisodeNotesSheet
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
+import com.lohe.app.ui.theme.LoheDialog
 import com.lohe.app.data.ServiceLocator
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -499,78 +500,49 @@ fun EpisodesScreen(
     }
 
     confirmRemoveDownloads?.let { (uuids, allPlayed) ->
-        AlertDialog(
-            onDismissRequest = { confirmRemoveDownloads = null },
-            title = {
-                Text(if (allPlayed) "Mark all unplayed?" else "Mark all listened?")
-            },
-            text = {
+        LoheDialog(
+            onDismiss = { confirmRemoveDownloads = null },
+            title = if (allPlayed) "Mark all unplayed?" else "Mark all listened?",
+            icon = if (allPlayed) Icons.Outlined.RadioButtonUnchecked else Icons.Filled.CheckCircle,
+            body = {
                 Text(
-                    if (allPlayed) {
-                        "Remove downloaded files for all ${
-                            uuids.size
-                        } episodes?"
+                    text = if (allPlayed) {
+                        "Remove downloaded files for all ${uuids.size} episodes?"
                     } else {
-                        "Remove downloaded files for all ${
-                            uuids.size
-                        } episodes?"
+                        "Remove downloaded files for all ${uuids.size} episodes?"
                     },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (allPlayed) {
-                            viewModel.markUnplayedBatch(uuids)
-                        } else {
-                            viewModel.markPlayedBatch(uuids)
-                        }
-                        // Remove downloads for all selected episodes
-                        val dm = ServiceLocator.downloadManager()
-                        scope.launch {
-                            uuids.forEach { uuid ->
-                                val ep = episodes.firstOrNull { it.uuid == uuid }
-                                if (ep?.isDownloaded == true) {
-                                    dm.delete(ep)
-                                }
-                            }
-                        }
-                        onShowMessage(
-                            if (allPlayed) {
-                                "Marked ${uuids.size} unplayed"
-                            } else {
-                                "Marked ${uuids.size} listened"
-                            },
-                        )
-                        confirmRemoveDownloads = null
-                        selectedUuids = emptySet()
-                    },
-                ) {
-                    Text("Yes")
+            confirmLabel = "Yes",
+            onConfirm = {
+                if (allPlayed) {
+                    viewModel.markUnplayedBatch(uuids)
+                } else {
+                    viewModel.markPlayedBatch(uuids)
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        if (allPlayed) {
-                            viewModel.markUnplayedBatch(uuids)
-                        } else {
-                            viewModel.markPlayedBatch(uuids)
+                // Remove downloads for all selected episodes
+                val dm = ServiceLocator.downloadManager()
+                scope.launch {
+                    uuids.forEach { uuid ->
+                        val ep = episodes.firstOrNull { it.uuid == uuid }
+                        if (ep?.isDownloaded == true) {
+                            dm.delete(ep)
                         }
-                        onShowMessage(
-                            if (allPlayed) {
-                                "Marked ${uuids.size} unplayed"
-                            } else {
-                                "Marked ${uuids.size} listened"
-                            },
-                        )
-                        confirmRemoveDownloads = null
-                        selectedUuids = emptySet()
-                    },
-                ) {
-                    Text("No")
+                    }
                 }
+                onShowMessage(
+                    if (allPlayed) {
+                        "Marked ${uuids.size} unplayed"
+                    } else {
+                        "Marked ${uuids.size} listened"
+                    },
+                )
+                confirmRemoveDownloads = null
+                selectedUuids = emptySet()
             },
+            dismissLabel = "No",
         )
     }
 }

@@ -75,6 +75,7 @@ import com.lohe.app.playback.rememberTransportState
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricCyan
+import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.ui.theme.LoheTheme
 import com.lohe.app.ui.theme.artworkBleed
 import com.lohe.app.ui.theme.glassPanel
@@ -727,11 +728,9 @@ private fun PlaybackSpeedSheet(
     onToggleSkipSilence: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    LoheSheet(onDismiss = onDismiss) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(

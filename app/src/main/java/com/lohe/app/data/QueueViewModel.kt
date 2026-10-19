@@ -44,6 +44,12 @@ data class ResolvedPlaylist(
 const val PLAYED_ID = "__system_played__"
 const val DOWNLOADED_ID = "__system_downloaded__"
 
+/** How many days the Home activity chart covers. */
+private const val ACTIVITY_DAYS = 14
+
+/** How many shows the Home "top shows" chart lists. */
+private const val TOP_SHOWS_COUNT = 4
+
 /**
  * Library-wide telemetry for the Home dashboard.
  */
@@ -59,6 +65,20 @@ data class HomeDashboardStats(
     val totalPlayedSeconds: Long = 0L,
     /** Combined duration of all files altogether, in seconds. */
     val totalDurationSeconds: Long = 0L,
+    /**
+     * Minutes listened per day, oldest first.
+     *
+     * Drives the activity chart on the Home dashboard. Empty when nothing has
+     * been played yet.
+     */
+    val dailyActivityMinutes: List<Int> = emptyList(),
+    /**
+     * The shows with the most episodes, as (title, episode count).
+     *
+     * The library's shape is the one thing a count cannot convey, so it is
+     * worth showing as a ranked bar chart.
+     */
+    val topShows: List<ShowActivity> = emptyList(),
 ) {
     val listenedFraction: Float
         get() = if (totalDurationSeconds > 0L) {
@@ -81,6 +101,12 @@ data class HomeDashboardStats(
             0f
         }
 }
+
+/** How many episodes of a show are in the library. */
+data class ShowActivity(
+    val title: String,
+    val episodeCount: Int,
+)
 
 /**
  * Backs the queue and the home screen's "continue listening".
@@ -213,8 +239,60 @@ class QueueViewModel(
             totalRemainingSeconds = totalRemaining,
             totalPlayedSeconds = totalPlayed,
             totalDurationSeconds = totalDuration,
+            dailyActivityMinutes = dailyActivityMinutes(activeEpisodes),
+            topShows = topShows(activeEpisodes, shows),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
+
+    /**
+     * Minutes listened per day for the last [ACTIVITY_DAYS] days, oldest first.
+     *
+     * Bucketed by the local calendar day an episode was last played on, so
+     * the chart answers "when do I actually listen" rather than repeating the
+     * same total every day.
+     */
+    private fun dailyActivityMinutes(episodes: List<EpisodeEntity>): List<Int> {
+        if (episodes.isEmpty()) return emptyList()
+
+        val now = System.currentTimeMillis()
+        val dayMs = 86_400_000L
+        val startOfToday = now - (now % dayMs)
+        val buckets = IntArray(ACTIVITY_DAYS)
+
+        episodes.forEach { ep ->
+            if (!ep.isPlayed && ep.listenedSeconds <= 0L) return@forEach
+            val playedAt = ep.lastPlayedAt ?: return@forEach
+            val dayIndex = ((startOfToday - playedAt) / dayMs).toInt()
+            if (dayIndex !in 0 until ACTIVITY_DAYS) return@forEach
+            val minutes = (ep.listenedSeconds / 60L).toInt()
+            buckets[ACTIVITY_DAYS - 1 - dayIndex] += minutes
+        }
+
+        return buckets.toList()
+    }
+
+    /**
+     * The shows with the most episodes, richest first.
+     *
+     * A count cannot convey the shape of a library, so the dashboard shows
+     * the shape instead of another number.
+     */
+    private fun topShows(
+        episodes: List<EpisodeEntity>,
+        shows: List<PodcastEntity>,
+    ): List<ShowActivity> {
+        val titles = shows.associate { it.uuid to it.title }
+        val counts = mutableMapOf<String, Int>()
+        episodes.forEach { ep ->
+            if (ep.isDeleted) return@forEach
+            val title = titles[ep.podcastUuid] ?: return@forEach
+            counts[title] = (counts[title] ?: 0) + 1
+        }
+        return counts.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(TOP_SHOWS_COUNT)
+            .map { ShowActivity(it.key, it.value) }
+    }
 
     private val _autoDownloadUpNext = MutableStateFlow(true)
     val autoDownloadUpNext: StateFlow<Boolean> = _autoDownloadUpNext.asStateFlow()

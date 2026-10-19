@@ -87,6 +87,7 @@ import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.GlassCard
+import com.lohe.app.ui.theme.LoheDialog
 
 private const val ALL_PLAYLIST_FOLDERS = "__ALL__"
 
@@ -412,10 +413,12 @@ fun QueueScreen(
     }
 
     if (showAddPlaylistDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddPlaylistDialog = false },
-            title = { Text("Add Playlist to Up Next") },
-            text = {
+        LoheDialog(
+            onDismiss = { showAddPlaylistDialog = false },
+            title = "Add Playlist to Up Next",
+            icon = Icons.AutoMirrored.Filled.QueueMusic,
+            dismissLabel = "Close",
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     userPlaylists.forEach { pl ->
                         GlassCard(
@@ -446,55 +449,51 @@ fun QueueScreen(
                     }
                 }
             },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showAddPlaylistDialog = false }) {
-                    Text("Close")
-                }
-            },
         )
     }
 
     if (confirmClearAll) {
-        AlertDialog(
-            onDismissRequest = { confirmClearAll = false },
-            title = { Text("Clear Up Next?") },
-            text = { Text("Removes all episodes from your Up Next queue.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearAllQueue()
-                        confirmClearAll = false
-                        onShowMessage("Cleared Up Next queue")
-                    },
-                ) { Text("Clear All") }
+        LoheDialog(
+            onDismiss = { confirmClearAll = false },
+            title = "Clear Up Next?",
+            icon = Icons.Filled.DeleteSweep,
+            destructive = true,
+            body = {
+                Text(
+                    text = "Removes all episodes from your Up Next queue.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { confirmClearAll = false }) {
-                    Text(stringResource(R.string.no))
-                }
+            confirmLabel = "Clear All",
+            onConfirm = {
+                viewModel.clearAllQueue()
+                confirmClearAll = false
+                onShowMessage("Cleared Up Next queue")
             },
+            dismissLabel = stringResource(R.string.no),
         )
     }
 
     confirmClearFrom?.let { uuid ->
-        AlertDialog(
-            onDismissRequest = { confirmClearFrom = null },
-            title = { Text(stringResource(R.string.queue_clear_title)) },
-            text = { Text(stringResource(R.string.queue_clear_hint)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearFrom(uuid)
-                        confirmClearFrom = null
-                    },
-                ) { Text(stringResource(R.string.queue_clear_confirm)) }
+        LoheDialog(
+            onDismiss = { confirmClearFrom = null },
+            title = stringResource(R.string.queue_clear_title),
+            icon = Icons.Filled.DeleteSweep,
+            destructive = true,
+            body = {
+                Text(
+                    text = stringResource(R.string.queue_clear_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { confirmClearFrom = null }) {
-                    Text(stringResource(R.string.no))
-                }
+            confirmLabel = stringResource(R.string.queue_clear_confirm),
+            onConfirm = {
+                viewModel.clearFrom(uuid)
+                confirmClearFrom = null
             },
+            dismissLabel = stringResource(R.string.no),
         )
     }
 }
@@ -630,18 +629,12 @@ fun PlaylistsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Auto-download playlist episodes",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    text = "Download all episodes in this playlist for offline listening",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            Text(
+                                text = "Auto-download all",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
                             Switch(
                                 checked = openedPlaylist.autoDownload,
                                 onCheckedChange = {
@@ -994,14 +987,15 @@ fun PlaylistsScreen(
     }
 
     if (showCreateDialog) {
-        AlertDialog(
-            onDismissRequest = {
+        LoheDialog(
+            onDismiss = {
                 showCreateDialog = false
                 newPlaylistName = ""
                 newPlaylistFolder = ""
             },
-            title = { Text("New Playlist") },
-            text = {
+            title = "New Playlist",
+            icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = newPlaylistName,
@@ -1030,34 +1024,19 @@ fun PlaylistsScreen(
                     }
                 }
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val created = viewModel.createPlaylist(
-                            name = newPlaylistName,
-                            folder = newPlaylistFolder,
-                            autoDownload = newPlaylistAutoDl,
-                        )
-                        openedPlaylistId = created.id
-                        newPlaylistName = ""
-                        newPlaylistFolder = ""
-                        showCreateDialog = false
-                    },
-                ) {
-                    Text("Create")
-                }
+            confirmLabel = "Create",
+            onConfirm = {
+                val created = viewModel.createPlaylist(
+                    name = newPlaylistName,
+                    folder = newPlaylistFolder,
+                    autoDownload = newPlaylistAutoDl,
+                )
+                openedPlaylistId = created.id
+                newPlaylistName = ""
+                newPlaylistFolder = ""
+                showCreateDialog = false
             },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showCreateDialog = false
-                        newPlaylistName = ""
-                        newPlaylistFolder = ""
-                    },
-                ) {
-                    Text("Cancel")
-                }
-            },
+            dismissLabel = "Cancel",
         )
     }
 }
@@ -1352,10 +1331,11 @@ fun AddToPlaylistDialog(
     val playlists by queueViewModel.userPlaylists.collectAsState()
     var newName by remember { mutableStateOf("") }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…") },
-        text = {
+    LoheDialog(
+        onDismiss = onDismiss,
+        title = "Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…",
+        icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+        body = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1429,23 +1409,16 @@ fun AddToPlaylistDialog(
                 )
             }
         },
-        confirmButton = {
-            if (newName.isNotBlank()) {
-                Button(
-                    onClick = {
-                        val created = queueViewModel.createPlaylist(newName, episodeUuids)
-                        onAdded("Created \"${created.name}\" (${episodeUuids.size} episodes)")
-                    },
-                ) {
-                    Text("Create & Add")
-                }
+        confirmLabel = if (newName.isNotBlank()) "Create & Add" else null,
+        onConfirm = if (newName.isNotBlank()) {
+            {
+                val created = queueViewModel.createPlaylist(newName, episodeUuids)
+                onAdded("Created \"${created.name}\" (${episodeUuids.size} episodes)")
             }
+        } else {
+            null
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
+        dismissLabel = "Cancel",
     )
 }
 
@@ -1683,6 +1656,7 @@ private fun QueueRow(
             if (isHead && onClearFrom != null) {
                 TextButton(
                     onClick = onClearFrom,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier.padding(top = 2.dp),
                 ) {
                     Text(

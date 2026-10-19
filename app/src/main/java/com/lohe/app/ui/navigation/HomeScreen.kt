@@ -26,11 +26,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -65,6 +67,7 @@ import com.lohe.app.R
 import com.lohe.app.data.ContinueEntry
 import com.lohe.app.data.HomeDashboardStats
 import com.lohe.app.data.QueueViewModel
+import com.lohe.app.data.ShowActivity
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
@@ -162,6 +165,7 @@ fun HomeScreen(
         ) {
             item {
                 KaniHero(
+                    stats = stats,
                     onOpenDiscover = onOpenDiscover,
                     onOpenLibrary = onOpenLibrary,
                 )
@@ -185,19 +189,19 @@ private fun HomeTelemetryDashboard(
 ) {
     val animatedListened by animateFloatAsState(
         targetValue = stats.listenedFraction,
-        animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "listened-arc",
     )
     val animatedDownloaded by animateFloatAsState(
         targetValue = stats.downloadedFraction,
-        animationSpec = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "downloaded-arc",
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // 1. Hero Radial Telemetry Card
-        GlassCard(onClick = onOpenLibrary, contentPadding = 18.dp) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // --- 1. Hero: the listening signal, as one composed instrument ---
+        GlassCard(onClick = onOpenLibrary, contentPadding = 20.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -206,21 +210,23 @@ private fun HomeTelemetryDashboard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(7.dp)
                                 .clip(CircleShape)
-                                .background(ElectricCyan),
+                                .background(
+                                    Brush.linearGradient(listOf(ElectricCyan, ElectricBlue)),
+                                ),
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(9.dp))
                         Text(
-                            text = "FREQUENCY TELEMETRY",
+                            text = "YOUR SIGNAL",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.4.sp,
+                            letterSpacing = 1.6.sp,
                             color = if (isLight) ElectricBlue else ElectricCyan,
                         )
                     }
                     Text(
-                        text = "${stats.playedEpisodesCount}/${stats.totalEpisodes} completed",
+                        text = "${stats.playedEpisodesCount} of ${stats.totalEpisodes} episodes",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -229,135 +235,34 @@ private fun HomeTelemetryDashboard(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    // Dual concentric radial gauge
-                    Box(
-                        modifier = Modifier.size(132.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val trackColor = if (isLight) {
-                            Color.Black.copy(alpha = 0.08f)
-                        } else {
-                            Color.White.copy(alpha = 0.10f)
-                        }
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeOuter = 11.dp.toPx()
-                            val strokeInner = 7.dp.toPx()
-                            val padOuter = strokeOuter / 2f + 4.dp.toPx()
-                            val padInner = padOuter + strokeOuter + 5.dp.toPx()
+                    SignalGauge(
+                        listenedFraction = animatedListened,
+                        downloadedFraction = animatedDownloaded,
+                        isLight = isLight,
+                        modifier = Modifier.size(148.dp),
+                    )
 
-                            val outerSize = Size(size.width - padOuter * 2, size.height - padOuter * 2)
-                            val innerSize = Size(size.width - padInner * 2, size.height - padInner * 2)
-
-                            // Outer background ring (Listen progress)
-                            drawArc(
-                                color = trackColor,
-                                startAngle = 135f,
-                                sweepAngle = 270f,
-                                useCenter = false,
-                                topLeft = Offset(padOuter, padOuter),
-                                size = outerSize,
-                                style = Stroke(width = strokeOuter, cap = StrokeCap.Round),
-                            )
-
-                            // Inner background ring (Downloaded ratio)
-                            drawArc(
-                                color = trackColor,
-                                startAngle = 135f,
-                                sweepAngle = 270f,
-                                useCenter = false,
-                                topLeft = Offset(padInner, padInner),
-                                size = innerSize,
-                                style = Stroke(width = strokeInner, cap = StrokeCap.Round),
-                            )
-
-                            val outerSweep = (270f * animatedListened.coerceIn(0f, 1f)).coerceAtLeast(
-                                if (stats.totalPlayedSeconds > 0L) 8f else 0f,
-                            )
-                            if (outerSweep > 0f) {
-                                drawArc(
-                                    brush = Brush.linearGradient(listOf(ElectricBlue, ElectricCyan)),
-                                    startAngle = 135f,
-                                    sweepAngle = outerSweep,
-                                    useCenter = false,
-                                    topLeft = Offset(padOuter, padOuter),
-                                    size = outerSize,
-                                    style = Stroke(width = strokeOuter, cap = StrokeCap.Round),
-                                )
-                                // Glowing indicator dot at arc tip
-                                val angleRad = Math.toRadians((135f + outerSweep).toDouble())
-                                val radius = outerSize.width / 2f
-                                val cx = size.width / 2f + (radius * cos(angleRad)).toFloat()
-                                val cy = size.height / 2f + (radius * sin(angleRad)).toFloat()
-                                drawCircle(
-                                    color = ElectricCyan.copy(alpha = 0.4f),
-                                    radius = strokeOuter * 0.85f,
-                                    center = Offset(cx, cy),
-                                )
-                                drawCircle(
-                                    color = Color.White,
-                                    radius = strokeOuter * 0.35f,
-                                    center = Offset(cx, cy),
-                                )
-                            }
-
-                            val innerSweep = (270f * animatedDownloaded.coerceIn(0f, 1f)).coerceAtLeast(
-                                if (stats.downloadedCount > 0) 8f else 0f,
-                            )
-                            if (innerSweep > 0f) {
-                                drawArc(
-                                    color = ElectricCyan.copy(alpha = 0.85f),
-                                    startAngle = 135f,
-                                    sweepAngle = innerSweep,
-                                    useCenter = false,
-                                    topLeft = Offset(padInner, padInner),
-                                    size = innerSize,
-                                    style = Stroke(width = strokeInner, cap = StrokeCap.Round),
-                                )
-                            }
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            val pct = (stats.listenedFraction * 100f).roundToInt()
-                            Text(
-                                text = "$pct%",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = "PLAYED",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.sp,
-                                letterSpacing = 1.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    // Right column: Time Remaining + Total Time Playing Altogether
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        TelemetryTimeBlock(
-                            label = "TIME REMAINING (ALL FILES)",
-                            value = formatDashboardDuration(stats.totalRemainingSeconds),
-                            subtitle = "${(stats.totalEpisodes - stats.playedEpisodesCount).coerceAtLeast(0)} unplayed episodes",
-                            accent = ElectricCyan,
-                        )
-
-                        TelemetryTimeBlock(
-                            label = "TOTAL TIME PLAYING ALTOGETHER",
+                        SignalReadout(
+                            label = "TIME PLAYED",
                             value = formatDashboardDuration(stats.totalPlayedSeconds),
-                            subtitle = "of ${formatDashboardDuration(stats.totalDurationSeconds)} in your library",
+                            caption = "of ${formatDashboardDuration(stats.totalDurationSeconds)}",
                             accent = ElectricBlue,
+                        )
+                        SignalReadout(
+                            label = "STILL TO HEAR",
+                            value = formatDashboardDuration(stats.totalRemainingSeconds),
+                            caption = "${(stats.totalEpisodes - stats.playedEpisodesCount).coerceAtLeast(0)} episodes waiting",
+                            accent = ElectricCyan,
                         )
                     }
                 }
 
-                // Graphical frequency spectrum bar showing Played vs Remaining across all files
                 FrequencySpectrumBar(
                     listenedFraction = stats.listenedFraction,
                     isLight = isLight,
@@ -365,7 +270,58 @@ private fun HomeTelemetryDashboard(
             }
         }
 
-        // 2. Three Bento Metric Tiles: Subscriptions | Episodes | Downloaded
+        // --- 2. Listening activity: when the hours actually went ---
+        if (stats.dailyActivityMinutes.any { it > 0 }) {
+            GlassCard(contentPadding = 18.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "LISTENING ACTIVITY",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.4.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "last 14 days",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    ActivityChart(
+                        minutes = stats.dailyActivityMinutes,
+                        isLight = isLight,
+                    )
+                }
+            }
+        }
+
+        // --- 3. The shape of the library ---
+        if (stats.topShows.isNotEmpty()) {
+            GlassCard(contentPadding = 18.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = "MOST EPISODES",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    TopShowsChart(
+                        shows = stats.topShows,
+                        isLight = isLight,
+                    )
+                }
+            }
+        }
+
+        // --- 4. The counts, as three tiles ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -399,7 +355,7 @@ private fun HomeTelemetryDashboard(
             )
         }
 
-        // 3. Dedicated Graphical Time Cards side-by-side
+        // --- 5. Time, side by side ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -426,14 +382,133 @@ private fun HomeTelemetryDashboard(
     }
 }
 
+/**
+ * The hero instrument: two concentric rings for listened and downloaded, with
+ * a glowing tip on the outer arc and a soft halo behind it.
+ */
 @Composable
-private fun TelemetryTimeBlock(
+private fun SignalGauge(
+    listenedFraction: Float,
+    downloadedFraction: Float,
+    isLight: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        val trackColor = if (isLight) {
+            Color.Black.copy(alpha = 0.08f)
+        } else {
+            Color.White.copy(alpha = 0.10f)
+        }
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeOuter = 12.dp.toPx()
+            val strokeInner = 7.dp.toPx()
+            val padOuter = strokeOuter / 2f + 4.dp.toPx()
+            val padInner = padOuter + strokeOuter + 6.dp.toPx()
+
+            val outerSize = Size(size.width - padOuter * 2, size.height - padOuter * 2)
+            val innerSize = Size(size.width - padInner * 2, size.height - padInner * 2)
+
+            // Soft halo behind the whole instrument.
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(ElectricCyan.copy(alpha = 0.16f), Color.Transparent),
+                    center = center,
+                    radius = size.minDimension / 2f,
+                ),
+                radius = size.minDimension / 2f,
+            )
+
+            drawArc(
+                color = trackColor,
+                startAngle = 135f,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = Offset(padOuter, padOuter),
+                size = outerSize,
+                style = Stroke(width = strokeOuter, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = trackColor,
+                startAngle = 135f,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = Offset(padInner, padInner),
+                size = innerSize,
+                style = Stroke(width = strokeInner, cap = StrokeCap.Round),
+            )
+
+            val outerSweep = (270f * listenedFraction.coerceIn(0f, 1f)).coerceAtLeast(
+                if (listenedFraction > 0f) 10f else 0f,
+            )
+            if (outerSweep > 0f) {
+                drawArc(
+                    brush = Brush.sweepGradient(listOf(ElectricBlue, ElectricCyan, ElectricBlue)),
+                    startAngle = 135f,
+                    sweepAngle = outerSweep,
+                    useCenter = false,
+                    topLeft = Offset(padOuter, padOuter),
+                    size = outerSize,
+                    style = Stroke(width = strokeOuter, cap = StrokeCap.Round),
+                )
+                val angleRad = Math.toRadians((135f + outerSweep).toDouble())
+                val radius = outerSize.width / 2f
+                val cx = size.width / 2f + (radius * cos(angleRad)).toFloat()
+                val cy = size.height / 2f + (radius * sin(angleRad)).toFloat()
+                drawCircle(
+                    color = ElectricCyan.copy(alpha = 0.35f),
+                    radius = strokeOuter * 0.95f,
+                    center = Offset(cx, cy),
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = strokeOuter * 0.32f,
+                    center = Offset(cx, cy),
+                )
+            }
+
+            val innerSweep = (270f * downloadedFraction.coerceIn(0f, 1f)).coerceAtLeast(
+                if (downloadedFraction > 0f) 10f else 0f,
+            )
+            if (innerSweep > 0f) {
+                drawArc(
+                    brush = Brush.sweepGradient(listOf(ElectricCyan, ElectricBlue, ElectricCyan)),
+                    startAngle = 135f,
+                    sweepAngle = innerSweep,
+                    useCenter = false,
+                    topLeft = Offset(padInner, padInner),
+                    size = innerSize,
+                    style = Stroke(width = strokeInner, cap = StrokeCap.Round),
+                )
+            }
+        }
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "${(listenedFraction * 100).roundToInt()}%",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "PLAYED",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                letterSpacing = 1.2.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** One labelled figure in the hero card. */
+@Composable
+private fun SignalReadout(
     label: String,
     value: String,
-    subtitle: String,
+    caption: String,
     accent: Color,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -441,30 +516,132 @@ private fun TelemetryTimeBlock(
                     .clip(CircleShape)
                     .background(accent),
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(7.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
+                letterSpacing = 0.8.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         Text(
             text = value,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
+            text = caption,
+            style = MaterialTheme.typography.labelSmall,
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * Fourteen vertical bars, one per day, tallest scaled to the best day.
+ */
+@Composable
+private fun ActivityChart(
+    minutes: List<Int>,
+    isLight: Boolean,
+) {
+    val peak = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        minutes.forEach { value ->
+            val fraction = value.toFloat() / peak
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight((fraction.coerceIn(0.06f, 1f))),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (value > 0) {
+                                Brush.verticalGradient(listOf(ElectricCyan, ElectricBlue))
+                            } else {
+                                val idle = if (isLight) {
+                                    ElectricBlue.copy(alpha = 0.10f)
+                                } else {
+                                    ElectricCyan.copy(alpha = 0.12f)
+                                }
+                                Brush.verticalGradient(listOf(idle, idle))
+                            },
+                        ),
+                )
+            }
+        }
+    }
+}
+
+/** Ranked bars for the shows carrying the most episodes. */
+@Composable
+private fun TopShowsChart(
+    shows: List<ShowActivity>,
+    isLight: Boolean,
+) {
+    val peak = shows.maxOfOrNull { it.episodeCount }?.coerceAtLeast(1) ?: 1
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        shows.forEach { show ->
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = show.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "${show.episodeCount} ep",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            if (isLight) {
+                                ElectricBlue.copy(alpha = 0.08f)
+                            } else {
+                                ElectricCyan.copy(alpha = 0.10f)
+                            },
+                        ),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(show.episodeCount.toFloat() / peak)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricCyan))),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -525,35 +702,33 @@ private fun MetricBentoTile(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(modifier = modifier, contentPadding = 12.dp) {
+    GlassCard(modifier = modifier, contentPadding = 14.dp) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.12f)),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(accent.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(17.dp),
+                )
             }
 
             Text(
                 text = value,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -752,57 +927,88 @@ private fun ContinueCard(
 
 @Composable
 private fun KaniHero(
+    stats: HomeDashboardStats,
     onOpenDiscover: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-            Image(
-                painter = painterResource(id = R.drawable.kani_mascot),
+    // Kani, integrated rather than standing alone.
+    //
+    // A full-height mascot in its own band read as a placeholder and pushed
+    // the dashboard off the fold. Here the mascot is small and sits beside a
+    // live line about the library, so it reads as the character reporting in
+    // rather than a picture parked above the content.
+    val statusLine = when {
+        stats.totalEpisodes == 0 -> stringResource(R.string.home_kani_body)
+        stats.inProgressCount > 0 -> stringResource(
+            R.string.home_kani_in_progress,
+            stats.inProgressCount,
+        )
+        stats.playedEpisodesCount > 0 -> stringResource(
+            R.string.home_kani_played,
+            stats.playedEpisodesCount,
+        )
+        else -> stringResource(R.string.home_kani_body)
+    }
+
+    GlassCard(contentPadding = 12.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            KaniMascot(
                 contentDescription = stringResource(R.string.home_mascot_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(232.dp),
+                size = 66.dp,
             )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                text = stringResource(R.string.home_kani_title),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.size(8.dp))
-            Text(
-                text = stringResource(R.string.home_kani_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.size(16.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth(),
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Button(
-                    onClick = onOpenDiscover,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.home_cta_discover))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.home_kani_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    SignalBars()
                 }
-                OutlinedButton(
-                    onClick = onOpenLibrary,
-                    modifier = Modifier.weight(1f),
+                Text(
+                    text = statusLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(
+                    onClick = onOpenDiscover,
+                    modifier = Modifier.size(34.dp),
                 ) {
-                    Text(stringResource(R.string.home_cta_import))
+                    Icon(
+                        imageVector = Icons.Filled.RssFeed,
+                        contentDescription = stringResource(R.string.home_cta_discover),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = onOpenLibrary,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.FolderOpen,
+                        contentDescription = stringResource(R.string.home_cta_import),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
+        }
     }
 }
 

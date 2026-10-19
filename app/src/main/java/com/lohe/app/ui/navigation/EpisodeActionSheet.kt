@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.ui.image.RemoteImage
 
@@ -72,20 +73,11 @@ fun EpisodeActionSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
+    LoheSheet(
+        onDismiss = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 520.dp)
-                .align(Alignment.CenterHorizontally)
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
-        ) {
+        Column {
             // --- Header: which episode these actions belong to ---
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (artworkUrl != null) {
