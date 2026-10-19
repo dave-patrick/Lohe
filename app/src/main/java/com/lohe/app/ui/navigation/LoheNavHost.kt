@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -119,6 +120,12 @@ fun LoheNavHost(
     val activeTabRoute = BAR_DESTINATIONS.firstOrNull { dest ->
         currentRoute == dest.route || currentRoute?.startsWith("${dest.route}/") == true
     }?.route
+
+    // Which tab the bottom bar should highlight while a push-only screen
+    // (Settings, Storage, the player) is stacked on top of it. Tracked
+    // separately because those screens have no tab of their own, and without
+    // it the bar shows nothing selected and a tap on Home looks inert.
+    var selectedTab by rememberSaveable { mutableStateOf(Dest.HOME.route) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -305,12 +312,14 @@ fun LoheNavHost(
                             )
                         }
                     },
-                    currentRoute = activeTabRoute,
+                    currentRoute = activeTabRoute ?: selectedTab,
                     onSelect = { route ->
-                        // If we're on the player screen, shrink it first by popping back
-                        if (currentRoute == Dest.PLAYER.route) {
-                            navController.popBackStack()
-                        }
+                        selectedTab = route
+                        // Unwind any push-only screen stacked above the tab
+                        // layer (Settings, Storage, the player) so a tab tap
+                        // always lands on that tab instead of leaving the
+                        // pushed screen underneath.
+                        navController.popBackStack(route, inclusive = false)
                         navController.navigate(route) {
                             popUpTo(navController.graph.startDestinationId) { saveState = true }
                             launchSingleTop = true

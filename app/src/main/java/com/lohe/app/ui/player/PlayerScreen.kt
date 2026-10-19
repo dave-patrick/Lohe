@@ -3,6 +3,9 @@ package com.lohe.app.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -193,11 +196,23 @@ fun PlayerScreen(
     val shownTitle = mediaTitle.ifBlank { transport.title }
         .ifBlank { stringResource(R.string.player_nothing_queued) }
 
+    // Swipe down collapses the full player back to the mini Now Playing card.
+    var dragged by remember { mutableFloatStateOf(0f) }
+    val dragState = rememberDraggableState { delta -> dragged += delta }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .artworkBleed(tint = ArtTint),
+            .artworkBleed(tint = ArtTint)
+            .draggable(
+                state = dragState,
+                orientation = Orientation.Vertical,
+                onDragStarted = { dragged = 0f },
+                onDragStopped = {
+                    if (dragged > 80f) onShrink()
+                },
+            ),
     ) {
         Column(
             modifier = Modifier

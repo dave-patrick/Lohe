@@ -167,6 +167,19 @@ fun HomeScreen(
                     onOpenLibrary = onOpenLibrary,
                 )
             }
+            item {
+                KaniHero(
+                    onOpenDiscover = onOpenDiscover,
+                    onOpenLibrary = onOpenLibrary,
+                )
+            }
+            item {
+                HomeTelemetryDashboard(
+                    stats = stats,
+                    isLight = isLight,
+                    onOpenLibrary = onOpenLibrary,
+                )
+            }
         }
     }
 }
@@ -741,6 +754,62 @@ private fun ContinueCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun KaniHero(
+    onOpenDiscover: () -> Unit,
+    onOpenLibrary: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+            Image(
+                painter = painterResource(id = R.drawable.kani_mascot),
+                contentDescription = stringResource(R.string.home_mascot_description),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(232.dp),
+            )
+            Spacer(Modifier.size(12.dp))
+            Text(
+                text = stringResource(R.string.home_empty_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = stringResource(R.string.home_empty_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.size(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = onOpenDiscover,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.home_cta_discover))
+                }
+                OutlinedButton(
+                    onClick = onOpenLibrary,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.home_cta_import))
+                }
+            }
     }
 }
 
