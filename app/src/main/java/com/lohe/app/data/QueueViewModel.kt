@@ -54,6 +54,15 @@ private const val TOP_SHOWS_COUNT = 4
  * Library-wide telemetry for the Home dashboard.
  */
 data class HomeDashboardStats(
+    /**
+     * Whether the library has answered yet.
+     *
+     * Every count here starts at zero, which is also what an empty library
+     * looks like. Without this flag the Home screen cannot tell "no podcasts
+     * yet" from "not loaded yet", and briefly shows the empty state to a
+     * listener who has three thousand episodes.
+     */
+    val isLoaded: Boolean = false,
     val subscriptionCount: Int = 0,
     val totalEpisodes: Int = 0,
     val downloadedCount: Int = 0,
@@ -231,6 +240,7 @@ class QueueViewModel(
         }
 
         HomeDashboardStats(
+            isLoaded = true,
             subscriptionCount = shows.size,
             totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,

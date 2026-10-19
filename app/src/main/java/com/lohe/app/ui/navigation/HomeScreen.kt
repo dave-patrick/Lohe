@@ -149,6 +149,15 @@ fun HomeScreen(
             }
         }
 
+        if (!stats.isLoaded) {
+            // The library has not answered yet. Show nothing rather than the
+            // empty state: a flash of "no podcasts yet" before the real
+            // dashboard arrives reads as the app having lost the library, and
+            // the old Kani hero flashing past is the loudest version of that.
+            Spacer(Modifier.fillMaxSize())
+            return@Column
+        }
+
         if (stats.subscriptionCount == 0 && stats.totalEpisodes == 0) {
             EmptyHome(
                 onOpenLibrary = onOpenLibrary,
@@ -1027,11 +1036,12 @@ private fun EmptyHome(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.kani_mascot),
+        // With no library to show, Kani can be as big as he likes: there is
+        // nothing to compete with, and the empty state is exactly where a
+        // character belongs.
+        KaniMascot(
             contentDescription = stringResource(R.string.home_mascot_description),
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.height(232.dp),
+            size = 176.dp,
         )
 
         Spacer(Modifier.size(20.dp))
