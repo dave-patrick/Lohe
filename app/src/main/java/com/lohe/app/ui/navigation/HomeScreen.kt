@@ -167,27 +167,6 @@ fun HomeScreen(
                     onOpenLibrary = onOpenLibrary,
                 )
             }
-
-            if (currentEpisode != null) {
-                item {
-                    Text(
-                        text = "NOW PLAYING",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp,
-                        color = if (isLight) ElectricBlue else ElectricCyan,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
-                    )
-                }
-
-                item(key = currentEpisode.episode.uuid) {
-                    ContinueCard(
-                        entry = currentEpisode,
-                        onPlay = { onPlay(currentEpisode) },
-                        onOpenShow = { onOpenPodcast(currentEpisode.episode.podcastUuid) },
-                    )
-                }
-            }
         }
     }
 }

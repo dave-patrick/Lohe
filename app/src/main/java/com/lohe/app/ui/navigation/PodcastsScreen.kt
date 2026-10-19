@@ -614,7 +614,18 @@ fun PodcastsScreen(
                             scope = scope,
                             viewModel = viewModel,
                             onShowMessage = { scope.launch { snackbarHostState.showSnackbar(it) } },
-                        )
+                        ) { onOpen ->
+                            PodcastGridCard(
+                                podcast = podcast,
+                                folderName = podcastFolders[podcast.uuid].orEmpty(),
+                                inSelectionMode = inSelectionMode,
+                                isSelected = isSelected,
+                                onClick = { onOpen() },
+                                onLongClick = {},
+                                onAssignFolder = { folderDialogPodcast = podcast },
+                                onUnsubscribe = { confirmUnsubscribe = podcast },
+                            )
+                        }
                     }
                 }
             } else {
@@ -656,7 +667,18 @@ fun PodcastsScreen(
                             scope = scope,
                             viewModel = viewModel,
                             onShowMessage = { scope.launch { snackbarHostState.showSnackbar(it) } },
-                        )
+                        ) { onOpen ->
+                            PodcastCard(
+                                podcast = podcast,
+                                folderName = podcastFolders[podcast.uuid].orEmpty(),
+                                inSelectionMode = inSelectionMode,
+                                isSelected = isSelected,
+                                onClick = { onOpen() },
+                                onLongClick = {},
+                                onAssignFolder = { folderDialogPodcast = podcast },
+                                onUnsubscribe = { confirmUnsubscribe = podcast },
+                            )
+                        }
                     }
                 }
             }
@@ -838,6 +860,7 @@ private fun SwipeablePodcastCard(
     scope: CoroutineScope,
     viewModel: SubscriptionsViewModel,
     onShowMessage: (String) -> Unit,
+    content: @Composable (() -> Unit) -> Unit,
 ) {
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { value -> false }, // always settle back; actions are tapped in the background
@@ -919,16 +942,7 @@ private fun SwipeablePodcastCard(
             }
         },
     ) {
-        PodcastGridCard(
-            podcast = podcast,
-            folderName = folderName,
-            inSelectionMode = inSelectionMode,
-            isSelected = isSelected,
-            onClick = onOpen,
-            onLongClick = {},
-            onAssignFolder = onAssignFolder,
-            onUnsubscribe = onUnsubscribe,
-        )
+        content(onOpen)
     }
 }
 

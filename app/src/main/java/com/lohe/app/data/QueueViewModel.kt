@@ -123,6 +123,7 @@ class QueueViewModel(
         podcasts,
         repository.observeAllEpisodes(),
     ) { shows, allEpisodes ->
+        val activeEpisodes = allEpisodes.filter { !it.isDeleted }
         var totalRemaining = 0L
         var totalPlayed = 0L
         var totalDuration = 0L
@@ -130,7 +131,7 @@ class QueueViewModel(
         var playedCount = 0
         var inProgressCount = 0
 
-        for (ep in allEpisodes) {
+        for (ep in activeEpisodes) {
             if (ep.isDownloaded) downloaded++
             if (ep.isPlayed) playedCount++
             if (ep.isInProgress) inProgressCount++
@@ -146,7 +147,7 @@ class QueueViewModel(
 
         HomeDashboardStats(
             subscriptionCount = shows.size,
-            totalEpisodes = allEpisodes.size,
+            totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
             inProgressCount = inProgressCount,

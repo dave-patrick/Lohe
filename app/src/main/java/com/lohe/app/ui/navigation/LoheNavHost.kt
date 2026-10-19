@@ -253,49 +253,47 @@ fun LoheNavHost(
     Scaffold(
         bottomBar = {
             Column {
-                if (currentRoute != Dest.PLAYER.route) {
-                    val fallbackEntry = inProgress.firstOrNull()
-                    NowPlayingBar(
-                        connection = playerConnection,
-                        transport = transport.value,
-                        artworkUrl = nowPlaying?.artworkUrl
-                            ?: transport.value.artworkUrl.takeIf { it.isNotBlank() }
-                            ?: fallbackEntry?.episode?.artworkUrl,
-                        fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
-                        fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
-                        fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
-                        onPlayFallback = {
-                            val target = fallbackEntry ?: return@NowPlayingBar
-                            if (!target.episode.isDownloaded && !target.episode.isDownloading) {
-                                ServiceLocator.downloadManager().start(target.episode)
-                            }
+                val fallbackEntry = inProgress.firstOrNull()
+                NowPlayingBar(
+                    connection = playerConnection,
+                    transport = transport.value,
+                    artworkUrl = nowPlaying?.artworkUrl
+                        ?: transport.value.artworkUrl.takeIf { it.isNotBlank() }
+                        ?: fallbackEntry?.episode?.artworkUrl,
+                    fallbackTitle = nowPlaying?.title ?: fallbackEntry?.episode?.title,
+                    fallbackShowTitle = nowPlaying?.showTitle ?: fallbackEntry?.showTitle,
+                    fallbackProgress = fallbackEntry?.episode?.completionFraction ?: 0f,
+                    onPlayFallback = {
+                        val target = fallbackEntry ?: return@NowPlayingBar
+                        if (!target.episode.isDownloaded && !target.episode.isDownloading) {
+                            ServiceLocator.downloadManager().start(target.episode)
+                        }
+                        nowPlaying = NowPlaying(
+                            title = target.episode.title,
+                            uri = target.episode.playbackUri,
+                            showTitle = target.showTitle,
+                            episodeId = target.episode.uuid,
+                            artworkUrl = target.episode.artworkUrl,
+                            description = target.episode.description,
+                            knownDurationSeconds = target.episode.durationSeconds,
+                        )
+                        navController.navigate(Dest.PLAYER.route)
+                    },
+                    onOpenPlayer = {
+                        if (nowPlaying == null && fallbackEntry != null) {
                             nowPlaying = NowPlaying(
-                                title = target.episode.title,
-                                uri = target.episode.playbackUri,
-                                showTitle = target.showTitle,
-                                episodeId = target.episode.uuid,
-                                artworkUrl = target.episode.artworkUrl,
-                                description = target.episode.description,
-                                knownDurationSeconds = target.episode.durationSeconds,
+                                title = fallbackEntry.episode.title,
+                                uri = fallbackEntry.episode.playbackUri,
+                                showTitle = fallbackEntry.showTitle,
+                                episodeId = fallbackEntry.episode.uuid,
+                                artworkUrl = fallbackEntry.episode.artworkUrl,
+                                description = fallbackEntry.episode.description,
+                                knownDurationSeconds = fallbackEntry.episode.durationSeconds,
                             )
-                            navController.navigate(Dest.PLAYER.route)
-                        },
-                        onOpenPlayer = {
-                            if (nowPlaying == null && fallbackEntry != null) {
-                                nowPlaying = NowPlaying(
-                                    title = fallbackEntry.episode.title,
-                                    uri = fallbackEntry.episode.playbackUri,
-                                    showTitle = fallbackEntry.showTitle,
-                                    episodeId = fallbackEntry.episode.uuid,
-                                    artworkUrl = fallbackEntry.episode.artworkUrl,
-                                    description = fallbackEntry.episode.description,
-                                    knownDurationSeconds = fallbackEntry.episode.durationSeconds,
-                                )
-                            }
-                            navController.navigate(Dest.PLAYER.route)
-                        },
-                    )
-                }
+                        }
+                        navController.navigate(Dest.PLAYER.route)
+                    },
+                )
 
                 LoheBottomBar(
                     destinations = remember {
@@ -309,6 +307,10 @@ fun LoheNavHost(
                     },
                     currentRoute = activeTabRoute,
                     onSelect = { route ->
+                        // If we're on the player screen, shrink it first by popping back
+                        if (currentRoute == Dest.PLAYER.route) {
+                            navController.popBackStack()
+                        }
                         navController.navigate(route) {
                             popUpTo(navController.graph.startDestinationId) { saveState = true }
                             launchSingleTop = true
