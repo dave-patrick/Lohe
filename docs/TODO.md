@@ -1,7 +1,53 @@
 # Lohe — Outstanding tasks
 
-Audited against the code at `d6ef0da`. Items are ordered by consequence, not by
+Audited against the code at `749df07`. Items are ordered by consequence, not by
 ease. Each one names the files it touches so it can be picked up cold.
+
+---
+
+## 0. ~~Feed refresh silently wiped every episode's state~~ — **done**
+
+**Was:** the worst bug in the app, and it had been there the whole time.
+
+`PodcastDao.upsert` was `@Insert(onConflict = OnConflictStrategy.REPLACE)`.
+Room implements REPLACE as delete-then-insert, and `episodes` has a foreign
+key onto `podcasts` with `ON DELETE CASCADE`. Every feed refresh saved the
+podcast row, which deleted the row, which cascaded away every episode of
+that show — and the feed's copy was then written back in with default state.
+
+Played status, resume positions, downloads, stars, queue order and
+accumulated listening time all vanished on every refresh. The merge in
+`RssPodcastFetcher.importFeed`, added earlier to preserve exactly those
+fields, never got a chance to run: the rows it was meant to preserve had
+already been deleted.
+
+**Now:** the upsert inserts with `IGNORE` and updates only the feed-derived
+columns, so the row survives a refresh and the listener's own settings
+(auto-download, subscribe date, unread count) are left alone.
+
+Pinned by `PodcastUpsertCascadeTest` (instrumented). The cascade only
+reproduces against a real foreign-key-enforcing SQLite, so the test runs on
+a device rather than on the JVM.
+
+**Run it with `:app:deviceTest`, not `connectedAndroidTest`.** The Gradle
+task of that name uninstalls the app and the test package when it finishes,
+which throws away everything in the app's data directory — the library, the
+playlists, the listening history. `deviceTest` installs over the top with
+`adb install -r` and drives the runner directly, so a test run costs nothing
+but time.
+
+**Recovery note.** The bug had already run against a real library before it
+was found, so the episode state on that device was reconstructed from the
+SQLite file's freed pages and write-ahead log: 4365 played episodes, a
+3-episode queue in its original order, 3 downloads and 22 s of accumulated
+listening time were recovered and written back. The reconstruction scripts
+live in `D:\My Drive\Dev Projects\Lohe\tools\recover-episodes.py` and
+`build-restore.py`.
+
+*(One thing did not survive that second loss: the per-show folder
+assignments in `files/podcast-folders.tsv`. They were never read before the
+uninstall and cannot be reconstructed. The playlists themselves were, from
+the file format and the values captured beforehand.)*
 
 ---
 

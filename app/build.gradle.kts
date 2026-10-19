@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -98,4 +100,56 @@ implementation(libs.androidx.compose.foundation)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.room.testing)
+}
+
+/**
+ * Runs the instrumented tests on a connected device *without uninstalling the
+ * app afterwards*.
+ *
+ * `connectedAndroidTest` uninstalls both the app and the test package when it
+ * finishes, which throws away everything in the app's data directory — the
+ * library, the playlists, the listening history. On a device that holds a real
+ * library that is not a cost worth paying for a test run, so this task
+ * installs over the top with `adb install -r` and drives the runner directly.
+ */
+tasks.register("deviceTest") {
+    group = "verification"
+    description = "Runs the instrumented tests on a connected device, keeping the app's data."
+
+    dependsOn("assembleDebug", "assembleDebugAndroidTest")
+
+    val localProps = Properties()
+    rootProject.file("local.properties")
+        .takeIf { it.exists() }
+        ?.inputStream()
+        ?.use { localProps.load(it) }
+    val sdkDir = localProps.getProperty("sdk.dir")
+        ?: System.getenv("ANDROID_HOME")
+        ?: System.getenv("ANDROID_SDK_ROOT")
+        ?: error("No Android SDK found: set sdk.dir in local.properties or ANDROID_HOME.")
+    val adb = "$sdkDir${File.separator}platform-tools${File.separator}adb"
+    val appApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
+    val testApk = layout.buildDirectory.file("outputs/apk/androidTest/debug/app-debug-androidTest.apk")
+
+    fun run(vararg command: String) {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        val exitCode = process.waitFor()
+        if (output.isNotBlank()) logger.lifecycle(output.trim())
+        check(exitCode == 0) {
+            "Command failed (exit $exitCode): ${command.joinToString(" ")}"
+        }
+    }
+
+    doFirst {
+        run(adb, "install", "-r", "-t", appApk.get().asFile.absolutePath)
+        run(adb, "install", "-r", "-t", testApk.get().asFile.absolutePath)
+    }
+
+    doLast {
+        run(
+            adb, "shell", "am", "instrument", "-w",
+            "com.lohe.app.test/androidx.test.runner.AndroidJUnitRunner",
+        )
+    }
 }
