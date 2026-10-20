@@ -61,6 +61,7 @@ import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
 import com.lohe.app.utils.FileScanner
 import com.lohe.app.utils.LocalFileManager
+import com.lohe.app.data.db.entity.toSummary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -293,7 +294,7 @@ fun LoheNavHost(
                         onPlayFallback = {
                             val target = fallbackEntry ?: return@NowPlayingBar
                             if (!target.episode.isDownloaded && !target.episode.isDownloading) {
-                                ServiceLocator.downloadManager().start(target.episode)
+                                ServiceLocator.downloadManager().start(target.episode.toSummary())
                             }
                             nowPlaying = NowPlaying(
                                 title = target.episode.title,
@@ -301,7 +302,6 @@ fun LoheNavHost(
                                 showTitle = target.showTitle,
                                 episodeId = target.episode.uuid,
                                 artworkUrl = target.episode.artworkUrl,
-                                description = target.episode.description,
                                 knownDurationSeconds = target.episode.durationSeconds,
                             )
                             navController.navigate(Dest.PLAYER.route)
@@ -311,7 +311,7 @@ fun LoheNavHost(
                             // episode that is ready to play rather than an empty
                             // player.
                             if (nowPlaying == null) {
-                                val episode = fallbackEntry?.episode ?: nextUp?.episode
+                                val episode = fallbackEntry?.episode?.toSummary() ?: nextUp?.episode
                                 val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
                                 if (episode != null) {
                                     nowPlaying = NowPlaying(
@@ -320,7 +320,6 @@ fun LoheNavHost(
                                         showTitle = showTitle,
                                         episodeId = episode.uuid,
                                         artworkUrl = episode.artworkUrl,
-                                        description = episode.description,
                                         knownDurationSeconds = episode.durationSeconds,
                                     )
                                 }
@@ -380,7 +379,7 @@ fun LoheNavHost(
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
-                            ServiceLocator.downloadManager().start(entry.episode)
+                            ServiceLocator.downloadManager().start(entry.episode.toSummary())
                         }
                         nowPlaying = NowPlaying(
                             title = entry.episode.title,
@@ -388,7 +387,6 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
-                            description = entry.episode.description,
                             knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
@@ -437,19 +435,19 @@ fun LoheNavHost(
                         }
                     },
                     onDownload = { episode ->
-                        ServiceLocator.downloadManager().start(episode)
+                        ServiceLocator.downloadManager().start(episode.toSummary())
                         importMessage = "Downloading"
                     },
                     onRemoveDownloads = { episodesToRemove ->
                         val dm = ServiceLocator.downloadManager()
                         scope.launch {
-                            episodesToRemove.forEach { dm.delete(it) }
+                            episodesToRemove.forEach { dm.delete(it.toSummary()) }
                         }
                     },
                     onShowMessage = { msg -> importMessage = msg },
                     onPlay = { episode ->
                         if (!episode.isDownloaded && !episode.isDownloading) {
-                            ServiceLocator.downloadManager().start(episode)
+                            ServiceLocator.downloadManager().start(episode.toSummary())
                         }
                         // A downloaded copy plays offline; playbackUri prefers it.
                         nowPlaying = NowPlaying(
@@ -488,7 +486,7 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
-                            description = entry.episode.description,
+
                             knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)
@@ -510,7 +508,7 @@ fun LoheNavHost(
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
-                            description = entry.episode.description,
+
                             knownDurationSeconds = entry.episode.durationSeconds,
                         )
                         navController.navigate(Dest.PLAYER.route)

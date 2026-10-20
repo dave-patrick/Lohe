@@ -78,6 +78,34 @@ class PlaylistRepository(
         }
     }
 
+    /**
+     * Rewrites the playlist order wholesale, used when a row is dragged to a
+     * new position. Items not present in [orderedIds] keep their relative
+     * order and trail the reordered ones.
+     */
+    fun reorderPlaylists(orderedIds: List<String>) {
+        synchronized(lock) {
+            val current = _playlists.value
+            val idSet = orderedIds.toSet()
+            val ordered = orderedIds.mapNotNull { id -> current.find { it.id == id } }
+            val rest = current.filter { it.id !in idSet }
+            val result = mutableListOf<UserPlaylist>()
+            val orderedIter = ordered.iterator()
+            val restIter = rest.iterator()
+            for (item in current) {
+                if (item.id in idSet) {
+                    if (orderedIter.hasNext()) result.add(orderedIter.next())
+                } else {
+                    if (restIter.hasNext()) result.add(restIter.next())
+                }
+            }
+            while (orderedIter.hasNext()) result.add(orderedIter.next())
+            while (restIter.hasNext()) result.add(restIter.next())
+            _playlists.value = result
+            saveToDisk(result)
+        }
+    }
+
     fun setPlaylistFolder(playlistId: String, folder: String) {
         synchronized(lock) {
             val next = _playlists.value.map { pl ->

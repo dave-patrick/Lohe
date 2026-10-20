@@ -42,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.LoheSheet
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import com.lohe.app.ui.image.RemoteImage
 
 /**
@@ -59,7 +59,7 @@ import com.lohe.app.ui.image.RemoteImage
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpisodeActionSheet(
-    episode: EpisodeEntity,
+    episode: EpisodeSummary,
     artworkUrl: String? = null,
     showTitle: String = "",
     onDismiss: () -> Unit,

@@ -65,6 +65,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -201,7 +202,12 @@ fun PodcastsScreen(
                 val summary = if (r.failed == 0) {
                     context.getString(R.string.opml_imported_clean, r.imported)
                 } else {
-                    context.getString(R.string.opml_imported_partial, r.imported, r.failed)
+                    val failures = r.failures.take(3).joinToString("; ") { f ->
+                        "${f.title} (${f.reason})"
+                    }
+                    val more = if (r.failures.size > 3) " (+${r.failures.size - 3} more)" else ""
+                    context.getString(R.string.opml_imported_partial, r.imported, r.failed) +
+                        ": $failures$more"
                 }
                 snackbarHostState.showSnackbar(summary)
                 viewModel.consumeOpmlImport()
@@ -580,6 +586,36 @@ fun PodcastsScreen(
                                 },
                             )
                         }
+                    }
+                }
+            }
+
+            val opmlState = opml
+            if (opmlState is OpmlImportState.Running) {
+                val completed = opmlState.completed
+                val total = opmlState.total
+                val progress = if (total > 0) completed.toFloat() / total.toFloat() else 0f
+                GlassCard(
+                    accent = ElectricBlue,
+                    contentPadding = 12.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = if (total > 0) {
+                                "Importing $completed of $total show${if (total == 1) "" else "s"}…"
+                            } else {
+                                "Reading OPML file…"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }

@@ -50,7 +50,27 @@ data class PlaybackSettings(
 
         /** Offered in the UI; the choice is constrained to this list. */
         val SKIP_CHOICES = listOf(5, 10, 15, 30, 45, 60)
-        val SPEED_CHOICES = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+        val SPEED_CHOICES = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
+    }
+}
+
+/** Per-show playback preferences. Defaults fall back to the global settings. */
+data class ShowPlaybackSettings(
+    /** Whether loudness boost above 0 dB is enabled for this show. */
+    val volumeBoost: Boolean = false,
+    /** Whether ExoPlayer silence trimming is enabled for this show. */
+    val skipSilence: Boolean = false,
+    /** Playback speed multiplier (0.5x .. 3.0x) for this show. */
+    val playbackSpeed: Float = 1.0f,
+    /** Smart speed: automatically skip detected silence/silence-like sections. */
+    val smartSpeed: Boolean = false,
+    /** Crossfade with the next episode when this one ends (ms). 0 = off. */
+    val crossfadeMs: Int = 0,
+    /** Auto-trim leading/trailing silence and detected ads. */
+    val autoTrim: Boolean = false,
+) {
+    companion object {
+        val EMPTY = ShowPlaybackSettings()
     }
 }
 
@@ -76,6 +96,9 @@ class SettingsStore(private val context: Context) {
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
     }
+
+    private fun showKey(podcastUuid: String, suffix: String) =
+        stringPreferencesKey("show_playback_${suffix}_$podcastUuid")
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
         PlaybackSettings(
@@ -147,6 +170,28 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
+
+    fun showPlaybackSettings(podcastUuid: String): Flow<ShowPlaybackSettings> =
+        context.settingsStore.data.map { prefs ->
+            ShowPlaybackSettings(
+                volumeBoost = prefs[booleanPreferencesKey("show_playback_volume_boost_$podcastUuid")] ?: false,
+                skipSilence = prefs[booleanPreferencesKey("show_playback_skip_silence_$podcastUuid")] ?: false,
+                playbackSpeed = (prefs[floatPreferencesKey("show_playback_playback_speed_$podcastUuid")] ?: 1.0f).coerceIn(0.5f, 3.0f),
+                smartSpeed = prefs[booleanPreferencesKey("show_playback_smart_speed_$podcastUuid")] ?: false,
+                crossfadeMs = (prefs[intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")] ?: 0).coerceIn(0, 30_000),
+                autoTrim = prefs[booleanPreferencesKey("show_playback_auto_trim_$podcastUuid")] ?: false,
+            )
+        }
+
+    suspend fun setShowPlaybackSettings(podcastUuid: String, settings: ShowPlaybackSettings) =
+        edit {
+            it[booleanPreferencesKey("show_playback_volume_boost_$podcastUuid")] = settings.volumeBoost
+            it[booleanPreferencesKey("show_playback_skip_silence_$podcastUuid")] = settings.skipSilence
+            it[floatPreferencesKey("show_playback_playback_speed_$podcastUuid")] = settings.playbackSpeed
+            it[booleanPreferencesKey("show_playback_smart_speed_$podcastUuid")] = settings.smartSpeed
+            it[intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")] = settings.crossfadeMs
+            it[booleanPreferencesKey("show_playback_auto_trim_$podcastUuid")] = settings.autoTrim
+        }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsStore.edit(block)

@@ -4,19 +4,25 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.data.db.entity.ListeningHistoryEntity
 import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.data.db.entity.toSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 
 /** One queue entry, paired with its show so the row can name the source. */
-data class QueueEntry(val episode: EpisodeEntity, val showTitle: String)
+data class QueueEntry(val episode: EpisodeSummary, val showTitle: String)
 
 /** One in-progress episode, paired with its show. */
 data class ContinueEntry(val episode: EpisodeEntity, val showTitle: String)
@@ -179,7 +185,7 @@ class QueueViewModel(
             } else {
                 ep
             }
-            QueueEntry(resolved, show?.title.orEmpty())
+            QueueEntry(resolved.toSummary(), show?.title.orEmpty())
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -272,7 +278,7 @@ class QueueViewModel(
      * the chart answers "when do I actually listen" rather than repeating the
      * same total every day.
      */
-    private fun dailyActivityMinutes(episodes: List<EpisodeEntity>): List<Int> {
+    private fun dailyActivityMinutes(episodes: List<EpisodeSummary>): List<Int> {
         if (episodes.isEmpty()) return emptyList()
 
         val now = System.currentTimeMillis()
@@ -299,7 +305,7 @@ class QueueViewModel(
      * the shape instead of another number.
      */
     private fun topShows(
-        episodes: List<EpisodeEntity>,
+        episodes: List<EpisodeSummary>,
         shows: List<PodcastEntity>,
     ): List<ShowActivity> {
         val titles = shows.associate { it.uuid to it.title }
@@ -358,7 +364,7 @@ class QueueViewModel(
         }
     }
 
-    private fun triggerDownloadIfNeeded(ep: EpisodeEntity) {
+    private fun triggerDownloadIfNeeded(ep: EpisodeSummary) {
         if (!ep.isDownloaded && !ep.isDownloading) {
             runCatching { ServiceLocator.downloadManager().start(ep) }
         }
@@ -428,7 +434,7 @@ class QueueViewModel(
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
 
-        fun resolve(ep: EpisodeEntity): QueueEntry {
+        fun resolve(ep: EpisodeSummary): QueueEntry {
             val show = showMap[ep.podcastUuid]
             val withArt = if (ep.artworkUrl.isNullOrBlank() && !show?.artworkUrl.isNullOrBlank()) {
                 ep.copy(artworkUrl = show?.artworkUrl)
@@ -518,6 +524,9 @@ class QueueViewModel(
 
     fun movePlaylist(playlistId: String, delta: Int) =
         playlistRepository.movePlaylist(playlistId, delta)
+
+    fun reorderPlaylists(playlistIds: List<String>) =
+        playlistRepository.reorderPlaylists(playlistIds)
 
     fun setPlaylistFolder(playlistId: String, folder: String) =
         playlistRepository.setPlaylistFolder(playlistId, folder)

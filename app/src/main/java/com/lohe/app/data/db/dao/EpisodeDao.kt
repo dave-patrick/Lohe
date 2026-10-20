@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -23,8 +24,33 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes ORDER BY published DESC LIMIT :limit")
     fun observeLatest(limit: Int = 50): Flow<List<EpisodeEntity>>
 
+    /**
+     * Every episode, newest first. A lightweight projection: [description] and
+     * [chapters] are omitted because they are large text blobs only needed on
+     * the episode detail screen. Full [EpisodeEntity] is fetched by UUID when
+     * those fields are required.
+     */
+    /**
+     * Every episode, newest first. A lightweight projection: [description] and
+     * [chapters] are omitted because they are large text blobs only needed on
+     * the episode detail screen. Full [EpisodeEntity] is fetched by UUID when
+     * those fields are required.
+     */
+    @Query(
+        """
+        SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
+               sizeBytes, fileType, author, artworkUrl, playingStatus,
+               playedUpToSeconds, listenedSeconds, starred, isDeleted,
+               queuePosition, lastPlayedAt, localPath, downloadState
+        FROM episodes
+        ORDER BY published DESC
+        """
+    )
+    fun observeAllSummaries(): Flow<List<EpisodeSummary>>
+
+    /** Every episode as full entities — used when description/chapters are needed. */
     @Query("SELECT * FROM episodes")
-    fun observeAll(): Flow<List<EpisodeEntity>>
+    fun observeAllEntities(): Flow<List<EpisodeEntity>>
 
     /** Part-finished episodes, most recently touched first. */
     @Query(
@@ -127,12 +153,16 @@ interface EpisodeDao {
 
     @Query(
         """
-        SELECT * FROM episodes
+        SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
+               sizeBytes, fileType, author, artworkUrl, playingStatus,
+               playedUpToSeconds, listenedSeconds, starred, isDeleted,
+               queuePosition, lastPlayedAt, localPath, downloadState
+        FROM episodes
         WHERE downloadState = 2 AND localPath IS NOT NULL
         ORDER BY published DESC
         """
     )
-    fun observeDownloads(): Flow<List<EpisodeEntity>>
+    fun observeDownloads(): Flow<List<EpisodeSummary>>
 
     /**
      * Inserts or replaces episodes.
@@ -193,7 +223,7 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET playingStatus = 0, playedUpToSeconds = 0
+        SET playingStatus = 0, playedUpToSeconds = 0, listenedSeconds = 0
         WHERE uuid = :uuid AND playingStatus = 2
         """
     )
@@ -202,7 +232,7 @@ interface EpisodeDao {
     @Query("SELECT playedUpToSeconds FROM episodes WHERE uuid = :uuid")
     suspend fun playedPosition(uuid: String): Long
 
-    @Query("UPDATE episodes SET playingStatus = 2 WHERE uuid = :uuid")
+    @Query("UPDATE episodes SET playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
     suspend fun markPlayed(uuid: String)
 
     @Query("UPDATE episodes SET starred = :starred WHERE uuid = :uuid")

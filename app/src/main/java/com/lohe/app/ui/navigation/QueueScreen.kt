@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -1163,16 +1164,33 @@ fun PlaylistsScreen(
                     }
                 }
             } else {
+                val dragEnabled = selectedFolder == ALL_PLAYLIST_FOLDERS && playlistSort == PlaylistSort.MANUAL
+                var items by remember(visiblePlaylists) { mutableStateOf(visiblePlaylists) }
+                val listState = rememberLazyListState()
+                val dragState = rememberDragReorderState(
+                    listState = listState,
+                    onMove = { from, to ->
+                        items = items.toMutableList().apply { add(to, removeAt(from)) }
+                    },
+                    onDrop = {
+                        viewModel.reorderPlaylists(items.map { it.id })
+                    },
+                )
+                LaunchedEffect(visiblePlaylists) {
+                    if (!dragState.isDragging) items = visiblePlaylists
+                }
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 6.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
+                    itemsIndexed(items, key = { _, pl -> pl.id }) { index, pl ->
+                        val dragging = dragState.draggedIndex == index
                         PlaylistListCard(
                             playlist = pl,
                             canMoveUp = !pl.system && index > 0,
-                            canMoveDown = !pl.system && index < visiblePlaylists.lastIndex,
+                            canMoveDown = !pl.system && index < items.lastIndex,
                             onOpen = { openedPlaylistId = pl.id },
                             onPlayAll = {
                                 if (pl.entries.isNotEmpty()) {
@@ -1187,6 +1205,26 @@ fun PlaylistsScreen(
                             onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
                             onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
                             onAssignFolder = { folderDialogTarget = pl },
+                            dragHandle = if (dragEnabled && !pl.system) {
+                                {
+                                    DragHandle(state = dragState, index = index, key = pl.id)
+                                }
+                            } else null,
+                            modifier = Modifier
+                                .then(
+                                    if (dragging) {
+                                        Modifier.zIndex(1f)
+                                    } else {
+                                        Modifier.animateItem()
+                                    },
+                                )
+                                .graphicsLayer {
+                                    if (dragging) {
+                                        translationY = dragState.draggedOffset
+                                        scaleX = 1.02f
+                                        scaleY = 1.02f
+                                    }
+                                },
                         )
                     }
                 }
@@ -1543,8 +1581,10 @@ private fun PlaylistListCard(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onAssignFolder: () -> Unit,
+    dragHandle: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 12.dp) {
+    GlassCard(onClick = onOpen, contentPadding = 12.dp, modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1575,6 +1615,15 @@ private fun PlaylistListCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                }
+            }
+
+            if (dragHandle != null) {
+                Box(
+                    modifier = Modifier.size(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    dragHandle()
                 }
             }
 

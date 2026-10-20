@@ -1,6 +1,6 @@
 package com.lohe.app.ui.navigation
 
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlin.math.roundToInt
 
 /**
@@ -96,7 +96,7 @@ object EpisodeMeta {
     }
 
     /** "72% played" or "New". */
-    fun progress(episode: EpisodeEntity): String {
+    fun progress(episode: EpisodeSummary): String {
         val duration = episode.durationSeconds ?: return "New"
         if (duration <= 0) return "New"
         if (episode.isPlayed) return "Played"
@@ -109,7 +109,7 @@ object EpisodeMeta {
      * The full metadata line: progress while part-played, otherwise date and
      * runtime.
      */
-    fun line(episode: EpisodeEntity, now: Long): String {
+    fun line(episode: EpisodeSummary, now: Long): String {
         val runtime = duration(episode.durationSeconds)
 
         // While something is part-played, how much is left matters more than

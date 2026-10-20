@@ -74,6 +74,7 @@ import com.lohe.app.data.EpisodeFilter
 import com.lohe.app.data.EpisodesViewModel
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.toSummary
 import com.lohe.app.ui.player.EpisodeNotesSheet
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
@@ -360,7 +361,7 @@ fun EpisodesScreen(
                             SwipeToDismissBoxValue.EndToStart -> {
                                 if (episode.isDownloaded) {
                                     val dm = ServiceLocator.downloadManager()
-                                    scope.launch { dm.delete(episode) }
+                                    scope.launch { dm.delete(episode.toSummary()) }
                                     onShowMessage("Removed download")
                                 } else {
                                     onDownload(episode)
@@ -443,7 +444,7 @@ fun EpisodesScreen(
                             } else {
                                 // Always download when pressing play
                                 if (!episode.isDownloaded && !episode.isDownloading) {
-                                    ServiceLocator.downloadManager().start(episode)
+                                    ServiceLocator.downloadManager().start(episode.toSummary())
                                 }
                                 onPlay(episode)
                             }
@@ -460,7 +461,7 @@ fun EpisodesScreen(
                         onRemoveDownloads = {
                             val dm = ServiceLocator.downloadManager()
                             scope.launch {
-                                dm.delete(episode)
+                                dm.delete(episode.toSummary())
                             }
                             onShowMessage("Removed download")
                         },
@@ -528,7 +529,7 @@ fun EpisodesScreen(
                     uuids.forEach { uuid ->
                         val ep = episodes.firstOrNull { it.uuid == uuid }
                         if (ep?.isDownloaded == true) {
-                            dm.delete(ep)
+                            dm.delete(ep.toSummary())
                         }
                     }
                 }
@@ -641,7 +642,7 @@ private fun EpisodeRow(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = EpisodeMeta.line(episode, now),
+                        text = EpisodeMeta.line(episode.toSummary(), now),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

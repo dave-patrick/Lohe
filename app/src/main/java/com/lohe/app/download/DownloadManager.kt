@@ -3,7 +3,7 @@ package com.lohe.app.download
 import android.content.Context
 import com.lohe.app.data.SubscriptionRepository
 import com.lohe.app.data.db.entity.DownloadState
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,14 +42,14 @@ class DownloadManager(
     /** Downloaded episodes, newest first. */
     fun downloads() = repository.observeDownloads()
 
-    fun start(episode: EpisodeEntity) {
+    fun start(episode: EpisodeSummary) {
         scope.launch {
             runDownload(episode)
         }
     }
 
     /** Removes the file and forgets the episode. */
-    suspend fun delete(episode: EpisodeEntity) = withContext(io) {
+    suspend fun delete(episode: EpisodeSummary) = withContext(io) {
         episode.localPath?.let { path ->
             runCatching { File(path).delete() }
         }
@@ -93,10 +93,10 @@ class DownloadManager(
         repaired
     }
 
-    private suspend fun downloadsBlocking(): List<EpisodeEntity> =
+    private suspend fun downloadsBlocking(): List<EpisodeSummary> =
         repository.observeDownloads().first()
 
-    private suspend fun runDownload(episode: EpisodeEntity) {
+    private suspend fun runDownload(episode: EpisodeSummary) {
         if (episode.isDownloaded || episode.isDownloading) return
 
         repository.setDownloadState(episode.uuid, DownloadState.RUNNING, null)
@@ -162,7 +162,7 @@ class DownloadManager(
      * fail on some filesystems or escape the intended directory. The uuid keeps
      * the name unique and safe.
      */
-    private fun fileNameFor(episode: EpisodeEntity): String = DownloadNaming.fileName(
+    private fun fileNameFor(episode: EpisodeSummary): String = DownloadNaming.fileName(
         title = episode.title,
         uuid = episode.uuid,
         mimeType = episode.fileType,

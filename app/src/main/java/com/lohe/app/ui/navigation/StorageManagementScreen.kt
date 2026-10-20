@@ -40,7 +40,7 @@ import com.lohe.app.R
 import com.lohe.app.data.CONTENT_SCHEME
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlinx.coroutines.launch
 
 /**
@@ -219,7 +219,7 @@ private fun StorageCard(
 }
 
 @Composable
-private fun DownloadRow(episode: EpisodeEntity, onDelete: () -> Unit) {
+private fun DownloadRow(episode: EpisodeSummary, onDelete: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,

@@ -69,6 +69,11 @@ data class EpisodeEntity(
     val localPath: String? = null,
     /** One of [DownloadState]. */
     val downloadState: Int = DownloadState.NONE,
+    /**
+     * Chapter markers as JSON: [{"title": "...", "startMs": 12345}, ...]
+     * Used for chapter navigation in the player.
+     */
+    val chapters: String? = null,
 ) {
     val isPlayed: Boolean get() = playingStatus == PLAYED
     val isInProgress: Boolean get() = playingStatus == IN_PROGRESS
@@ -115,6 +120,92 @@ data class EpisodeEntity(
         const val PLAYED = 2
     }
 }
+
+/**
+ * Lightweight projection of [EpisodeEntity] for list views.
+ *
+ * Omits [description] and [chapters], which can be large text blobs that are
+ * only needed on the episode detail screen. Loading them for every episode in
+ * the library (thousands of rows) blows the heap. Full [EpisodeEntity] is
+ * fetched by UUID when the detail screen or player needs them.
+ */
+data class EpisodeSummary(
+    val uuid: String,
+    val podcastUuid: String,
+    val title: String,
+    val audioUrl: String,
+    val published: Long,
+    val durationSeconds: Int? = null,
+    val sizeBytes: Long? = null,
+    val fileType: String? = null,
+    val author: String? = null,
+    val artworkUrl: String? = null,
+    /** 0 = unplayed, 1 = in progress, 2 = played. */
+    val playingStatus: Int = 0,
+    val playedUpToSeconds: Long = 0,
+    val listenedSeconds: Long = 0,
+    val starred: Boolean = false,
+    val isDeleted: Boolean = false,
+    val queuePosition: Int? = null,
+    val lastPlayedAt: Long? = null,
+    val localPath: String? = null,
+    /** One of [DownloadState]. */
+    val downloadState: Int = DownloadState.NONE,
+) {
+    val isPlayed: Boolean get() = playingStatus == PLAYED
+    val isInProgress: Boolean get() = playingStatus == IN_PROGRESS
+    val isQueued: Boolean get() = queuePosition != null
+
+    val isDownloaded: Boolean
+        get() = downloadState == DownloadState.DONE && !localPath.isNullOrBlank()
+
+    val isDownloading: Boolean get() = downloadState == DownloadState.RUNNING
+
+    /** Source the player should open. Falls back to the remote URL. */
+    val playbackUri: String
+        get() {
+            val local = localPath
+            if (isDownloaded && !local.isNullOrBlank() && java.io.File(local).exists()) return local
+            return audioUrl
+        }
+
+    /** Fraction listened, or 0 when the duration is unknown. */
+    val completionFraction: Float
+        get() = when {
+            durationSeconds == null || durationSeconds <= 0 -> 0f
+            isPlayed -> 1f
+            else -> (playedUpToSeconds.toFloat() / durationSeconds.toFloat()).coerceIn(0f, 1f)
+        }
+
+    companion object {
+        const val UNPLAYED = 0
+        const val IN_PROGRESS = 1
+        const val PLAYED = 2
+    }
+}
+
+/** Converts a full entity to its lightweight summary projection. */
+fun EpisodeEntity.toSummary(): EpisodeSummary = EpisodeSummary(
+    uuid = uuid,
+    podcastUuid = podcastUuid,
+    title = title,
+    audioUrl = audioUrl,
+    published = published,
+    durationSeconds = durationSeconds,
+    sizeBytes = sizeBytes,
+    fileType = fileType,
+    author = author,
+    artworkUrl = artworkUrl,
+    playingStatus = playingStatus,
+    playedUpToSeconds = playedUpToSeconds,
+    listenedSeconds = listenedSeconds,
+    starred = starred,
+    isDeleted = isDeleted,
+    queuePosition = queuePosition,
+    lastPlayedAt = lastPlayedAt,
+    localPath = localPath,
+    downloadState = downloadState,
+)
 
 /** Progress of an offline download. */
 object DownloadState {

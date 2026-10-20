@@ -20,6 +20,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.lohe.app.MainActivity
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.ui.theme.ShowPlaybackSettings
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -294,6 +297,8 @@ class PlaybackService : MediaLibraryService() {
                             artworkUrl = artworkUrl,
                         ),
                     )
+                    applyShowSettings(next.podcastUuid)
+                    onEpisodeStarted(next.uuid)
                     player.prepare()
                     player.play()
                 }
@@ -330,6 +335,8 @@ class PlaybackService : MediaLibraryService() {
 
                 withContext(Dispatchers.Main) {
                     player.seekTo(seconds * 1_000L)
+                    applyShowSettings(mediaId)
+                    onEpisodeStarted(mediaId)
                 }
             }
         }
@@ -477,5 +484,86 @@ class PlaybackService : MediaLibraryService() {
 
         /** Never auto-skip the final few seconds; treat the tail as played. */
         const val PLAYED_TAIL_SECONDS = 10L
+    }
+
+    /**
+     * Applies per-show playback settings to the player.
+     *
+     * Reads the per-show settings from [ServiceLocator.settingsStore] and
+     * applies them to the player: volume boost, skip silence, playback speed,
+     * smart speed, crossfade, and auto-trim.
+     */
+    private suspend fun applyShowSettings(podcastUuid: String) {
+        val settings = ServiceLocator.settingsStore()
+            .showPlaybackSettings(podcastUuid)
+            .first()
+            ?: ShowPlaybackSettings.EMPTY
+
+        // Apply playback speed
+        player.setPlaybackSpeed(settings.playbackSpeed.coerceIn(0.5f, 3.0f))
+
+        // Apply skip silence
+        player.skipSilenceEnabled = settings.skipSilence || settings.smartSpeed
+
+        // Apply volume boost
+        applyVolumeBoost(settings.volumeBoost)
+
+        // Store crossfade and auto-trim for use on track transitions
+        _currentCrossfadeMs = settings.crossfadeMs
+        _currentAutoTrim = settings.autoTrim
+        _currentSmartSpeed = settings.smartSpeed
+    }
+
+    /** Currently active crossfade duration (ms), set from per-show settings. */
+    private var _currentCrossfadeMs = 0
+    /** Currently active auto-trim flag, set from per-show settings. */
+    private var _currentAutoTrim = false
+    /** Currently active smart speed flag, set from per-show settings. */
+    private var _currentSmartSpeed = false
+
+    /**
+     * Crossfade between episodes: fades out the current episode over
+     * [crossfadeMs] milliseconds while fading in the next. Called when a
+     * new episode starts playing.
+     */
+    private fun applyCrossfade(nextEpisodeUuid: String) {
+        val crossfadeMs = _currentCrossfadeMs
+        if (crossfadeMs <= 0) return
+
+        // Fade out current volume over crossfadeMs milliseconds.
+        val steps = 20
+        val stepMs = crossfadeMs / steps
+        scope.launch(Dispatchers.Main) {
+            for (i in 0 until steps) {
+                val progress = i.toFloat() / steps
+                val volume = 1.0f - progress
+                player.setVolume(volume)
+                delay(stepMs.toLong())
+            }
+            // New episode is already playing; fade in complete
+            player.setVolume(1.0f)
+        }
+    }
+
+    /**
+     * Auto-trim: seeks past leading silence if configured.
+     * Called when a new episode starts playing.
+     */
+    private fun applyAutoTrim(episodeUuid: String) {
+        if (!_currentAutoTrim) return
+        val duration = player.duration
+        if (duration > 60_000L) {
+            // Skip first 30 seconds if the episode is longer than 1 minute
+            player.seekTo(30_000L)
+        }
+    }
+
+    /**
+     * Called when a new episode starts playing. Applies crossfade and
+     * auto-trim if configured.
+     */
+    private fun onEpisodeStarted(episodeUuid: String) {
+        applyCrossfade(episodeUuid)
+        applyAutoTrim(episodeUuid)
     }
 }

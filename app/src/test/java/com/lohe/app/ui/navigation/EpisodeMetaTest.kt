@@ -1,6 +1,6 @@
 package com.lohe.app.ui.navigation
 
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,8 +18,8 @@ class EpisodeMetaTest {
         published: Long = 0L,
         durationSeconds: Int? = null,
         playedUpToSeconds: Long = 0L,
-        playingStatus: Int = EpisodeEntity.UNPLAYED,
-    ) = EpisodeEntity(
+        playingStatus: Int = EpisodeSummary.UNPLAYED,
+    ) = EpisodeSummary(
         uuid = "u",
         podcastUuid = "p",
         title = "t",
@@ -119,7 +119,7 @@ class EpisodeMetaTest {
                 published = now - 2 * 86_400_000L,
                 durationSeconds = 1_500,
                 playedUpToSeconds = 900,
-                playingStatus = EpisodeEntity.IN_PROGRESS,
+                playingStatus = EpisodeSummary.IN_PROGRESS,
             ),
             now,
         )
@@ -136,7 +136,7 @@ class EpisodeMetaTest {
             episode(
                 durationSeconds = 600,
                 playedUpToSeconds = 5_000,
-                playingStatus = EpisodeEntity.IN_PROGRESS,
+                playingStatus = EpisodeSummary.IN_PROGRESS,
             ),
             now,
         )
@@ -166,7 +166,7 @@ class EpisodeMetaTest {
                 published = now - 86_400_000L,
                 durationSeconds = 1_500,
                 playedUpToSeconds = 1_500,
-                playingStatus = EpisodeEntity.PLAYED,
+                playingStatus = EpisodeSummary.PLAYED,
             ),
             now,
         )

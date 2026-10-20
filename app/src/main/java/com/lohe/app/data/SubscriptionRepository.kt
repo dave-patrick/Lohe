@@ -4,7 +4,9 @@ import android.content.Context
 import com.lohe.app.data.db.AppDatabase
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import com.lohe.app.data.db.entity.ListeningHistoryEntity
+import com.lohe.app.data.db.entity.toSummary
 import com.lohe.app.data.fetch.CatalogSearcher
 import com.lohe.app.data.fetch.OpmlCodec
 import com.lohe.app.data.fetch.PodcastFetcher
@@ -48,7 +50,7 @@ class SubscriptionRepository internal constructor(
         if (query.isBlank()) podcasts.observeAll() 
         else podcasts.observeSearchResults(query)
 
-    fun observeAllEpisodes(): Flow<List<EpisodeEntity>> = episodes.observeAll()
+    fun observeAllEpisodes(): Flow<List<EpisodeSummary>> = episodes.observeAllSummaries()
 
     /**
      * Listening time recorded for episodes that have left the library.
@@ -69,7 +71,7 @@ class SubscriptionRepository internal constructor(
     fun observeQueue(): Flow<List<EpisodeEntity>> = episodes.observeQueue()
 
     /** Completed offline downloads, newest first. */
-    fun observeDownloads(): Flow<List<EpisodeEntity>> = episodes.observeDownloads()
+    fun observeDownloads(): Flow<List<EpisodeSummary>> = episodes.observeDownloads()
 
     suspend fun setDownloadState(uuid: String, state: Int, path: String?) =
         episodes.setDownloadState(uuid, state, path)
@@ -153,7 +155,7 @@ class SubscriptionRepository internal constructor(
 
     /** Get total storage size used by local files (content:// URIs) */
     fun getLocalFilesStorageSize(): Flow<Long> =
-        episodes.observeAll().map { list ->
+        episodes.observeAllSummaries().map { list ->
             list.filter { it.audioUrl.startsWith(CONTENT_SCHEME) }
                 .sumOf { it.sizeBytes ?: 0L }
         }
@@ -230,22 +232,44 @@ class SubscriptionRepository internal constructor(
      * not abort the import, so failures are counted and reported rather than
      * propagated.
      */
-    suspend fun importOpml(opml: String): OpmlImportResult {
+    /**
+     * Import subscriptions from an OPML document.
+     *
+     * Feeds are fetched independently: one dead URL in a 200-show export must
+     * not abort the import, so failures are counted and reported rather than
+     * propagated.
+     *
+     * [onProgress] is invoked with `(completed, total)` as each feed is
+     * processed, including an initial `(0, total)` once the document has been
+     * parsed, so callers can show progress and the overall count.
+     */
+    suspend fun importOpml(
+        opml: String,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): OpmlImportResult {
         val subscriptions = OpmlCodec.read(opml)
-        val failures = mutableListOf<String>()
+        val total = subscriptions.size
+        onProgress(0, total)
+        val failures = mutableListOf<OpmlImportFailure>()
         var imported = 0
 
-        subscriptions.forEach { subscription ->
+        subscriptions.forEachIndexed { index, subscription ->
             fetcher.importFeed(subscription.feedUrl)
                 .onSuccess { imported++ }
-                .onFailure { failures += subscription.title }
+                .onFailure { e ->
+                    failures += OpmlImportFailure(
+                        subscription.title,
+                        e.message ?: "Couldn't read that feed.",
+                    )
+                }
+            onProgress(index + 1, total)
         }
 
         return OpmlImportResult(
             total = subscriptions.size,
             imported = imported,
             failed = failures.size,
-            failureTitles = failures,
+            failures = failures,
         )
     }
     /**
@@ -319,12 +343,15 @@ data class FeedRefreshSummary(
     val failureTitles: List<String> = emptyList(),
 )
 
+/** One subscription that failed to import, with the reason. */
+data class OpmlImportFailure(val title: String, val reason: String)
+
 /** Outcome of an OPML import, for the UI to summarise. */
 data class OpmlImportResult(
     val total: Int,
     val imported: Int,
     val failed: Int,
-    val failureTitles: List<String> = emptyList(),
+    val failures: List<OpmlImportFailure> = emptyList(),
 )
 
 /**
@@ -354,7 +381,7 @@ object ServiceLocator {
             // Resolved lazily on first auto-download, never during construction.
             // Calling downloadManager() here instead would recurse: it builds a
             // DownloadManager that takes a repository, which would come back here.
-            autoDownload = { episode -> downloadManager().start(episode) },
+            autoDownload = { episode -> downloadManager().start(episode.toSummary()) },
         )
 
     fun podcastFetcher(): PodcastFetcher =

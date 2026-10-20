@@ -2,7 +2,9 @@ package com.lohe.app.data
 
 import com.lohe.app.data.db.entity.DownloadState
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.data.db.entity.toSummary
 import com.lohe.app.data.fetch.OpmlCodec
 import com.lohe.app.data.fetch.OpmlSubscription
 import com.lohe.app.data.fetch.PodcastFetcher
@@ -110,10 +112,13 @@ class SubscriptionRepositoryTest {
 
     private class FakeEpisodeDao : com.lohe.app.data.db.dao.EpisodeDao {
         val rows = mutableListOf<EpisodeEntity>()
-        override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.toList())
+        override fun observeAllSummaries() =
+            kotlinx.coroutines.flow.flowOf(rows.map { it.toSummary() }.toList())
+        override fun observeAllEntities() = kotlinx.coroutines.flow.flowOf(rows.toList())
         override fun observeDownloads() =
             kotlinx.coroutines.flow.flowOf(
-                rows.filter { it.downloadState == DownloadState.DONE && it.localPath != null },
+                rows.filter { it.downloadState == DownloadState.DONE && it.localPath != null }
+                    .map { it.toSummary() },
             )
 
         override fun observeInProgress() =
@@ -369,7 +374,7 @@ class SubscriptionRepositoryTest {
         assertEquals(2, result.total)
         assertEquals(1, result.imported)
         assertEquals(1, result.failed)
-        assertEquals(listOf("Bad"), result.failureTitles)
+        assertEquals(listOf("Bad"), result.failures.map { it.title })
     }
 
     @Test

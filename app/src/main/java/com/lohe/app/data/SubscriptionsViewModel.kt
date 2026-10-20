@@ -3,7 +3,7 @@ package com.lohe.app.data
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import com.lohe.app.data.db.entity.PodcastEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,7 +37,7 @@ class SubscriptionsViewModel(
 
     val searchQueryState: StateFlow<String> = searchQuery.asStateFlow()
 
-    val allEpisodes: StateFlow<List<EpisodeEntity>> =
+    val allEpisodes: StateFlow<List<EpisodeSummary>> =
         repository.observeAllEpisodes()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -125,12 +125,19 @@ class SubscriptionsViewModel(
     }
 
     fun importOpml(document: String) = viewModelScope.launch {
-        _opmlImport.value = OpmlImportState.Running
+        _opmlImport.value = OpmlImportState.Running(0, 0)
         try {
-            _opmlImport.value = OpmlImportState.Done(repository.importOpml(document))
+            val result = repository.importOpml(document) { completed, total ->
+                _opmlImport.value = OpmlImportState.Running(completed, total)
+            }
+            _opmlImport.value = OpmlImportState.Done(result)
         } catch (e: IllegalArgumentException) {
             _opmlImport.value = OpmlImportState.Failed(
                 e.message ?: "That file isn't an OPML subscription list.",
+            )
+        } catch (e: Exception) {
+            _opmlImport.value = OpmlImportState.Failed(
+                e.message ?: "Couldn't import that OPML file.",
             )
         }
     }
@@ -175,7 +182,8 @@ sealed interface FeedImportState {
 /** Progress and outcome of an OPML import. */
 sealed interface OpmlImportState {
     data object Idle : OpmlImportState
-    data object Running : OpmlImportState
+    /** [completed] feeds processed out of [total] found in the document. */
+    data class Running(val completed: Int = 0, val total: Int = 0) : OpmlImportState
     data class Done(val result: OpmlImportResult) : OpmlImportState
     data class Failed(val reason: String) : OpmlImportState
 }
