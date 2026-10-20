@@ -21,11 +21,22 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.create("release") {
+                val props = Properties()
+                rootProject.file("local.properties")
+                    .takeIf { it.exists() }
+                    ?.inputStream()
+                    ?.use { props.load(it) }
+                storeFile = file(props.getProperty("keystore.path", ""))
+                storePassword = props.getProperty("keystore.password", "")
+                keyAlias = props.getProperty("keystore.alias", "")
+                keyPassword = props.getProperty("keystore.key.password", "")
+            }
         }
     }
 
