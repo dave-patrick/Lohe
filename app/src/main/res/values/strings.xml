@@ -73,6 +73,7 @@
     <string name="episodes_star">Star episode</string>
     <string name="episodes_show_settings">Show settings</string>
     <string name="episodes_archive">Archive episode</string>
+    <string name="episodes_refresh">Refresh episode</string>
     <string name="episodes_unarchive">Bring back from archive</string>
     <string name="episodes_sort">Change sort order</string>
     <string name="episodes_mark_played">Mark as played</string>

@@ -23,6 +23,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -30,6 +32,39 @@ import com.lohe.app.ui.player.formatSpeedLabel
 import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.ShowPlaybackOverrides
+import kotlinx.coroutines.launch
+
+/**
+ * The playback settings for one show, resolved from the store.
+ *
+ * Any screen that has a show can offer this, so the per-show settings are
+ * reachable from the library as well as from the show's own page.
+ */
+@Composable
+fun ShowSettingsSheetFor(
+    podcastUuid: String,
+    showTitle: String,
+    onDismiss: () -> Unit,
+) {
+    val store = remember { com.lohe.app.data.ServiceLocator.settingsStore() }
+    val scope = rememberCoroutineScope()
+    val global by store.settings.collectAsState(initial = PlaybackSettings())
+    val overrides by store.showPlaybackOverrides(podcastUuid)
+        .collectAsState(initial = ShowPlaybackOverrides())
+
+    ShowSettingsSheet(
+        showTitle = showTitle,
+        global = global,
+        overrides = overrides,
+        onSetVolumeBoost = { v -> scope.launch { store.setShowVolumeBoost(podcastUuid, v) } },
+        onSetSkipSilence = { v -> scope.launch { store.setShowSkipSilence(podcastUuid, v) } },
+        onSetSpeed = { v -> scope.launch { store.setShowPlaybackSpeed(podcastUuid, v) } },
+        onSetSmartSpeed = { v -> scope.launch { store.setShowSmartSpeed(podcastUuid, v) } },
+        onSetAutoTrim = { v -> scope.launch { store.setShowAutoTrim(podcastUuid, v) } },
+        onReset = { scope.launch { store.clearShowPlaybackSettings(podcastUuid) } },
+        onDismiss = onDismiss,
+    )
+}
 
 /**
  * The playback settings for one show.
@@ -139,13 +174,13 @@ fun ShowSettingsSheet(
             )
             ShowToggle(
                 title = "Smart speed",
-                globalOn = false,
+                globalOn = global.smartSpeedByDefault,
                 override = overrides.smartSpeed,
                 onSet = onSetSmartSpeed,
             )
             ShowToggle(
                 title = "Trim silence and ads",
-                globalOn = false,
+                globalOn = global.autoTrimByDefault,
                 override = overrides.autoTrim,
                 onSet = onSetAutoTrim,
             )
@@ -168,12 +203,17 @@ fun ShowSettingsSheet(
 }
 
 /**
- * One on-or-off setting for a show, with the global value shown beside it.
+ * One on-or-off setting for a show.
+ *
+ * [globalOn] is null for a setting that has no global counterpart, which is
+ * the case for smart speed and trimming: those exist only per show, so
+ * offering to follow the global setting would be offering something that is
+ * not there.
  */
 @Composable
 private fun ShowToggle(
     title: String,
-    globalOn: Boolean,
+    globalOn: Boolean?,
     override: Boolean?,
     onSet: (Boolean?) -> Unit,
 ) {
@@ -184,21 +224,24 @@ private fun ShowToggle(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            text = if (override == null) {
-                "Following the global setting (${if (globalOn) "on" else "off"})"
-            } else {
-                "Set for this show"
+            text = when {
+                globalOn == null && override == null -> "Off for this show"
+                globalOn == null -> "Set for this show"
+                override == null -> "Following the global setting (${if (globalOn) "on" else "off"})"
+                else -> "Set for this show"
             },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            UseGlobalChip(
-                label = "Use global",
-                selected = override == null,
-                onClick = { onSet(null) },
-            )
+            if (globalOn != null) {
+                UseGlobalChip(
+                    label = "Use global",
+                    selected = override == null,
+                    onClick = { onSet(null) },
+                )
+            }
             FilterChip(
                 selected = override == true,
                 onClick = { onSet(true) },

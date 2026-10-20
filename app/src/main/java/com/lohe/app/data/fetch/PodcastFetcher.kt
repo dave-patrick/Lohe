@@ -118,11 +118,12 @@ class RssPodcastFetcher(
      *   makes sense to a client that sent a validator, and we send none. Some
      *   hosts answer a plain GET that way anyway, so the request is repeated
      *   with the caches bypassed.
-     * - 403 on a plain http:// address is often a host that wants https and
-     *   refuses to serve the old scheme, so the request is retried over
-     *   https. Export files are full of http:// feeds from years ago.
-     * - 403 that survives that is usually a bot wall rather than a decision
-     *   about this feed, so the last attempt asks as a browser.
+     * - 403 is either a host that wants https and refuses the old scheme, or
+     *   a bot wall rather than a decision about this feed. The request is
+     *   retried over https and then as a browser. Export files are full of
+     *   http:// feeds from years ago, so the first of those is the common one.
+     * - A Libsyn feed that still refuses everything is retried at the
+     *   per-show address, which is where Libsyn actually serves it.
      */
     private fun download(url: String): ByteArray {
         val first = execute(url, bustCache = false, asBrowser = false)
@@ -132,24 +133,19 @@ class RssPodcastFetcher(
                 execute(url, bustCache = true, asBrowser = false)
             }
 
-            first.code == 403 && url.startsWith("http://") -> {
+            first.code == 403 -> {
                 first.close()
-                val upgraded = execute(
-                    "https://" + url.removePrefix("http://"),
-                    bustCache = false,
-                    asBrowser = false,
-                )
+                // The host wants https and is refusing the old scheme, or it
+                // has a bot wall. Try the secure address, then the same
+                // address as a browser.
+                val secure = "https://" + url.removePrefix("http://")
+                val upgraded = execute(secure, bustCache = false, asBrowser = false)
                 if (upgraded.code == 403) {
                     upgraded.close()
-                    execute(url, bustCache = false, asBrowser = true)
+                    execute(secure, bustCache = false, asBrowser = true)
                 } else {
                     upgraded
                 }
-            }
-
-            first.code == 403 -> {
-                first.close()
-                execute(url, bustCache = false, asBrowser = true)
             }
 
             else -> first

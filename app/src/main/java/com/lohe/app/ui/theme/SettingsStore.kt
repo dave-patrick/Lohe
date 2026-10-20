@@ -22,6 +22,19 @@ data class PlaybackSettings(
     val appearance: Appearance = Appearance.DARK,
     val volumeBoostByDefault: Boolean = false,
     val skipSilenceByDefault: Boolean = false,
+    /**
+     * Whether smart speed is on by default.
+     *
+     * Smart speed skips silence-like passages on its own, rather than only
+     * where the player is told to.
+     */
+    val smartSpeedByDefault: Boolean = false,
+    /**
+     * Whether trimming is on by default.
+     *
+     * Trimming cuts the dead air and the adverts off the ends.
+     */
+    val autoTrimByDefault: Boolean = false,
     val defaultPlaybackSpeed: Float = 1.0f,
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
@@ -104,6 +117,8 @@ class SettingsStore(private val context: Context) {
         val appearance = stringPreferencesKey("appearance")
         val volumeBoost = booleanPreferencesKey("volume_boost")
         val skipSilence = booleanPreferencesKey("skip_silence")
+        val smartSpeed = booleanPreferencesKey("smart_speed")
+        val autoTrim = booleanPreferencesKey("auto_trim")
         val defaultSpeed = floatPreferencesKey("default_playback_speed")
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
@@ -131,6 +146,8 @@ class SettingsStore(private val context: Context) {
             },
             volumeBoostByDefault = prefs[Keys.volumeBoost] ?: false,
             skipSilenceByDefault = prefs[Keys.skipSilence] ?: false,
+            smartSpeedByDefault = prefs[Keys.smartSpeed] ?: false,
+            autoTrimByDefault = prefs[Keys.autoTrim] ?: false,
             defaultPlaybackSpeed = (prefs[Keys.defaultSpeed] ?: 1.0f).coerceIn(0.5f, 3.0f),
             // A value written by an older build, or hand-edited into the file,
             // must not be able to put the skip buttons into a nonsense state.
@@ -169,6 +186,12 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setSkipSilenceDefault(value: Boolean) =
         edit { it[Keys.skipSilence] = value }
+
+    suspend fun setSmartSpeedDefault(value: Boolean) =
+        edit { it[Keys.smartSpeed] = value }
+
+    suspend fun setAutoTrimDefault(value: Boolean) =
+        edit { it[Keys.autoTrim] = value }
 
     suspend fun setDefaultPlaybackSpeed(value: Float) =
         edit { it[Keys.defaultSpeed] = value.coerceIn(0.5f, 3.0f) }
@@ -213,11 +236,13 @@ class SettingsStore(private val context: Context) {
                     prefs[showSpeedKey(podcastUuid)]
                         ?: global.defaultPlaybackSpeed
                     ).coerceIn(0.5f, 3.0f),
-                smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")] ?: false,
+                smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")]
+                    ?: global.smartSpeedByDefault,
                 crossfadeMs = (
                     prefs[showCrossfadeKey(podcastUuid)] ?: 0
                     ).coerceIn(0, 30_000),
-                autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")] ?: false,
+                autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")]
+                    ?: global.autoTrimByDefault,
             )
         }
 

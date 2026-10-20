@@ -148,6 +148,20 @@ fun SettingsScreen(
             )
 
             ToggleRow(
+                label = "Smart speed",
+                hint = "Skip silence-like passages on their own, wherever they are.",
+                checked = settings.smartSpeedByDefault,
+                onChange = { scope.launch { settingsStore.setSmartSpeedDefault(it) } },
+            )
+
+            ToggleRow(
+                label = "Trim silence and ads",
+                hint = "Cut the dead air and the adverts off the ends.",
+                checked = settings.autoTrimByDefault,
+                onChange = { scope.launch { settingsStore.setAutoTrimDefault(it) } },
+            )
+
+            ToggleRow(
                 label = stringResource(R.string.settings_mark_played),
                 hint = stringResource(R.string.settings_mark_played_hint),
                 checked = settings.markPlayedAtEnd,

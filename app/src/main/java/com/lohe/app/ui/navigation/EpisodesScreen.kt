@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -283,7 +285,7 @@ fun EpisodesScreen(
                 Box {
                     IconButton(onClick = { showSettings = true }) {
                         Icon(
-                            imageVector = Icons.Filled.Settings,
+                            imageVector = Icons.Filled.GraphicEq,
                             contentDescription = stringResource(R.string.episodes_show_settings),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -335,6 +337,7 @@ fun EpisodesScreen(
                         url = show.artworkUrl,
                         contentDescription = null,
                         size = 92.dp,
+                        fallbackLabel = show.title,
                         cornerRadius = 14.dp,
                         modifier = Modifier.size(92.dp),
                     )
@@ -531,6 +534,21 @@ fun EpisodesScreen(
                         onToggleArchived = {
                             viewModel.toggleArchived(episode.uuid, episode.isArchived)
                         },
+                        onRefresh = {
+                            scope.launch {
+                                val show = podcast
+                                if (show != null) {
+                                    ServiceLocator.subscriptionRepository()
+                                        .importFeed(show.feedUrl)
+                                }
+                                if (episode.isDownloaded) {
+                                    val dm = ServiceLocator.downloadManager()
+                                    dm.delete(episode.toSummary())
+                                    dm.start(episode.toSummary())
+                                }
+                                onShowMessage("Refreshed")
+                            }
+                        },
                     )
                 }
             }
@@ -646,6 +664,7 @@ private fun EpisodeRow(
     onTogglePlayed: () -> Unit,
     onToggleStar: () -> Unit,
     onToggleArchived: () -> Unit,
+    onRefresh: () -> Unit,
 ) {
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -779,6 +798,15 @@ private fun EpisodeRow(
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+
+                    IconButton(onClick = onRefresh, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.episodes_refresh),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp),
                         )
                     }

@@ -250,6 +250,7 @@ private fun CatalogRow(
             url = podcast.artworkUrl,
             contentDescription = null,
             size = 56.dp,
+            fallbackLabel = podcast.title,
             cornerRadius = 10.dp,
         )
 
