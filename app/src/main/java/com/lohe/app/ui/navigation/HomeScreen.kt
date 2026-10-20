@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
@@ -91,6 +92,8 @@ fun HomeScreen(
     currentEpisodeId: String? = null,
     onOpenPodcast: (String) -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
+    onOpenPlaylists: () -> Unit,
     onOpenDiscover: () -> Unit,
     onOpenSettings: () -> Unit,
     onPlay: (ContinueEntry) -> Unit,
@@ -124,14 +127,22 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             } else {
-                Image(
-                    painter = painterResource(id = R.drawable.wordmark),
-                    contentDescription = stringResource(R.string.app_name),
-                    contentScale = ContentScale.Fit,
+                // The word mark PNG carries transparent padding that sits
+                // unevenly, so it is centred in its own box rather than
+                // stretched across the row.
+                Box(
                     modifier = Modifier
                         .height(24.dp)
                         .width(128.dp),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.wordmark),
+                        contentDescription = stringResource(R.string.app_name),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
             Spacer(Modifier.weight(1f))
             IconButton(
@@ -184,6 +195,8 @@ fun HomeScreen(
                     stats = stats,
                     isLight = isLight,
                     onOpenLibrary = onOpenLibrary,
+                    onOpenSubscriptions = onOpenSubscriptions,
+                    onOpenPlaylists = onOpenPlaylists,
                 )
             }
         }
@@ -195,6 +208,8 @@ private fun HomeTelemetryDashboard(
     stats: HomeDashboardStats,
     isLight: Boolean,
     onOpenLibrary: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
+    onOpenPlaylists: () -> Unit,
 ) {
     val animatedListened by animateFloatAsState(
         targetValue = stats.listenedFraction,
@@ -343,6 +358,17 @@ private fun HomeTelemetryDashboard(
                 progress = 1f,
                 accent = ElectricBlue,
                 modifier = Modifier.weight(1f),
+                onClick = onOpenSubscriptions,
+            )
+            MetricBentoTile(
+                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                label = "Playlists",
+                value = stats.playlistCount.toString(),
+                sublabel = if (stats.playlistCount == 1) "playlist" else "playlists",
+                progress = 1f,
+                accent = ElectricBlueMid,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPlaylists,
             )
             MetricBentoTile(
                 icon = Icons.Filled.GraphicEq,
@@ -709,9 +735,14 @@ private fun MetricBentoTile(
     sublabel: String,
     progress: Float,
     accent: Color,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(modifier = modifier, contentPadding = 14.dp) {
+    GlassCard(
+        modifier = modifier,
+        contentPadding = 14.dp,
+        onClick = onClick,
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),

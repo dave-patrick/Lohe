@@ -904,7 +904,7 @@ fun PodcastsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     lastOpmlFailures.forEach { f ->
                         Text(
-                            text = "${f.title} — ${f.reason}",
+                            text = "${f.title}: ${f.reason}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier

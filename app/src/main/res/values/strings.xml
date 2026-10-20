@@ -127,6 +127,7 @@
     <string name="discovery_subscribe">Subscribe</string>
     <string name="discovery_unsubscribe">Following</string>
     <string name="discovery_open_show">Open</string>
+<string name="discovery_episodes">Episodes</string>
     <string name="show_setting_auto_download">Download new episodes</string>
     <string name="show_setting_auto_download_summary">Save them as soon as a refresh finds them</string>
     <string name="discovery_already_subscribed">Already subscribed</string>

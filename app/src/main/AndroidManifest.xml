@@ -27,7 +27,8 @@
         android:largeHeap="true"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Lohe">
+        android:theme="@style/Theme.Lohe"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

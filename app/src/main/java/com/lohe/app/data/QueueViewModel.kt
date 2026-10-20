@@ -70,6 +70,7 @@ data class HomeDashboardStats(
      */
     val isLoaded: Boolean = false,
     val subscriptionCount: Int = 0,
+    val playlistCount: Int = 0,
     val totalEpisodes: Int = 0,
     val downloadedCount: Int = 0,
     val playedEpisodesCount: Int = 0,
@@ -209,7 +210,8 @@ class QueueViewModel(
         podcasts,
         repository.observeAllEpisodes(),
         repository.observeListeningHistory(),
-    ) { shows, allEpisodes, history ->
+        playlistRepository.playlists,
+    ) { shows, allEpisodes, history, playlists ->
         val activeEpisodes = allEpisodes.filter { !it.isDeleted }
         val liveUuids = allEpisodes.mapTo(mutableSetOf()) { it.uuid }
         var totalRemaining = 0L
@@ -259,6 +261,7 @@ class QueueViewModel(
         HomeDashboardStats(
             isLoaded = true,
             subscriptionCount = shows.size,
+            playlistCount = playlists.size,
             totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,

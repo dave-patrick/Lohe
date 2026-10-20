@@ -62,6 +62,7 @@ fun DiscoveryScreen(
     val state by viewModel.state.collectAsState()
     val subscriptions by viewModel.subscriptions.collectAsState()
     val previews by viewModel.previews.collectAsState()
+    val previewEpisodes by viewModel.previewEpisodes.collectAsState()
 
     // Which catalog result is open, if any. Held by feed URL + title rather
     // than the object so a re-emitted result does not reset the sheet.
@@ -153,9 +154,13 @@ fun DiscoveryScreen(
             ?: previews[podcast.feedUrl]
             ?: podcast.description
 
+        // Fetch the episode list for preview when the detail opens.
         LaunchedEffect(podcast.feedUrl) {
+            viewModel.fetchFeedPreview(podcast.feedUrl)
             viewModel.loadPreview(podcast, existing?.description)
         }
+
+        val episodes = previewEpisodes[podcast.feedUrl] ?: emptyList()
 
         PodcastDetailSheet(
             podcast = podcast,
@@ -168,7 +173,11 @@ fun DiscoveryScreen(
                 existing?.let { viewModel.setAutoDownload(it.uuid, enabled) }
             },
             onOpenShow = existing?.let { { onOpenSubscribed(it.uuid) } },
+            onDownloadEpisode = { episodeUuid ->
+                viewModel.downloadEpisode(podcast, episodeUuid)
+            },
             onDismiss = { openDetail = null },
+            episodes = episodes,
         )
     }
 }

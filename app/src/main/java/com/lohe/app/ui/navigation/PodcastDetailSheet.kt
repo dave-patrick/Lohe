@@ -14,12 +14,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -31,11 +34,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.R
 import com.lohe.app.data.fetch.CatalogPodcast
+import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.ui.image.RemoteImage
 
@@ -61,6 +66,8 @@ fun PodcastDetailSheet(
     onUnfollow: () -> Unit,
     onAutoDownloadChange: (Boolean) -> Unit,
     onOpenShow: (() -> Unit)?,
+    onDownloadEpisode: ((String) -> Unit)? = null,
+    episodes: List<EpisodeEntity> = emptyList(),
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -178,7 +185,81 @@ fun PodcastDetailSheet(
                     onCheckedChange = onAutoDownloadChange,
                 )
             }
+
+            // Preview episodes: lets a listener download individual episodes
+            // before deciding whether to follow the show.
+            if (episodes.isNotEmpty() && onDownloadEpisode != null) {
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.discovery_episodes),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    episodes.forEach { episode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = episode.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                val duration = episode.durationSeconds
+                                if (duration != null && duration > 0) {
+                                    Text(
+                                        text = formatEpisodeDuration(duration.toLong()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { onDownloadEpisode(episode.uuid) },
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DownloadDone,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        Divider()
+                    }
+                }
+            }
         }
+    }
+}
+
+/** Formats seconds as `Xm Ys` or `Xh Ym`. */
+private fun formatEpisodeDuration(seconds: Long): String {
+    val minutes = seconds / 60
+    val secs = seconds % 60
+    return if (minutes >= 60) {
+        "${minutes / 60}h ${minutes % 60}m"
+    } else if (minutes > 0) {
+        "${minutes}m ${secs}s"
+    } else {
+        "${secs}s"
     }
 }
 

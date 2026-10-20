@@ -3,6 +3,7 @@ package com.lohe.app.data
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.data.fetch.CatalogPodcast
 import com.lohe.app.data.fetch.CatalogSearcher
@@ -61,8 +62,30 @@ class DiscoveryViewModel(
             .map { list -> list.associateBy { it.feedUrl } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /**
+     * Episodes fetched for previewing a show, keyed by feed URL.
+     *
+     * Populated when the user opens a search result's detail sheet; lets them
+     * browse the episode list and download individual episodes before
+     * deciding whether to follow the show.
+     */
+    private val _previewEpisodes = MutableStateFlow<Map<String, List<EpisodeEntity>>>(emptyMap())
+    val previewEpisodes: StateFlow<Map<String, List<EpisodeEntity>>> = _previewEpisodes.asStateFlow()
+
     fun setQuery(value: String) {
         _query.value = value
+    }
+
+    /**
+     * Fetches a show's episode list for preview, without subscribing.
+     */
+    fun fetchFeedPreview(feedUrl: String) {
+        viewModelScope.launch {
+            repository.fetchFeedPreview(feedUrl)
+                .onSuccess { episodes ->
+                    _previewEpisodes.value += feedUrl to episodes
+                }
+        }
     }
 
     fun search(term: String) {
@@ -93,6 +116,18 @@ class DiscoveryViewModel(
         viewModelScope.launch {
             repository.importFeed(podcast.feedUrl)
                 .onSuccess { _subscribed.tryEmit(podcast.feedUrl) }
+        }
+    }
+
+    /**
+     * Subscribes to a show (importing its feed) and enqueues one of its
+     * episodes for download, so a listener can grab a single episode from
+     * search results without committing to the whole show first.
+     */
+    fun downloadEpisode(podcast: CatalogPodcast, episodeUuid: String) {
+        viewModelScope.launch {
+            repository.importFeed(podcast.feedUrl)
+                .onSuccess { repository.enqueue(episodeUuid) }
         }
     }
 
