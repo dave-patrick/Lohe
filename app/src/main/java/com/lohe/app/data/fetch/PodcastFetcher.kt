@@ -1,5 +1,6 @@
 package com.lohe.app.data.fetch
 
+import com.lohe.app.LOHE_USER_AGENT
 import com.lohe.app.data.db.dao.EpisodeDao
 import com.lohe.app.data.db.dao.ListeningHistoryDao
 import com.lohe.app.data.db.dao.PodcastDao
@@ -108,7 +109,7 @@ class RssPodcastFetcher(
     private fun download(url: String): ByteArray {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "Lohe/0.1 (+podcast reader)")
+            .header("User-Agent", LOHE_USER_AGENT)
             .header(
                 "Accept",
                 "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
