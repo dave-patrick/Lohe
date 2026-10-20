@@ -3,6 +3,7 @@ package com.lohe.app.data
 import com.lohe.app.data.db.entity.DownloadState
 import com.lohe.app.data.db.entity.EpisodeEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,6 +20,7 @@ class EpisodeFilterTest {
         queuePosition: Int? = null,
         downloadState: Int = DownloadState.NONE,
         localPath: String? = null,
+        isArchived: Boolean = false,
     ) = EpisodeEntity(
         uuid = uuid,
         podcastUuid = "p1",
@@ -32,6 +34,7 @@ class EpisodeFilterTest {
         queuePosition = queuePosition,
         downloadState = downloadState,
         localPath = localPath,
+        isArchived = isArchived,
     )
 
     private val list = listOf(
@@ -133,6 +136,34 @@ class EpisodeFilterTest {
             .apply(list, EpisodeFilter.Filter.STARRED, EpisodeFilter.Order.NEWEST_FIRST)
             .map { it.uuid }
         assertEquals(listOf("c"), result)
+    }
+
+    // --- Archived ------------------------------------------------------------
+
+    @Test
+    fun `archived episodes are left out of the other lists`() {
+        val withArchived = list + episode("e", isArchived = true)
+        for (filter in listOf(
+            EpisodeFilter.Filter.ALL,
+            EpisodeFilter.Filter.UNPLAYED,
+            EpisodeFilter.Filter.IN_PROGRESS,
+            EpisodeFilter.Filter.DOWNLOADED,
+            EpisodeFilter.Filter.STARRED,
+        )) {
+            val result = EpisodeFilter
+                .apply(withArchived, filter, EpisodeFilter.Order.NEWEST_FIRST)
+                .map { it.uuid }
+            assertFalse("archived episode leaked into $filter", "e" in result)
+        }
+    }
+
+    @Test
+    fun `the archived list holds the archived episodes`() {
+        val withArchived = list + episode("e", isArchived = true)
+        val result = EpisodeFilter
+            .apply(withArchived, EpisodeFilter.Filter.ARCHIVED, EpisodeFilter.Order.NEWEST_FIRST)
+            .map { it.uuid }
+        assertEquals(listOf("e"), result)
     }
 
     // --- Search --------------------------------------------------------------

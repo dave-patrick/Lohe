@@ -85,6 +85,15 @@ data class HomeDashboardStats(
     /** Combined duration of all files altogether, in seconds. */
     val totalDurationSeconds: Long = 0L,
     /**
+     * Time saved by playing faster and skipping silence, in seconds.
+     *
+     * The difference between how long an episode runs and how long it actually
+     * took to get through it. Only counted for episodes that were really
+     * listened to: an episode marked played without being heard is not a
+     * saving, and counting it as one would be a number that means nothing.
+     */
+    val timeSavedSeconds: Long = 0L,
+    /**
      * Minutes listened per day, oldest first.
      *
      * Drives the activity chart on the Home dashboard. Empty when nothing has
@@ -92,12 +101,13 @@ data class HomeDashboardStats(
      */
     val dailyActivityMinutes: List<Int> = emptyList(),
     /**
-     * The shows with the most episodes, as (title, episode count).
+     * The shows that carry the library, and how much of each has been heard.
      *
-     * The library's shape is the one thing a count cannot convey, so it is
-     * worth showing as a ranked bar chart.
+     * Two rankings in one list: the shows with the most episodes, and the
+     * shows with the most listened to, merged so a show that is short but
+     * much listened to still appears.
      */
-    val topShows: List<ShowActivity> = emptyList(),
+    val showActivity: List<ShowActivity> = emptyList(),
 ) {
     val listenedFraction: Float
         get() = if (totalDurationSeconds > 0L) {
@@ -125,6 +135,8 @@ data class HomeDashboardStats(
 data class ShowActivity(
     val title: String,
     val episodeCount: Int,
+    /** How many of those episodes have been listened to. */
+    val listenedCount: Int = 0,
 )
 
 /**
@@ -215,16 +227,23 @@ class QueueViewModel(
         repository.observeListeningHistory(),
         playlistRepository.playlists,
     ) { shows, allEpisodes, history, playlists ->
-        val activeEpisodes = allEpisodes.filter { !it.isDeleted }
+        // Archived episodes are filed away: they are not part of the library
+        // the dashboard describes.
+        val activeEpisodes = allEpisodes.filter { !it.isDeleted && !it.isArchived }
         val liveUuids = allEpisodes.mapTo(mutableSetOf()) { it.uuid }
         var totalRemaining = 0L
         var totalPlayed = 0L
         var totalDuration = 0L
+        var timeSaved = 0L
         var downloaded = 0
         var playedCount = 0
         var inProgressCount = 0
 
         for (ep in allEpisodes) {
+            // An archived episode has been filed away, so it is no longer
+            // part of the library as far as the listening figures go.
+            if (ep.isArchived) continue
+
             // Deleted items that were never played should not be in any count.
             if (ep.isDeleted && !ep.isPlayed) continue
 
@@ -249,6 +268,13 @@ class QueueViewModel(
                 totalDuration += dur
                 totalPlayed += played
                 totalRemaining += rem
+
+                // Time saved by playing faster and skipping silence. Only
+                // for episodes that were really listened to: one marked
+                // played without being heard is not a saving.
+                if (ep.isPlayed && ep.listenedSeconds > 0L) {
+                    timeSaved += (dur - ep.listenedSeconds).coerceAtLeast(0L)
+                }
             }
         }
 
@@ -274,8 +300,9 @@ class QueueViewModel(
             totalRemainingSeconds = totalRemaining,
             totalPlayedSeconds = totalPlayed,
             totalDurationSeconds = totalDuration,
+            timeSavedSeconds = timeSaved,
             dailyActivityMinutes = dailyActivityMinutes(activeEpisodes),
-            topShows = topShows(activeEpisodes, shows),
+            showActivity = showActivity(activeEpisodes, shows),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
 
@@ -312,21 +339,46 @@ class QueueViewModel(
      * A count cannot convey the shape of a library, so the dashboard shows
      * the shape instead of another number.
      */
-    private fun topShows(
+    /**
+     * The shows that carry the library, and how much of each has been heard.
+     *
+     * Two rankings in one list: the shows with the most episodes, and the
+     * shows with the most listened to, merged so a show that is short but
+     * much listened to still appears.
+     */
+    private fun showActivity(
         episodes: List<EpisodeSummary>,
         shows: List<PodcastEntity>,
     ): List<ShowActivity> {
         val titles = shows.associate { it.uuid to it.title }
         val counts = mutableMapOf<String, Int>()
+        val listened = mutableMapOf<String, Int>()
         episodes.forEach { ep ->
-            if (ep.isDeleted) return@forEach
+            if (ep.isDeleted || ep.isArchived) return@forEach
             val title = titles[ep.podcastUuid] ?: return@forEach
             counts[title] = (counts[title] ?: 0) + 1
+            if (ep.isPlayed) listened[title] = (listened[title] ?: 0) + 1
         }
-        return counts.entries
+
+        val byEpisodes = counts.entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(TOP_SHOWS_COUNT)
-            .map { ShowActivity(it.key, it.value) }
+            .map { it.key }
+        val byListened = listened.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(TOP_SHOWS_COUNT)
+            .map { it.key }
+
+        return (byEpisodes + byListened)
+            .distinct()
+            .map { title ->
+                ShowActivity(title, counts[title] ?: 0, listened[title] ?: 0)
+            }
+            .sortedWith(
+                compareByDescending<ShowActivity> { it.episodeCount }
+                    .thenByDescending { it.listenedCount }
+                    .thenBy { it.title },
+            )
     }
 
     private val _autoDownloadUpNext = MutableStateFlow(true)
@@ -438,7 +490,8 @@ class QueueViewModel(
         playlistRepository.playlists,
         repository.observeAllEpisodes(),
         podcasts,
-    ) { rawPlaylists, allEpisodes, shows ->
+        playlistRepository.podcastFolders,
+    ) { rawPlaylists, allEpisodes, shows, podcastFolders ->
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
 
@@ -453,12 +506,26 @@ class QueueViewModel(
         }
 
         val custom = rawPlaylists.map { pl ->
-            val resolvedEntries = pl.episodeUuids.mapNotNull { epId ->
-                val ep = epMap[epId] ?: return@mapNotNull null
-                // Episodes already listened to leave the playlist and show up
-                // in Played instead, so the list only holds what is left to
-                // hear.
-                if (ep.isPlayed) null else resolve(ep)
+            val resolvedEntries = if (pl.folder.isNotBlank()) {
+                // A playlist tied to a folder follows it. Putting a show in
+                // the folder adds it to the playlist, and taking it out
+                // takes it away, without the playlist being touched.
+                val inFolder = shows
+                    .filter { podcastFolders[it.uuid] == pl.folder }
+                    .map { it.uuid }
+                    .toSet()
+                allEpisodes
+                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isPlayed }
+                    .sortedByDescending { it.published }
+                    .map(::resolve)
+            } else {
+                pl.episodeUuids.mapNotNull { epId ->
+                    val ep = epMap[epId] ?: return@mapNotNull null
+                    // Episodes already listened to leave the playlist and show up
+                    // in Played instead, so the list only holds what is left to
+                    // hear.
+                    if (ep.isPlayed) null else resolve(ep)
+                }
             }
             ResolvedPlaylist(
                 id = pl.id,

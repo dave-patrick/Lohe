@@ -805,14 +805,11 @@ private fun PlaybackSpeedSheet(
                         selected = selected,
                         onClick = { onSelectSpeed(preset) },
                         label = { Text(formatSpeedLabel(preset)) },
-                        // The default selected chip is the teal
-                        // secondaryContainer, which reads as a different
-                        // colour from everything else on the sheet. The
-                        // selected speed is the accent, like every other
+                        // The selected speed is the accent, like every other
                         // selection in the app.
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = ElectricBlue.copy(alpha = 0.22f),
-                            selectedLabelColor = MaterialTheme.colorScheme.primary,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     )
                 }

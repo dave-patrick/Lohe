@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.lohe.app.data.SubscriptionRepository
+import com.lohe.app.data.db.entity.DownloadState
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import java.util.UUID
@@ -25,13 +26,17 @@ class LocalFileManager(
      * duplicating them: the podcast uuid is derived from the folder, so a second
      * import lands on the same row.
      *
-     * @return number of episodes actually written
+     * The files are marked as downloaded, because that is what they are. The
+     * listener dropped them here themselves, and marking them is what puts
+     * them in the Downloaded playlist alongside everything the app fetched.
+     *
+     * @return the uuids of the episodes now in the folder
      */
     suspend fun importFolder(
         folderName: String,
         fileUris: List<Uri>,
-    ): Int {
-        if (fileUris.isEmpty()) return 0
+    ): List<String> {
+        if (fileUris.isEmpty()) return emptyList()
 
         val podcast = repository.getPodcast(podcastUuidFor(folderName))
             ?: PodcastEntity(
@@ -65,12 +70,16 @@ class LocalFileManager(
                     playedUpToSeconds = prev?.playedUpToSeconds ?: 0L,
                     starred = prev?.starred ?: false,
                     isDeleted = false,
+                    // The file is already on the device, so it is a local copy
+                    // and is in the Downloaded list.
+                    localPath = uri.toString(),
+                    downloadState = DownloadState.DONE,
                 )
             }
         }
 
         repository.upsertEpisodes(episodes)
-        return episodes.size
+        return episodes.map { it.uuid }
     }
 
     private fun podcastUuidFor(folderName: String) = "local:$folderName"

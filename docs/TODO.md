@@ -128,15 +128,21 @@ actually pulls bytes.
 header still claimed it mirrored `tokens.css`. That was a misread of a colour
 circle in a rendered JPEG.
 
-**Now:** `tokens.css` wins. It self-declares as "platform-agnostic source of
-truth" and `BRAND.md` §2 independently corroborates `#0052FF → #00D2FF`, so
-two written sources outweigh one reading of a picture. `Color.kt` is back to
-`#0052FF` / `#00A8FF` with a comment recording why, and the dead
-`lohe_accent_700` is gone — `colors.xml` now carries only the window background
-it is actually read for.
+**Then:** `tokens.css` won. It self-declares as "platform-agnostic source of
+truth" and `BRAND.md` §2 independently corroborated `#0052FF → #00D2FF`, so
+two written sources outweighed one reading of a picture. `Color.kt` went back
+to `#0052FF` / `#00A8FF`, and the dead `lohe_accent_700` was removed.
 
-*If the artwork hex is the one you want, say so and this reverts — but then
-`tokens.css` and `BRAND.md` need updating first, not just `Color.kt`.*
+**Now:** the artwork won, on request. The accent is read off the wordmark
+itself rather than off a colour circle in a rendered JPEG, and measured
+rather than eyeballed: the letters are a slab whose most common colour is
+`#008EFF`, lifting into a `#07C6FC` highlight. The launcher icon agrees,
+at `#05A4FA`. `#0052FF` was more violet than anything in either artwork.
+
+So the ramp is `#008EFF → #00A8FF → #00D2FF`, and `tokens.css`, `BRAND.md`
+and `Color.kt` all say the same thing. The artwork is the source of truth
+here, which is the opposite of the earlier ruling and is recorded so the
+next reader does not assume the tokens file is the authority.
 
 ---
 

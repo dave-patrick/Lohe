@@ -24,7 +24,11 @@ val CharcoalHairline = Color(0xFF323238)
 // An earlier pass took #0080FF / #0052CC from the brand identity artwork
 // instead. That was a misread of a colour circle in a rendered JPEG, and it
 // desynced this file from tokens.css — see docs/TODO.md item 2.
-val ElectricBlue = Color(0xFF0052FF)     // --lohe-accent-700
+// The accents are read off the wordmark artwork rather than chosen by hand.
+// The mark's letters are a slab of #008EFF that lifts into a #07C6FC
+// highlight, so the ramp is anchored on the blue the eye actually reads as
+// the brand's blue: #0052FF was more violet than anything in the artwork.
+val ElectricBlue = Color(0xFF008EFF)    // --lohe-accent-700
 val ElectricBlueMid = Color(0xFF00A8FF)  // --lohe-accent-500
 val ElectricCyan = Color(0xFF00D2FF)     // --lohe-accent-300
 
@@ -66,12 +70,17 @@ object LoheAccent {
 val LoheDarkColors = darkColorScheme(
     primary = ElectricBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF002AA8),
-    onPrimaryContainer = Color(0xFFD6E2FF),
+    // A deep navy rather than a saturated royal blue, which read as a
+    // different colour from the accent it was supposed to belong to.
+    primaryContainer = Color(0xFF16273D),
+    onPrimaryContainer = Color(0xFFCFE0FF),
     secondary = ElectricCyan,
     onSecondary = CharcoalDeep,
-    secondaryContainer = Color(0xFF00363F),
-    onSecondaryContainer = Color(0xFFB8F1FF),
+    // The selected chip takes this, and it used to be a teal that read as
+    // green against a blue interface. It is the accent now, so every
+    // selection in the app is the same blue.
+    secondaryContainer = ElectricBlue,
+    onSecondaryContainer = Color.White,
     tertiary = ElectricBlueMid,
     onTertiary = CharcoalDeep,
 
@@ -98,8 +107,9 @@ val LoheLightColors = lightColorScheme(
     onPrimaryContainer = Color(0xFF00194D),
     secondary = Color(0xFF0084C7),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCDEBFF),
-    onSecondaryContainer = Color(0xFF00243A),
+    // The accent, so a selected chip is the same blue in both themes.
+    secondaryContainer = ElectricBlue,
+    onSecondaryContainer = Color.White,
     tertiary = ElectricBlueMid,
     onTertiary = Color.White,
 

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -30,9 +31,11 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AssistChip
@@ -76,9 +79,12 @@ import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.toSummary
 import com.lohe.app.ui.player.EpisodeNotesSheet
+import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.LoheDialog
+import com.lohe.app.ui.theme.PlaybackSettings
+import com.lohe.app.ui.theme.ShowPlaybackOverrides
 import com.lohe.app.data.ServiceLocator
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -91,6 +97,7 @@ fun EpisodesScreen(
     onQueue: (EpisodeEntity) -> Unit,
     onDownload: (EpisodeEntity) -> Unit,
     onRemoveDownloads: (Collection<EpisodeEntity>) -> Unit,
+    onOpenSettings: () -> Unit = {},
     onShowMessage: (String) -> Unit,
 ) {
     val podcast by viewModel.podcast.collectAsState()
@@ -98,6 +105,7 @@ fun EpisodesScreen(
     val filter by viewModel.filter.collectAsState()
     val order by viewModel.order.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedUuids.isNotEmpty()
@@ -273,6 +281,16 @@ fun EpisodesScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Box {
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.episodes_show_settings),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                HeaderSettingsButton(onClick = onOpenSettings)
+                Box {
                     IconButton(onClick = { sortOpen = true }) {
                         Icon(
                             imageVector = Icons.Filled.SwapVert,
@@ -308,6 +326,48 @@ fun EpisodesScreen(
         }
 
         Spacer(Modifier.size(10.dp))
+
+        // --- The show itself: artwork, name, and what it is about ---
+        podcast?.let { show ->
+            GlassCard(contentPadding = 16.dp) {
+                Row(verticalAlignment = Alignment.Top) {
+                    RemoteImage(
+                        url = show.artworkUrl,
+                        contentDescription = null,
+                        size = 92.dp,
+                        cornerRadius = 14.dp,
+                        modifier = Modifier.size(92.dp),
+                    )
+                    Spacer(Modifier.size(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = show.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (!show.author.isNullOrBlank()) {
+                            Text(
+                                text = show.author,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        val blurb = show.description
+                        if (!blurb.isNullOrBlank()) {
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                text = blurb,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 6,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.size(12.dp))
+        }
 
         Row(
             modifier = Modifier
@@ -468,6 +528,9 @@ fun EpisodesScreen(
                         onOpenNotes = { notesEpisode = episode },
                         onTogglePlayed = handleTogglePlayed,
                         onToggleStar = { viewModel.setStarred(episode.uuid, !episode.starred) },
+                        onToggleArchived = {
+                            viewModel.toggleArchived(episode.uuid, episode.isArchived)
+                        },
                     )
                 }
             }
@@ -484,6 +547,26 @@ fun EpisodesScreen(
             onPlay = { onPlay(ep) },
             onAddToUpNext = { onQueue(ep) },
             onDismiss = { notesEpisode = null },
+        )
+    }
+
+    // The show's own playback settings, which fall back to the global ones.
+    if (showSettings && podcast != null) {
+        val store = remember { ServiceLocator.settingsStore() }
+        val global by store.settings.collectAsState(initial = PlaybackSettings())
+        val overrides by store.showPlaybackOverrides(podcast!!.uuid)
+            .collectAsState(initial = ShowPlaybackOverrides())
+        ShowSettingsSheet(
+            showTitle = podcast!!.title,
+            global = global,
+            overrides = overrides,
+            onSetVolumeBoost = { v -> scope.launch { store.setShowVolumeBoost(podcast!!.uuid, v) } },
+            onSetSkipSilence = { v -> scope.launch { store.setShowSkipSilence(podcast!!.uuid, v) } },
+            onSetSpeed = { v -> scope.launch { store.setShowPlaybackSpeed(podcast!!.uuid, v) } },
+            onSetSmartSpeed = { v -> scope.launch { store.setShowSmartSpeed(podcast!!.uuid, v) } },
+            onSetAutoTrim = { v -> scope.launch { store.setShowAutoTrim(podcast!!.uuid, v) } },
+            onReset = { scope.launch { store.clearShowPlaybackSettings(podcast!!.uuid) } },
+            onDismiss = { showSettings = false },
         )
     }
 
@@ -562,6 +645,7 @@ private fun EpisodeRow(
     onOpenNotes: () -> Unit,
     onTogglePlayed: () -> Unit,
     onToggleStar: () -> Unit,
+    onToggleArchived: () -> Unit,
 ) {
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -668,6 +752,29 @@ private fun EpisodeRow(
                             },
                             contentDescription = stringResource(R.string.episodes_star),
                             tint = if (episode.starred) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+
+                    IconButton(onClick = onToggleArchived, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            imageVector = if (episode.isArchived) {
+                                Icons.Filled.Unarchive
+                            } else {
+                                Icons.Filled.Archive
+                            },
+                            contentDescription = stringResource(
+                                if (episode.isArchived) {
+                                    R.string.episodes_unarchive
+                                } else {
+                                    R.string.episodes_archive
+                                },
+                            ),
+                            tint = if (episode.isArchived) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant

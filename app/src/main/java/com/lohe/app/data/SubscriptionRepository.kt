@@ -126,6 +126,15 @@ class SubscriptionRepository internal constructor(
 
     suspend fun setStarred(uuid: String, starred: Boolean) = episodes.setStarred(uuid, starred)
 
+    /**
+     * Files an episode away, or brings it back.
+     *
+     * Archived episodes stay in the library but are left out of the episode
+     * lists and stop counting towards the listening figures.
+     */
+    suspend fun setArchived(uuid: String, archived: Boolean) =
+        episodes.setArchived(uuid, archived)
+
     /** Persist a resume point, recording the duration when it was unknown before. */
     suspend fun saveProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) {
         episodes.saveProgress(uuid, positionSeconds, durationSeconds)

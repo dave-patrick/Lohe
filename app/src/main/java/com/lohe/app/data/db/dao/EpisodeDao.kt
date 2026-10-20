@@ -41,7 +41,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
         FROM episodes
         ORDER BY published DESC
         """
@@ -156,7 +156,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
         FROM episodes
         WHERE downloadState = 2 AND localPath IS NOT NULL
         ORDER BY published DESC
@@ -237,6 +237,15 @@ interface EpisodeDao {
 
     @Query("UPDATE episodes SET starred = :starred WHERE uuid = :uuid")
     suspend fun setStarred(uuid: String, starred: Boolean)
+
+    /**
+     * Files an episode away, or brings it back.
+     *
+     * An archived episode is left out of the episode lists and stops
+     * counting towards the listening figures.
+     */
+    @Query("UPDATE episodes SET isArchived = :archived WHERE uuid = :uuid")
+    suspend fun setArchived(uuid: String, archived: Boolean)
 
     @Query("DELETE FROM episodes WHERE podcastUuid = :podcastUuid")
     suspend fun deleteForPodcast(podcastUuid: String)

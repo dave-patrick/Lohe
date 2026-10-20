@@ -17,7 +17,8 @@ object EpisodeFilter {
         UNPLAYED,
         IN_PROGRESS,
         DOWNLOADED,
-        STARRED;
+        STARRED,
+        ARCHIVED;
 
         val label: String
             get() = when (this) {
@@ -26,6 +27,7 @@ object EpisodeFilter {
                 IN_PROGRESS -> "Listening"
                 DOWNLOADED -> "Downloaded"
                 STARRED -> "Starred"
+                ARCHIVED -> "Archived"
             }
     }
 
@@ -52,7 +54,15 @@ object EpisodeFilter {
 
         val matched = episodes.asSequence()
             .filter { episode -> !episode.isDeleted }
-            .filter { episode -> episode.matches(filter) }
+            // Archived episodes are out of the way unless they are what the
+            // listener asked to see.
+            .filter { episode ->
+                if (filter == Filter.ARCHIVED) {
+                    episode.isArchived
+                } else {
+                    !episode.isArchived && episode.matches(filter)
+                }
+            }
             .filter { episode ->
                 needle.isEmpty() || episode.title.lowercase().contains(needle)
             }
@@ -81,6 +91,8 @@ object EpisodeFilter {
         Filter.IN_PROGRESS -> isInProgress
         Filter.DOWNLOADED -> isDownloaded
         Filter.STARRED -> starred
+        // Handled by the caller, which picks the archived ones out instead.
+        Filter.ARCHIVED -> isArchived
     }
 
     /** Total time left across [episodes]; unknown durations contribute nothing. */

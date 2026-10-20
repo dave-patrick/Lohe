@@ -64,6 +64,8 @@ import androidx.compose.ui.window.DialogProperties
  * @param icon leading icon in a tinted tile; defaults to a warning glyph for
  *   destructive dialogs so the tile is never empty.
  * @param confirmLabel omit for a dialog that only dismisses.
+ * @param onDismissAction run when the dismiss button is pressed, for a
+ *   dismiss that does something rather than simply closing.
  * @param destructive paints the accent and the confirm button in the error
  *   colour — used for "remove", "delete" and "clear" decisions.
  */
@@ -77,6 +79,7 @@ fun LoheDialog(
     onConfirm: (() -> Unit)? = null,
     confirmEnabled: Boolean = true,
     dismissLabel: String? = "Cancel",
+    onDismissAction: (() -> Unit)? = null,
     destructive: Boolean = false,
 ) {
     val isLight = backgroundIsLight()
@@ -164,7 +167,12 @@ fun LoheDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (dismissLabel != null) {
-                            TextButton(onClick = onDismiss) {
+                            TextButton(
+                                onClick = {
+                                    onDismissAction?.invoke()
+                                    onDismiss()
+                                },
+                            ) {
                                 Text(dismissLabel)
                             }
                         }

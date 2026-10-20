@@ -177,6 +177,7 @@ class SubscriptionRepositoryTest {
         override suspend fun playedPosition(uuid: String) = 0L
         override suspend fun markPlayed(uuid: String) = Unit
         override suspend fun setStarred(uuid: String, starred: Boolean) = Unit
+        override suspend fun setArchived(uuid: String, archived: Boolean) = Unit
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
     }
