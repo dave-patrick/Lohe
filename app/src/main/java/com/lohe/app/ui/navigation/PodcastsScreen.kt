@@ -538,25 +538,6 @@ fun PodcastsScreen(
                         }
                     }
 
-                    IconButton(
-                        onClick = { isGridView = !isGridView },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
-                            contentDescription = if (isGridView) "Switch to list view" else "Switch to grid view",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    IconButton(onClick = { showAddFeed = true }, modifier = Modifier.size(40.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.RssFeed,
-                            contentDescription = stringResource(R.string.podcasts_add_feed),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
                     IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(40.dp)) {
                         Icon(
                             imageVector = Icons.Filled.CreateNewFolder,
@@ -700,32 +681,49 @@ fun PodcastsScreen(
                 }
             }
 
-            OutlinedTextField(
-                value = query,
-                onValueChange = viewModel::onSearchQueryChanged,
-                label = { Text(stringResource(R.string.podcasts_search_label)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                    )
-                },
-                singleLine = true,
+            // The search box, with the add-feed button beside it. The header
+            // above has enough to carry.
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    label = { Text(stringResource(R.string.podcasts_search_label)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = { showAddFeed = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.RssFeed,
+                        contentDescription = stringResource(R.string.podcasts_add_feed),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
 
-            // Folder filter bar (shown in both List and Grid view)
-            if (availableFolders.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            // The folder filters, with the view toggle on the same line. The
+            // row is always there so the toggle does not move about.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (availableFolders.isNotEmpty()) {
                     FilterChip(
                         selected = selectedFolder == ALL_FOLDERS,
                         onClick = { selectedFolder = ALL_FOLDERS },
@@ -746,6 +744,24 @@ fun PodcastsScreen(
                             label = { Text("$folder ($count)", maxLines = 1) },
                         )
                     }
+                }
+
+                // List or grid, as one button that shows the other one.
+                IconButton(onClick = { isGridView = !isGridView }) {
+                    Icon(
+                        imageVector = if (isGridView) {
+                            Icons.AutoMirrored.Filled.ViewList
+                        } else {
+                            Icons.Filled.GridView
+                        },
+                        contentDescription = if (isGridView) {
+                            "Switch to list view"
+                        } else {
+                            "Switch to grid view"
+                        },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
             }
 
