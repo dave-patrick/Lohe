@@ -108,6 +108,13 @@ data class HomeDashboardStats(
      * much listened to still appears.
      */
     val showActivity: List<ShowActivity> = emptyList(),
+    /**
+     * The shows with the most episodes listened to, ranked by that count.
+     *
+     * A different ranking from [showActivity]: the show listened to most is
+     * not the one with the longest back catalogue.
+     */
+    val mostListenedShows: List<ShowActivity> = emptyList(),
 ) {
     val listenedFraction: Float
         get() = if (totalDurationSeconds > 0L) {
@@ -137,6 +144,8 @@ data class ShowActivity(
     val episodeCount: Int,
     /** How many of those episodes have been listened to. */
     val listenedCount: Int = 0,
+    /** The show's cover, so the chart can be looked at rather than read. */
+    val artworkUrl: String? = null,
 )
 
 /**
@@ -302,7 +311,8 @@ class QueueViewModel(
             totalDurationSeconds = totalDuration,
             timeSavedSeconds = timeSaved,
             dailyActivityMinutes = dailyActivityMinutes(activeEpisodes),
-            showActivity = showActivity(activeEpisodes, shows),
+            showActivity = showActivity(allEpisodes, shows),
+            mostListenedShows = mostListenedShows(allEpisodes, shows),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
 
@@ -349,36 +359,60 @@ class QueueViewModel(
     private fun showActivity(
         episodes: List<EpisodeSummary>,
         shows: List<PodcastEntity>,
-    ): List<ShowActivity> {
+    ): List<ShowActivity> = rankShows(episodes, shows).first
+
+    /**
+     * The shows with the most episodes listened to.
+     *
+     * A different ranking from the one by episode count: the show listened
+     * to most is not the one with the longest back catalogue.
+     */
+    private fun mostListenedShows(
+        episodes: List<EpisodeSummary>,
+        shows: List<PodcastEntity>,
+    ): List<ShowActivity> = rankShows(episodes, shows).second
+
+    /**
+     * The shows that carry the library, and the ones most listened to.
+     *
+     * Both rankings come from the same walk over the episodes, because they
+     * are two orderings of the same set.
+     *
+     * Deleted episodes are included, because the listening figure on the
+     * signal card counts them and the two have to agree. An archived episode
+     * is not: it has been filed away, and it stops counting.
+     */
+    private fun rankShows(
+        episodes: List<EpisodeSummary>,
+        shows: List<PodcastEntity>,
+    ): Pair<List<ShowActivity>, List<ShowActivity>> {
         val titles = shows.associate { it.uuid to it.title }
         val counts = mutableMapOf<String, Int>()
         val listened = mutableMapOf<String, Int>()
         episodes.forEach { ep ->
-            if (ep.isDeleted || ep.isArchived) return@forEach
+            if (ep.isArchived) return@forEach
             val title = titles[ep.podcastUuid] ?: return@forEach
             counts[title] = (counts[title] ?: 0) + 1
             if (ep.isPlayed) listened[title] = (listened[title] ?: 0) + 1
         }
 
+        fun art(title: String) = shows.firstOrNull { it.title == title }?.artworkUrl
+
         val byEpisodes = counts.entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(TOP_SHOWS_COUNT)
-            .map { it.key }
+            .map {
+                ShowActivity(it.key, it.value, listened[it.key] ?: 0, art(it.key))
+            }
+
         val byListened = listened.entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(TOP_SHOWS_COUNT)
-            .map { it.key }
-
-        return (byEpisodes + byListened)
-            .distinct()
-            .map { title ->
-                ShowActivity(title, counts[title] ?: 0, listened[title] ?: 0)
+            .map {
+                ShowActivity(it.key, counts[it.key] ?: 0, it.value, art(it.key))
             }
-            .sortedWith(
-                compareByDescending<ShowActivity> { it.episodeCount }
-                    .thenByDescending { it.listenedCount }
-                    .thenBy { it.title },
-            )
+
+        return byEpisodes to byListened
     }
 
     private val _autoDownloadUpNext = MutableStateFlow(true)

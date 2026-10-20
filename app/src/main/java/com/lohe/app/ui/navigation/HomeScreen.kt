@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -124,7 +125,7 @@ fun HomeScreen(
                 // The band around the wordmark and the settings control. The
                 // padding below them is what centres them in the header
                 // instead of leaving them sitting on its bottom edge.
-                .padding(top = 18.dp, bottom = 18.dp),
+                .padding(top = 20.dp, bottom = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isLight) {
@@ -155,25 +156,9 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            // A filled round control rather than a bare icon. IconButton
-            // reserves a 48dp touch target around a 20dp glyph, so the gear
-            // read as a small dot in a large empty box and sat oddly beside
-            // the wordmark. This is sized to be a deliberate peer of it.
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable(onClick = onOpenSettings),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = stringResource(R.string.settings_title),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(13.dp),
-                )
-            }
+            // The same control, the same size and the same place as on every
+            // other screen.
+            HeaderSettingsButton(onClick = onOpenSettings)
         }
 
         if (!stats.isLoaded) {
@@ -359,29 +344,36 @@ private fun HomeTelemetryDashboard(
         // shows carry the library, and which ones actually got played.
         if (stats.showActivity.isNotEmpty()) {
             GlassCard(contentPadding = 18.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        text = "MOST EPISODES AND MOST LISTENED",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Text(
+                        text = "Most episodes",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ShowTiles(shows = stats.showActivity)
+
+                    if (stats.mostListenedShows.isNotEmpty()) {
+                        Spacer(Modifier.height(2.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(2.dp))
+
                         Text(
-                            text = "MOST EPISODES AND MOST LISTENED",
+                            text = "Most listened to",
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            LegendDot("heard", null, ElectricCyan)
-                            LegendDot("total", null, ElectricBlue)
-                        }
+                        ShowTiles(shows = stats.mostListenedShows)
                     }
-
-                    TopShowsChart(
-                        shows = stats.showActivity,
-                        isLight = isLight,
-                    )
                 }
             }
         }
@@ -595,67 +587,78 @@ private fun ActivityChart(
     }
 }
 
-/** Ranked bars for the shows carrying the most episodes. */
+/**
+ * The shows that carry the library, as artwork rather than as a list.
+ *
+ * This was a row per show: the title, a count, and a bar under it. Nine
+ * shows of names with the ends cut off is a lot of reading, and the shape
+ * of the library, which is the thing worth knowing, was hidden behind the
+ * words.
+ *
+ * So each show is a tile now: its cover, a fill that rises with the part of
+ * that show that has been heard, and the count underneath. The library's
+ * shape is something you take in at a glance.
+ */
 @Composable
-private fun TopShowsChart(
+private fun ShowTiles(
     shows: List<ShowActivity>,
-    isLight: Boolean,
-    unit: String = "ep",
+    modifier: Modifier = Modifier,
 ) {
-    val peak = shows.maxOfOrNull { it.episodeCount }?.coerceAtLeast(1) ?: 1
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         shows.forEach { show ->
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = show.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = "${show.episodeCount} $unit",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                // One bar, two colours: the show's whole catalogue in the mid
-                // blue, and the part of it that has been heard in the bright
-                // cyan on top of it.
+            val heard = if (show.episodeCount > 0) {
+                (show.listenedCount.toFloat() / show.episodeCount).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            if (isLight) {
-                                ElectricBlue.copy(alpha = 0.08f)
-                            } else {
-                                ElectricBlue.copy(alpha = 0.20f)
-                            },
-                        ),
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp)),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(show.episodeCount.toFloat() / peak)
-                            .fillMaxHeight()
-                            .background(ElectricBlue),
-                    ) {
+                    RemoteImage(
+                        url = show.artworkUrl,
+                        contentDescription = show.title,
+                        modifier = Modifier.fillMaxSize(),
+                        fallbackLabel = show.title,
+                    )
+                    if (heard > 0f) {
+                        // The part of the show that has been heard, rising
+                        // from the bottom of the tile.
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(show.listenedCount.toFloat() / peak)
-                                .fillMaxHeight()
-                                .background(Brush.horizontalGradient(listOf(ElectricCyan, ElectricBlueMid))),
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .fillMaxHeight(heard)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            ElectricBlue.copy(alpha = 0.70f),
+                                            ElectricBlue.copy(alpha = 0.25f),
+                                        ),
+                                    ),
+                                ),
                         )
                     }
                 }
+
+                Text(
+                    text = compactCount(show.episodeCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
             }
         }
     }

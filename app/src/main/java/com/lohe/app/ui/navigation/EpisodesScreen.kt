@@ -267,7 +267,12 @@ fun EpisodesScreen(
                 }
             }
         } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -291,7 +296,6 @@ fun EpisodesScreen(
                         )
                     }
                 }
-                HeaderSettingsButton(onClick = onOpenSettings)
                 Box {
                     IconButton(onClick = { sortOpen = true }) {
                         Icon(
@@ -324,6 +328,9 @@ fun EpisodesScreen(
                         }
                     }
                 }
+                // The same control, the same size and the same place as on
+                // every other screen.
+                HeaderSettingsButton(onClick = onOpenSettings)
             }
         }
 
