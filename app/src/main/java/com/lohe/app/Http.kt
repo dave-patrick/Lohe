@@ -14,3 +14,17 @@ package com.lohe.app
  * them is exactly the kind of thing that looks like a random 403.
  */
 const val LOHE_USER_AGENT = "Lohe/0.8.0 (+https://github.com/dave-patrick/Lohe)"
+
+/**
+ * The User-Agent used for a second attempt after a 403.
+ *
+ * Some hosts put a bot wall in front of a feed and refuse anything that does
+ * not look like a browser, including perfectly respectable podcast clients
+ * that identify themselves. The feed is public and the listener has asked for
+ * it, so a single retry as a browser is reasonable. It is a fallback, not the
+ * default: the first attempt always identifies itself honestly, and the
+ * failure message says plainly that the server refused.
+ */
+const val LOHE_FALLBACK_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"

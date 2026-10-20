@@ -1,5 +1,6 @@
 package com.lohe.app.data.fetch
 
+import com.lohe.app.LOHE_FALLBACK_USER_AGENT
 import com.lohe.app.LOHE_USER_AGENT
 import com.lohe.app.data.db.dao.EpisodeDao
 import com.lohe.app.data.db.dao.ListeningHistoryDao
@@ -110,19 +111,45 @@ class RssPodcastFetcher(
     /**
      * Fetches a feed's bytes.
      *
-     * A 304 is retried once with the caches bypassed. 304 means "the copy you
-     * already hold is still good", which only makes sense to a client that
-     * sent a validator, and we send none. Some hosts answer a plain GET that
-     * way anyway, so the first attempt is repeated with no-cache headers
-     * before the feed is called unreachable.
+     * Three things get a second attempt, because all three are common and
+     * none of them mean the feed is gone:
+     *
+     * - 304 means "the copy you already hold is still good", which only
+     *   makes sense to a client that sent a validator, and we send none. Some
+     *   hosts answer a plain GET that way anyway, so the request is repeated
+     *   with the caches bypassed.
+     * - 403 on a plain http:// address is often a host that wants https and
+     *   refuses to serve the old scheme, so the request is retried over
+     *   https. Export files are full of http:// feeds from years ago.
+     * - 403 that survives that is usually a bot wall rather than a decision
+     *   about this feed, so the last attempt asks as a browser.
      */
     private fun download(url: String): ByteArray {
-        val first = execute(url, bustCache = false)
-        val response = if (first.code == 304) {
-            first.close()
-            execute(url, bustCache = true)
-        } else {
-            first
+        val first = execute(url, bustCache = false, asBrowser = false)
+        val response = when {
+            first.code == 304 -> {
+                first.close()
+                execute(url, bustCache = true, asBrowser = false)
+            }
+
+            first.code == 403 && url.startsWith("http://") -> {
+                first.close()
+                val secure = "https://" + url.removePrefix("http://")
+                val upgraded = execute(secure, bustCache = false, asBrowser = false)
+                if (upgraded.code == 403) {
+                    upgraded.close()
+                    execute(url, bustCache = false, asBrowser = true)
+                } else {
+                    upgraded
+                }
+            }
+
+            first.code == 403 -> {
+                first.close()
+                execute(url, bustCache = false, asBrowser = true)
+            }
+
+            else -> first
         }
         return response.use {
             if (!it.isSuccessful) throw feedError(it.code)
@@ -131,13 +158,21 @@ class RssPodcastFetcher(
         }
     }
 
-    private fun execute(url: String, bustCache: Boolean): Response {
+    private fun execute(url: String, bustCache: Boolean, asBrowser: Boolean): Response {
         val builder = Request.Builder()
             .url(url)
-            .header("User-Agent", LOHE_USER_AGENT)
+            .header(
+                "User-Agent",
+                if (asBrowser) LOHE_FALLBACK_USER_AGENT else LOHE_USER_AGENT,
+            )
             .header(
                 "Accept",
-                "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+                if (asBrowser) {
+                    "text/html,application/xhtml+xml,application/xml;q=0.9," +
+                        "application/rss+xml;q=0.8,*/*;q=0.7"
+                } else {
+                    "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"
+                },
             )
         if (bustCache) {
             builder.header("Cache-Control", "no-cache")
