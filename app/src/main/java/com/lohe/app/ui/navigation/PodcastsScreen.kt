@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.data.FeedImportState
+import com.lohe.app.data.FeedReplacementState
 import com.lohe.app.data.OpmlImportFailure
 import com.lohe.app.data.OpmlImportState
 import com.lohe.app.data.PodcastSort
@@ -130,6 +131,7 @@ fun PodcastsScreen(
     val query by viewModel.searchQueryState.collectAsState()
     val import by viewModel.feedImport.collectAsState()
     val opml by viewModel.opmlImport.collectAsState()
+    val replacement by viewModel.replacement.collectAsState()
     val refresh by viewModel.refresh.collectAsState()
     val refreshing = refresh is RefreshState.Running
     val snackbarHostState = remember { SnackbarHostState() }
@@ -229,21 +231,16 @@ fun PodcastsScreen(
         when (val state = opml) {
             is OpmlImportState.Done -> {
                 val r = state.result
-                val summary = if (r.failed == 0) {
-                    context.getString(R.string.opml_imported_clean, r.imported)
+                if (r.failed == 0) {
+                    // Nothing went wrong, so the summary is all that is needed.
+                    snackbarHostState.showSnackbar(
+                        context.getString(R.string.opml_imported_clean, r.imported),
+                        duration = SnackbarDuration.Long,
+                    )
                 } else {
-                    val failures = r.failures.take(3).joinToString("; ") { f ->
-                        "${f.title} (${f.reason})"
-                    }
-                    val more = if (r.failures.size > 3) " (+${r.failures.size - 3} more)" else ""
-                    context.getString(R.string.opml_imported_partial, r.imported, r.failed) +
-                        ": $failures$more"
-                }
-                snackbarHostState.showSnackbar(
-                    summary,
-                    duration = SnackbarDuration.Long,
-                )
-                if (r.failed > 0) {
+                    // The dialog carries the same information in full, so a
+                    // snackbar as well would just be a second box flashing up
+                    // before the real one replaces it.
                     lastOpmlFailures = r.failures
                     showOpmlFailures = true
                 }
@@ -256,6 +253,15 @@ fun PodcastsScreen(
             }
 
             else -> Unit
+        }
+    }
+
+    // A replacement feed that imported cleanly closes the failure list.
+    LaunchedEffect(replacement) {
+        if (replacement is FeedReplacementState.Imported) {
+            showOpmlFailures = false
+            snackbarHostState.showSnackbar("Feed imported")
+            viewModel.consumeReplacement()
         }
     }
 
@@ -920,20 +926,91 @@ fun PodcastsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = "Tap each one to retry, or leave them and add them individually later.",
+                        text = "A feed that has moved can be looked up in the catalog by name.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     lastOpmlFailures.forEach { f ->
-                        Text(
-                            text = "${f.title}: ${f.reason}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                        )
+                                .padding(vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = f.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = f.reason,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            when (val r = replacement) {
+                                is FeedReplacementState.Searching ->
+                                    if (r.title == f.title) {
+                                        Text(
+                                            text = "Looking in the catalog...",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+
+                                is FeedReplacementState.Found ->
+                                    if (r.wantedTitle == f.title) {
+                                        Text(
+                                            text = "Found: ${r.showTitle}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        TextButton(
+                                            onClick = { viewModel.importReplacement(r.feedUrl) },
+                                        ) {
+                                            Text("Import this feed")
+                                        }
+                                    }
+
+                                is FeedReplacementState.NotFound ->
+                                    if (r.title == f.title) {
+                                        Text(
+                                            text = "No catalog match for that name.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+
+                                is FeedReplacementState.Failed ->
+                                    if (r.title == f.title || r.title.isEmpty()) {
+                                        Text(
+                                            text = r.reason,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+
+                                FeedReplacementState.Importing ->
+                                    Text(
+                                        text = "Importing...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+
+                                FeedReplacementState.Imported -> Unit
+
+                                else -> TextButton(
+                                    onClick = { viewModel.findReplacementFeed(f.title) },
+                                ) {
+                                    Text("Find a replacement feed")
+                                }
+                            }
+                        }
                         Divider()
                     }
                 }
@@ -1077,10 +1154,7 @@ private fun SwipeablePodcastCard(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         IconButton(
-                            onClick = {
-                                onQueue()
-                                onTogglePlayed()
-                            },
+                            onClick = onQueue,
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(

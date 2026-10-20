@@ -158,6 +158,57 @@ class SubscriptionsViewModel(
     /** Builds an OPML document for the caller to write out. */
     suspend fun buildOpml(): String = repository.exportOpml()
 
+    // --- Finding a replacement for a dead feed -------------------------------
+
+    private val _replacement = MutableStateFlow<FeedReplacementState>(FeedReplacementState.Idle)
+    val replacement: StateFlow<FeedReplacementState> = _replacement.asStateFlow()
+
+    fun consumeReplacement() {
+        _replacement.value = FeedReplacementState.Idle
+    }
+
+    /**
+     * Looks a show up in the catalog to find its current feed address.
+     *
+     * A feed that returns 404 has usually moved, and the address in the OPML
+     * is the stale one. The catalog knows where the show lives now, so the
+     * listener can be offered the working address instead of a dead end.
+     */
+    fun findReplacementFeed(title: String) = viewModelScope.launch {
+        _replacement.value = FeedReplacementState.Searching(title)
+        ServiceLocator.catalogSearcher().findFeedForTitle(title)
+            .onSuccess { match ->
+                _replacement.value = if (match == null) {
+                    FeedReplacementState.NotFound(title)
+                } else {
+                    FeedReplacementState.Found(
+                        wantedTitle = title,
+                        showTitle = match.title,
+                        feedUrl = match.feedUrl,
+                    )
+                }
+            }
+            .onFailure { error ->
+                _replacement.value = FeedReplacementState.Failed(
+                    title,
+                    error.message ?: "Couldn't search the catalog.",
+                )
+            }
+    }
+
+    /** Subscribes to a feed found by [findReplacementFeed]. */
+    fun importReplacement(feedUrl: String) = viewModelScope.launch {
+        _replacement.value = FeedReplacementState.Importing
+        repository.importFeed(feedUrl)
+            .onSuccess { _replacement.value = FeedReplacementState.Imported }
+            .onFailure { error ->
+                _replacement.value = FeedReplacementState.Failed(
+                    "",
+                    error.message ?: "Couldn't import that feed.",
+                )
+            }
+    }
+
     // --- Refresh ------------------------------------------------------------
 
     private val _refresh = MutableStateFlow<RefreshState>(RefreshState.Idle)
@@ -207,6 +258,29 @@ sealed interface RefreshState {
     data object Running : RefreshState
     data class Done(val summary: FeedRefreshSummary) : RefreshState
     data class Failed(val reason: String) : RefreshState
+}
+
+/**
+ * Progress and outcome of looking up a replacement feed for a dead one.
+ */
+sealed interface FeedReplacementState {
+    data object Idle : FeedReplacementState
+    /** Looking up [title] in the catalog. */
+    data class Searching(val title: String) : FeedReplacementState
+    /** The catalog knows this show, at [feedUrl]. */
+    data class Found(
+        val wantedTitle: String,
+        val showTitle: String,
+        val feedUrl: String,
+    ) : FeedReplacementState
+    /** No catalog entry matched [title]. */
+    data class NotFound(val title: String) : FeedReplacementState
+    /** Importing a found feed. */
+    data object Importing : FeedReplacementState
+    /** The replacement feed was imported. */
+    data object Imported : FeedReplacementState
+    /** The lookup or the import failed. */
+    data class Failed(val title: String, val reason: String) : FeedReplacementState
 }
 
 class SubscriptionsViewModelFactory : ViewModelProvider.Factory {

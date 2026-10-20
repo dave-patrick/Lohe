@@ -2,6 +2,7 @@ package com.lohe.app.ui.navigation
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -129,11 +130,13 @@ fun HomeScreen(
                 )
             } else {
                 // The wordmark PNG is cropped to its ink bounds, so it fills
-                // the box exactly and sits centred in the header.
+                // the box exactly and sits centred in the header. The box is
+                // the same height as the settings control beside it, so the
+                // two read as a matched pair on one line.
                 Box(
                     modifier = Modifier
-                        .height(20.dp)
-                        .width(128.dp),
+                        .height(24.dp)
+                        .width(140.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
@@ -145,17 +148,23 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = onOpenSettings,
+            // A filled round control rather than a bare icon. IconButton
+            // reserves a 48dp touch target around a 20dp glyph, so the gear
+            // read as a small dot in a large empty box and sat oddly beside
+            // the wordmark. This is sized to be a deliberate peer of it.
+            Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(MaterialTheme.shapes.small),
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable(onClick = onOpenSettings),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
                     contentDescription = stringResource(R.string.settings_title),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(13.dp),
                 )
             }
         }
@@ -690,13 +699,17 @@ private fun FrequencySpectrumBar(
 }
 
 /**
- * The four library counts, in one card.
+ * The library at a glance.
  *
- * These were four separate tiles in a row. Each tile got a quarter of the
- * width, so every label truncated to an ellipsis, and four cards in a row for
- * four plain numbers was a lot of border and shadow for very little content.
- * One card with a 2x2 grid gives each figure half the width and reads as a
- * single instrument rather than a shelf of tiles.
+ * This went through two shapes. Four tiles in a row gave each tile a quarter
+ * of the width, so every label truncated. A plain 2x2 grid fitted, but read
+ * as a table: four numbers in boxes, flat and uninformative about the shape
+ * of the library.
+ *
+ * This one leads with the total, shows what is left to hear as a single
+ * proportioned bar, and puts the three counts that can be acted on in tinted
+ * pills. The figures count up as they arrive, so the card settles rather
+ * than snapping into place.
  */
 @Composable
 private fun LibraryStatsCard(
@@ -705,55 +718,56 @@ private fun LibraryStatsCard(
     onOpenPlaylists: () -> Unit,
 ) {
     GlassCard(contentPadding = 18.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(
-                text = "YOUR LIBRARY",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    text = "YOUR LIBRARY",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.4.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = animatedCount(stats.totalEpisodes),
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+
+            LibraryCompositionBar(stats = stats)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                LibraryFigure(
+                LibraryPill(
                     icon = Icons.Filled.Podcasts,
                     label = "Subscriptions",
-                    value = stats.subscriptionCount.toString(),
+                    count = stats.subscriptionCount,
                     accent = ElectricBlue,
                     onClick = onOpenSubscriptions,
                     modifier = Modifier.weight(1f),
                 )
-                LibraryFigure(
+                LibraryPill(
                     icon = Icons.AutoMirrored.Filled.QueueMusic,
                     label = "Playlists",
-                    value = stats.playlistCount.toString(),
+                    count = stats.playlistCount,
                     accent = ElectricBlueMid,
                     onClick = onOpenPlaylists,
                     modifier = Modifier.weight(1f),
                 )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                LibraryFigure(
-                    icon = Icons.Filled.GraphicEq,
-                    label = "Episodes",
-                    value = compactCount(stats.totalEpisodes),
-                    caption = "${stats.inProgressCount} in progress",
-                    accent = ElectricBlueMid,
-                    modifier = Modifier.weight(1f),
-                )
-                LibraryFigure(
+                LibraryPill(
                     icon = Icons.Filled.DownloadDone,
-                    label = "Downloaded",
-                    value = compactCount(stats.downloadedCount),
-                    caption = "${(stats.downloadedFraction * 100).roundToInt()}% offline",
+                    label = "Saved",
+                    count = stats.downloadedCount,
                     accent = ElectricBlueMid,
+                    onClick = null,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -762,76 +776,151 @@ private fun LibraryStatsCard(
 }
 
 /**
- * One figure in the library card: an icon, the number, and what it counts.
+ * The library's composition, as one bar.
  *
- * No progress bar. A bar that is always full for two of the four figures, and
- * that duplicates the number for the other two, is decoration rather than
- * information, and it was most of what made the old tiles feel busy.
+ * Played, in progress and still waiting as three segments of the same
+ * width, so the shape of the library is legible at a glance instead of by
+ * reading three separate numbers against each other.
  */
 @Composable
-private fun LibraryFigure(
+private fun LibraryCompositionBar(stats: HomeDashboardStats) {
+    val total = stats.totalEpisodes.coerceAtLeast(1).toFloat()
+    val playedFraction = (stats.playedEpisodesCount / total).coerceIn(0f, 1f)
+    // In progress can only occupy what played has not already taken.
+    val progressFraction =
+        (stats.inProgressCount / total).coerceIn(0f, 1f - playedFraction)
+    val waiting = (
+        stats.totalEpisodes - stats.playedEpisodesCount - stats.inProgressCount
+        ).coerceAtLeast(0)
+
+    val animatedPlayed by animateFloatAsState(
+        targetValue = playedFraction,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "played-segment",
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = progressFraction,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "progress-segment",
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        // Drawn rather than composed from weighted children. In a Row, a
+        // child with fillMaxWidth(fraction) is measured against the space
+        // left over by its siblings, so the second segment would be a
+        // fraction of what is left rather than of the whole bar.
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(9.dp)
+                .clip(RoundedCornerShape(5.dp)),
+        ) {
+            val w = size.width
+            val h = size.height
+
+            drawRect(color = ElectricBlue.copy(alpha = 0.12f))
+
+            drawRect(
+                brush = Brush.horizontalGradient(listOf(ElectricBlueMid, ElectricBlue)),
+                size = Size(w * animatedPlayed, h),
+            )
+
+            drawRect(
+                color = ElectricBlueMid.copy(alpha = 0.45f),
+                topLeft = Offset(w * animatedPlayed, 0f),
+                size = Size(w * animatedProgress, h),
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            LegendDot("Played", stats.playedEpisodesCount, ElectricBlue)
+            LegendDot("In progress", stats.inProgressCount, ElectricBlueMid.copy(alpha = 0.5f))
+            LegendDot("Waiting", waiting, ElectricBlue.copy(alpha = 0.25f))
+        }
+    }
+}
+
+/** A colour swatch and its count. */
+@Composable
+private fun LegendDot(label: String, count: Int, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "$label ${compactCount(count)}",
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * One count in a tinted pill: an icon, the number, and what it counts.
+ */
+@Composable
+private fun LibraryPill(
     icon: ImageVector,
     label: String,
-    value: String,
-    caption: String? = null,
+    count: Int,
     accent: Color,
-    onClick: (() -> Unit)? = null,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .background(accent.copy(alpha = 0.08f))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.12f)),
-                    ),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp),
+        )
         Text(
-            text = value,
-            style = MaterialTheme.typography.headlineMedium,
+            text = animatedCount(count),
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
-
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            lineHeight = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-
-        if (caption != null) {
-            Text(
-                text = caption,
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
     }
+}
+
+/**
+ * A count that counts up to its value.
+ *
+ * The library arrives a moment after the screen does, and a number that
+ * springs from zero to its final figure reads as a change rather than as a
+ * number that was always there.
+ */
+@Composable
+private fun animatedCount(value: Int): String {
+    val animated by animateIntAsState(
+        targetValue = value,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "count-up",
+    )
+    return compactCount(animated)
 }
 
 /**
