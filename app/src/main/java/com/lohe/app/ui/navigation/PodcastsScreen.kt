@@ -495,49 +495,6 @@ fun PodcastsScreen(
                     )
                     Spacer(Modifier.weight(1f))
 
-                    // Sort. The library is a pile, and which order it reads
-                    // best in depends on what the listener is looking for.
-                    Box {
-                        IconButton(
-                            onClick = { sortMenuOpen = true },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Sort,
-                                contentDescription = "Sort shows",
-                                tint = if (podcastSort != PodcastSort.TITLE) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = sortMenuOpen,
-                            onDismissRequest = { sortMenuOpen = false },
-                        ) {
-                            PodcastSort.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.label) },
-                                    leadingIcon = {
-                                        if (option == podcastSort) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        sortMenuOpen = false
-                                        queueViewModel.setPodcastSort(option)
-                                    },
-                                )
-                            }
-                        }
-                    }
-
                     IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(40.dp)) {
                         Icon(
                             imageVector = Icons.Filled.CreateNewFolder,
@@ -713,36 +670,83 @@ fun PodcastsScreen(
                 }
             }
 
-            // The folder filters, with the view toggle on the same line. The
-            // row is always there so the toggle does not move about.
+            // The folder filters, with the sort and the view toggle on the
+            // same line and pinned to the right. The filters scroll under
+            // them; the two on the right stay where they are.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (availableFolders.isNotEmpty()) {
-                    FilterChip(
-                        selected = selectedFolder == ALL_FOLDERS,
-                        onClick = { selectedFolder = ALL_FOLDERS },
-                        label = { Text("All (${podcasts.size})", maxLines = 1) },
-                    )
-                    availableFolders.forEach { folder ->
-                        val count = podcasts.count { podcastFolders[it.uuid] == folder }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (availableFolders.isNotEmpty()) {
                         FilterChip(
-                            selected = selectedFolder == folder,
-                            onClick = { selectedFolder = folder },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.Folder,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            },
-                            label = { Text("$folder ($count)", maxLines = 1) },
+                            selected = selectedFolder == ALL_FOLDERS,
+                            onClick = { selectedFolder = ALL_FOLDERS },
+                            label = { Text("All (${podcasts.size})", maxLines = 1) },
                         )
+                        availableFolders.forEach { folder ->
+                            val count = podcasts.count { podcastFolders[it.uuid] == folder }
+                            FilterChip(
+                                selected = selectedFolder == folder,
+                                onClick = { selectedFolder = folder },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = { Text("$folder ($count)", maxLines = 1) },
+                            )
+                        }
+                    }
+                }
+
+                // Sort. The library is a pile, and which order it reads best
+                // in depends on what the listener is looking for.
+                Box {
+                    IconButton(onClick = { sortMenuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Sort,
+                            contentDescription = "Sort shows",
+                            tint = if (podcastSort != PodcastSort.TITLE) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuOpen,
+                        onDismissRequest = { sortMenuOpen = false },
+                    ) {
+                        PodcastSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                leadingIcon = {
+                                    if (option == podcastSort) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    sortMenuOpen = false
+                                    queueViewModel.setPodcastSort(option)
+                                },
+                            )
+                        }
                     }
                 }
 
