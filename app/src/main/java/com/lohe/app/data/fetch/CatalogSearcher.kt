@@ -171,8 +171,14 @@ class CatalogSearcher(
          *
          * The catalog ranks by relevance, which is usually right but not
          * always: a search for one show can return a similarly named show
-         * first. An exact match after normalising case and punctuation wins;
-         * otherwise the closest title that starts with the wanted one is taken.
+         * first. An exact match after normalising case and punctuation wins.
+         *
+         * Beyond that, the two titles have to be near neighbours: one may
+         * carry a short suffix the other does not, the way a show is called
+         * "Heavy Metal News" in the catalog and "Heavy Metal News HD" in an
+         * export. The gap has to be short, because "The Triple R" must not be
+         * matched with "The Triple R Mommy Show", which is a different
+         * podcast entirely.
          */
         internal fun bestTitleMatch(
             wanted: String,
@@ -180,10 +186,13 @@ class CatalogSearcher(
         ): CatalogPodcast? {
             val target = normalize(wanted)
             if (target.isEmpty()) return null
-            return results.firstOrNull { normalize(it.title) == target }
-                ?: results.firstOrNull { normalize(it.title).startsWith(target) }
-                ?: results.firstOrNull { target.startsWith(normalize(it.title)) }
-                ?: results.firstOrNull { normalize(it.title).contains(target) }
+            val exact = results.firstOrNull { normalize(it.title) == target }
+            if (exact != null) return exact
+            return results.firstOrNull { candidate ->
+                val c = normalize(candidate.title)
+                (c.startsWith(target) && c.length - target.length <= 4) ||
+                    (target.startsWith(c) && target.length - c.length <= 4)
+            }
         }
 
         /** Lowercases, strips punctuation, and collapses whitespace. */

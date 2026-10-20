@@ -134,8 +134,11 @@ class RssPodcastFetcher(
 
             first.code == 403 && url.startsWith("http://") -> {
                 first.close()
-                val secure = "https://" + url.removePrefix("http://")
-                val upgraded = execute(secure, bustCache = false, asBrowser = false)
+                val upgraded = execute(
+                    "https://" + url.removePrefix("http://"),
+                    bustCache = false,
+                    asBrowser = false,
+                )
                 if (upgraded.code == 403) {
                     upgraded.close()
                     execute(url, bustCache = false, asBrowser = true)
@@ -151,10 +154,44 @@ class RssPodcastFetcher(
 
             else -> first
         }
-        return response.use {
-            if (!it.isSuccessful) throw feedError(it.code)
-            it.body?.bytes()
-                ?: throw IllegalStateException("Feed returned an empty body")
+
+        if (response.isSuccessful) {
+            return response.use {
+                it.body?.bytes()
+                    ?: throw IllegalStateException("Feed returned an empty body")
+            }
+        }
+
+        val status = response.code
+        val recovered = recoverLibsyn(response)
+        response.close()
+        if (recovered != null) return recovered
+
+        throw feedError(status)
+    }
+
+    /**
+     * Recovers a Libsyn feed that its own vanity address will not serve.
+     *
+     * Libsyn moved each show's feed to feeds.libsyn.com/<show id>. The
+     * friendly address still redirects, but it redirects to an S3 object that
+     * is no longer public, so the show answers 403 for a feed it is still
+     * serving. The show id only appears in the address the vanity one
+     * redirects to, so it is read back from there.
+     */
+    private fun recoverLibsyn(response: Response): ByteArray? {
+        val id = libsynShowId(response.request.url.toString()) ?: return null
+        val candidate = "https://feeds.libsyn.com/$id"
+        return try {
+            val alt = execute(candidate, bustCache = false, asBrowser = false)
+            if (alt.isSuccessful) {
+                alt.use { it.body?.bytes() }
+            } else {
+                alt.close()
+                null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -199,5 +236,19 @@ class RssPodcastFetcher(
             "The server kept replying 304 and would not send the feed.",
         )
         else -> IllegalStateException("Feed returned HTTP $code")
+    }
+
+    internal companion object {
+        /** The show id in a Libsyn feed address, such as .../shows/96977/... */
+        private val LIBSYN_SHOW = Regex("""libsyn\.com/(?:shows/)?(\d+)""")
+
+        /**
+         * The Libsyn show id in an address, or null when there is not one.
+         *
+         * The vanity address in an export carries no id, so the id is read
+         * from the address it redirects to, which does.
+         */
+        internal fun libsynShowId(url: String): String? =
+            LIBSYN_SHOW.find(url)?.groupValues?.getOrNull(1)
     }
 }
