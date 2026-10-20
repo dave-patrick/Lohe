@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive launcher icon: the Lohe geometric dragonfly hero mark.
+  Adaptive launcher icon: the Lohe dragonfly.
 
-  The background layer carries the deep-navy tile and rim glow; the
-  foreground layer carries the mark itself and is kept inside the
-  66dp safe zone so no launcher mask clips the wings or tail.
+  There is no background layer. The source artwork was a finished rounded tile
+  with a glowing blue-cyan border, and that border read as an outline drawn
+  around the app icon, with the tile sitting inside the launcher's own shape
+  like a picture in a picture. The frame is now taken off in the artwork
+  itself and the mark is scaled to fill the canvas, so the launcher's mask is
+  what gives the icon its shape and no edge of the artwork shows inside it.
+
+  The layers are rebuilt by tools/build-icon.py.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No background layer: just the dragonfly foreground mark, no outer outline. -->
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
     <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
