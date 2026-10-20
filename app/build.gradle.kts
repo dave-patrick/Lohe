@@ -32,7 +32,10 @@ android {
                     .takeIf { it.exists() }
                     ?.inputStream()
                     ?.use { props.load(it) }
-                storeFile = file(props.getProperty("keystore.path", ""))
+                val path = props.getProperty("keystore.path", "")
+                if (path.isNotEmpty()) {
+                    storeFile = file(path)
+                }
                 storePassword = props.getProperty("keystore.password", "")
                 keyAlias = props.getProperty("keystore.alias", "")
                 keyPassword = props.getProperty("keystore.key.password", "")

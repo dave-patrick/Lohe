@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,6 +64,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.LinearProgressIndicator
@@ -91,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.data.FeedImportState
+import com.lohe.app.data.OpmlImportFailure
 import com.lohe.app.data.OpmlImportState
 import com.lohe.app.data.PodcastSort
 import com.lohe.app.data.QueueViewModel
@@ -139,6 +142,8 @@ fun PodcastsScreen(
     var selectedFolder by rememberSaveable { mutableStateOf(ALL_FOLDERS) }
     var folderDialogPodcast by remember { mutableStateOf<PodcastEntity?>(null) }
     var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
+    var showOpmlFailures by remember { mutableStateOf(false) }
+    var lastOpmlFailures by remember { mutableStateOf<List<OpmlImportFailure>>(emptyList()) }
 
     var selectedPodcastUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedPodcastUuids.isNotEmpty()
@@ -209,7 +214,14 @@ fun PodcastsScreen(
                     context.getString(R.string.opml_imported_partial, r.imported, r.failed) +
                         ": $failures$more"
                 }
-                snackbarHostState.showSnackbar(summary)
+                snackbarHostState.showSnackbar(
+                    summary,
+                    duration = SnackbarDuration.Long,
+                )
+                if (r.failed > 0) {
+                    lastOpmlFailures = r.failures
+                    showOpmlFailures = true
+                }
                 viewModel.consumeOpmlImport()
             }
 
@@ -873,6 +885,37 @@ fun PodcastsScreen(
                 scope.launch { snackbarHostState.showSnackbar(msg) }
             },
             onDismiss = { playlistPickerUuids = null },
+        )
+    }
+
+    if (showOpmlFailures) {
+        LoheDialog(
+            onDismiss = { showOpmlFailures = false },
+            title = "${lastOpmlFailures.size} feed(s) could not be imported",
+            body = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "Tap each one to retry, or leave them and add them individually later.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    lastOpmlFailures.forEach { f ->
+                        Text(
+                            text = "${f.title} — ${f.reason}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                        )
+                        Divider()
+                    }
+                }
+            },
+            dismissLabel = "OK",
         )
     }
 }
