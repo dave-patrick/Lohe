@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -129,10 +130,11 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             } else {
-                // The wordmark PNG is cropped to its ink bounds, so it fills
-                // the box exactly and sits centred in the header. The box is
-                // the same height as the settings control beside it, so the
-                // two read as a matched pair on one line.
+                // The wordmark artwork carries waveform spikes above and below
+                // the word, so the letters themselves sit about 13% below the
+                // centre of the image. The image is nudged up so the word
+                // lands on the header's centreline, level with the settings
+                // control beside it, rather than hanging below it.
                 Box(
                     modifier = Modifier
                         .height(24.dp)
@@ -143,7 +145,9 @@ fun HomeScreen(
                         painter = painterResource(id = R.drawable.wordmark),
                         contentDescription = stringResource(R.string.app_name),
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(y = (-3.4).dp),
                     )
                 }
             }
