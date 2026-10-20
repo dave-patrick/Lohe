@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -127,12 +128,11 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             } else {
-                // The word mark PNG carries transparent padding that sits
-                // unevenly, so it is centred in its own box rather than
-                // stretched across the row.
+                // The wordmark PNG is cropped to its ink bounds, so it fills
+                // the box exactly and sits centred in the header.
                 Box(
                     modifier = Modifier
-                        .height(24.dp)
+                        .height(20.dp)
                         .width(128.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -345,50 +345,12 @@ private fun HomeTelemetryDashboard(
             }
         }
 
-        // --- 4. The counts, as three tiles ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            MetricBentoTile(
-                icon = Icons.Filled.Podcasts,
-                label = "Subscriptions",
-                value = stats.subscriptionCount.toString(),
-                sublabel = if (stats.subscriptionCount == 1) "active show" else "active shows",
-                progress = 1f,
-                accent = ElectricBlue,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenSubscriptions,
-            )
-            MetricBentoTile(
-                icon = Icons.AutoMirrored.Filled.QueueMusic,
-                label = "Playlists",
-                value = stats.playlistCount.toString(),
-                sublabel = if (stats.playlistCount == 1) "playlist" else "playlists",
-                progress = 1f,
-                accent = ElectricBlueMid,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenPlaylists,
-            )
-            MetricBentoTile(
-                icon = Icons.Filled.GraphicEq,
-                label = "Episodes",
-                value = stats.totalEpisodes.toString(),
-                sublabel = "${stats.inProgressCount} in progress",
-                progress = stats.completedEpisodesFraction,
-                accent = ElectricBlueMid,
-                modifier = Modifier.weight(1f),
-            )
-            MetricBentoTile(
-                icon = Icons.Filled.DownloadDone,
-                label = "Downloaded",
-                value = stats.downloadedCount.toString(),
-                sublabel = "${(stats.downloadedFraction * 100).roundToInt()}% offline",
-                progress = stats.downloadedFraction,
-                accent = ElectricBlueMid,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // --- 4. The counts, as one card with four figures ---
+        LibraryStatsCard(
+            stats = stats,
+            onOpenSubscriptions = onOpenSubscriptions,
+            onOpenPlaylists = onOpenPlaylists,
+        )
 
         // --- 5. Time, side by side ---
         Row(
@@ -727,88 +689,160 @@ private fun FrequencySpectrumBar(
     }
 }
 
+/**
+ * The four library counts, in one card.
+ *
+ * These were four separate tiles in a row. Each tile got a quarter of the
+ * width, so every label truncated to an ellipsis, and four cards in a row for
+ * four plain numbers was a lot of border and shadow for very little content.
+ * One card with a 2x2 grid gives each figure half the width and reads as a
+ * single instrument rather than a shelf of tiles.
+ */
 @Composable
-private fun MetricBentoTile(
+private fun LibraryStatsCard(
+    stats: HomeDashboardStats,
+    onOpenSubscriptions: () -> Unit,
+    onOpenPlaylists: () -> Unit,
+) {
+    GlassCard(contentPadding = 18.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(
+                text = "YOUR LIBRARY",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                LibraryFigure(
+                    icon = Icons.Filled.Podcasts,
+                    label = "Subscriptions",
+                    value = stats.subscriptionCount.toString(),
+                    accent = ElectricBlue,
+                    onClick = onOpenSubscriptions,
+                    modifier = Modifier.weight(1f),
+                )
+                LibraryFigure(
+                    icon = Icons.AutoMirrored.Filled.QueueMusic,
+                    label = "Playlists",
+                    value = stats.playlistCount.toString(),
+                    accent = ElectricBlueMid,
+                    onClick = onOpenPlaylists,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                LibraryFigure(
+                    icon = Icons.Filled.GraphicEq,
+                    label = "Episodes",
+                    value = compactCount(stats.totalEpisodes),
+                    caption = "${stats.inProgressCount} in progress",
+                    accent = ElectricBlueMid,
+                    modifier = Modifier.weight(1f),
+                )
+                LibraryFigure(
+                    icon = Icons.Filled.DownloadDone,
+                    label = "Downloaded",
+                    value = compactCount(stats.downloadedCount),
+                    caption = "${(stats.downloadedFraction * 100).roundToInt()}% offline",
+                    accent = ElectricBlueMid,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One figure in the library card: an icon, the number, and what it counts.
+ *
+ * No progress bar. A bar that is always full for two of the four figures, and
+ * that duplicates the number for the other two, is decoration rather than
+ * information, and it was most of what made the old tiles feel busy.
+ */
+@Composable
+private fun LibraryFigure(
     icon: ImageVector,
     label: String,
     value: String,
-    sublabel: String,
-    progress: Float,
+    caption: String? = null,
     accent: Color,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(
-        modifier = modifier,
-        contentPadding = 14.dp,
-        onClick = onClick,
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.12f)),
-                        ),
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.12f)),
                     ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(17.dp),
-                )
-            }
-
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(16.dp),
             )
+        }
 
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
 
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        if (caption != null) {
             Text(
-                text = sublabel,
+                text = caption,
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(accent.copy(alpha = 0.15f)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress.coerceIn(0.06f, 1f))
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
-                )
-            }
         }
     }
+}
+
+/**
+ * Formats a count compactly so a figure never has to be truncated.
+ *
+ * 37604 becomes "37.6k", which fits the width of a figure on any screen.
+ */
+internal fun compactCount(value: Int): String = when {
+    value >= 1_000_000 -> String.format("%.1fm", value / 1_000_000.0)
+    value >= 1_000 -> String.format("%.1fk", value / 1_000.0)
+    else -> value.toString()
 }
 
 @Composable

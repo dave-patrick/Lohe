@@ -62,6 +62,19 @@ class SubscriptionsViewModel(
         targetEpisodes.forEach { repository.markPlayed(it.uuid) }
     }
 
+    /**
+     * Reopens a show's episodes so they count as unlistened again.
+     *
+     * The counterpart to [markPodcastsPlayed]. Marking a show used to be a
+     * one-way door: the action was named "toggle" but only ever marked, and a
+     * feed refresh deliberately preserves listener state, so a show marked by
+     * accident stayed marked with no way back.
+     */
+    fun unmarkPodcastsPlayed(podcastUuids: Set<String>) = viewModelScope.launch {
+        val targetEpisodes = allEpisodes.value.filter { it.podcastUuid in podcastUuids }
+        targetEpisodes.forEach { repository.reopenEpisode(it.uuid) }
+    }
+
     /** Delete every episode backed by a local content:// URI. */
     fun deleteLocalFiles() = viewModelScope.launch {
         repository.deleteLocalFiles()

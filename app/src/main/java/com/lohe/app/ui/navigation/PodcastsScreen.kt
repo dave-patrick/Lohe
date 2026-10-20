@@ -149,6 +149,31 @@ fun PodcastsScreen(
     val inSelectionMode = selectedPodcastUuids.isNotEmpty()
     var playlistPickerUuids by remember { mutableStateOf<List<String>?>(null) }
 
+    /**
+     * Marks a show listened, or reopens it when it already is.
+     *
+     * The action is a real toggle. It used to only ever mark, and a feed
+     * refresh deliberately preserves listener state, so a show marked by
+     * accident stayed marked with no way back.
+     */
+    fun toggleShowPlayed(podcast: PodcastEntity) {
+        val target = allEpisodes.filter {
+            it.podcastUuid == podcast.uuid && !it.isDeleted
+        }
+        if (target.isEmpty()) return
+        if (target.all { it.isPlayed }) {
+            viewModel.unmarkPodcastsPlayed(setOf(podcast.uuid))
+            scope.launch {
+                snackbarHostState.showSnackbar("Marked ${podcast.title} unlistened")
+            }
+        } else {
+            viewModel.markPodcastsPlayed(setOf(podcast.uuid))
+            scope.launch {
+                snackbarHostState.showSnackbar("Marked ${podcast.title} listened")
+            }
+        }
+    }
+
     val availableFolders = remember(podcastFolders) {
         podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
     }
@@ -723,8 +748,7 @@ fun PodcastsScreen(
                                 scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
                             },
                             onTogglePlayed = {
-                                viewModel.markPodcastsPlayed(setOf(podcast.uuid))
-                                scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
+                                toggleShowPlayed(podcast)
                             },
                             onAddToPlaylist = {
                                 val episodeUuids = allEpisodes
@@ -792,8 +816,7 @@ fun PodcastsScreen(
                                 scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
                             },
                             onTogglePlayed = {
-                                viewModel.markPodcastsPlayed(setOf(podcast.uuid))
-                                scope.launch { snackbarHostState.showSnackbar("Marked ${podcast.title} listened") }
+                                toggleShowPlayed(podcast)
                             },
                             onAddToPlaylist = {
                                 val episodeUuids = allEpisodes
@@ -1084,7 +1107,7 @@ private fun SwipeablePodcastCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.CheckCircle,
-                                contentDescription = "Mark listened",
+                                contentDescription = "Toggle listened",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp),
                             )
