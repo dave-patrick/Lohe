@@ -26,7 +26,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
         EpisodeEntity::class,
         ListeningHistoryEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters()
@@ -148,6 +148,20 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * Episodes filed away by the listener.
+         *
+         * Kept rather than deleted, so an episode put aside can be brought
+         * back, but left out of the lists and of the listening figures.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE episodes ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
          * throws on upgrade and the app dies on first launch.
@@ -186,6 +200,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_5_6,
                         MIGRATION_6_7,
                         MIGRATION_7_8,
+                        MIGRATION_8_9,
                     )
                     .build()
                     .also { instance = it }

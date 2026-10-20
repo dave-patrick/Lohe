@@ -74,6 +74,16 @@ class EpisodesViewModel(
     }
 
     /**
+     * Files an episode away, or brings it back.
+     *
+     * An archived episode leaves the lists and stops counting towards the
+     * listening figures, but is kept so it can be brought back.
+     */
+    fun toggleArchived(uuid: String, currentlyArchived: Boolean) = viewModelScope.launch {
+        repository.setArchived(uuid, !currentlyArchived)
+    }
+
+    /**
      * Toggles played state.
      *
      * Un-marking restores a zero resume position, so the episode restarts from

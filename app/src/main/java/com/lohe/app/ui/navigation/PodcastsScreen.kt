@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -119,6 +120,10 @@ fun PodcastsScreen(
     queueViewModel: QueueViewModel,
     onOpenPodcast: (String) -> Unit,
     onAddLocalFolder: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    localFolderName: String? = null,
+    onChangeLocalFolder: () -> Unit = {},
+    onClearLocalFolder: () -> Unit = {},
     onManageStorage: () -> Unit,
     onPickOpmlToImport: () -> Unit,
     onPickExportDestination: (String) -> Unit,
@@ -126,6 +131,7 @@ fun PodcastsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val podcasts by viewModel.podcasts.collectAsState()
+    val totalPodcastCount by viewModel.totalPodcastCount.collectAsState()
     val allEpisodes by viewModel.allEpisodes.collectAsState()
     val podcastFolders by queueViewModel.podcastFolders.collectAsState()
     val query by viewModel.searchQueryState.collectAsState()
@@ -145,6 +151,7 @@ fun PodcastsScreen(
     var folderDialogPodcast by remember { mutableStateOf<PodcastEntity?>(null) }
     var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
     var showOpmlFailures by remember { mutableStateOf(false) }
+    var showLocalFolderDialog by remember { mutableStateOf(false) }
     var lastOpmlFailures by remember { mutableStateOf<List<OpmlImportFailure>>(emptyList()) }
 
     var selectedPodcastUuids by remember { mutableStateOf(emptySet<String>()) }
@@ -475,6 +482,15 @@ fun PodcastsScreen(
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
+                    Spacer(Modifier.width(10.dp))
+                    // How much the library holds, not how many rows the
+                    // search box happens to have left on screen.
+                    Text(
+                        text = totalPodcastCount.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                     Spacer(Modifier.weight(1f))
 
                     // Sort. The library is a pile, and which order it reads
@@ -547,6 +563,7 @@ fun PodcastsScreen(
                             modifier = Modifier.size(22.dp),
                         )
                     }
+                    HeaderSettingsButton(onClick = onOpenSettings)
                     Box {
                         IconButton(
                             onClick = { menuOpen = true },
@@ -626,6 +643,21 @@ fun PodcastsScreen(
                                 onClick = {
                                     menuOpen = false
                                     onManageStorage()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        localFolderName?.let { "Local folder: $it" }
+                                            ?: "Set a local folder",
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    showLocalFolderDialog = true
                                 },
                             )
                         }
@@ -914,6 +946,47 @@ fun PodcastsScreen(
                 scope.launch { snackbarHostState.showSnackbar(msg) }
             },
             onDismiss = { playlistPickerUuids = null },
+        )
+    }
+
+    if (showLocalFolderDialog) {
+        LoheDialog(
+            onDismiss = { showLocalFolderDialog = false },
+            title = if (localFolderName != null) {
+                "Local folder"
+            } else {
+                "Set a local folder"
+            },
+            icon = Icons.Filled.CreateNewFolder,
+            body = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (localFolderName != null) {
+                            "Files dropped into \"$localFolderName\" are picked up on every " +
+                                "launch and land in your Downloaded playlist."
+                        } else {
+                            "Pick a folder on this device. Any podcast files you drop " +
+                                "into it are picked up on every launch and land in your " +
+                                "Downloaded playlist."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmLabel = if (localFolderName != null) "Change folder" else "Choose folder",
+            onConfirm = {
+                showLocalFolderDialog = false
+                onChangeLocalFolder()
+            },
+            dismissLabel = if (localFolderName != null) "Stop using this folder" else "Cancel",
+            onDismissAction = if (localFolderName != null) {
+                {
+                    onClearLocalFolder()
+                }
+            } else {
+                null
+            },
         )
     }
 
@@ -1287,7 +1360,7 @@ private fun PodcastCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onClick,
         onLongClick = onLongClick,
-        contentPadding = 10.dp,
+        contentPadding = 8.dp,
     ) {
         if (inSelectionMode) {
             Icon(
@@ -1311,33 +1384,45 @@ private fun PodcastCard(
         RemoteImage(
             url = podcast.artworkUrl,
             contentDescription = null,
-            size = 44.dp,
-            cornerRadius = 9.dp,
+            size = 40.dp,
+            cornerRadius = 8.dp,
         )
 
         Spacer(Modifier.size(10.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
+        // The title is on one line and the column is at least as tall as the
+        // artwork, so every tile is the same height. A two-line title made the
+        // list ragged and took more room than the show needed.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 40.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
                 text = podcast.title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            podcast.author?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            // The author and the folder sit on one line, so every tile is two
+            // lines tall whatever else it carries. A folder on a line of its
+            // own made the rows ragged.
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                podcast.author?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 if (folderName.isNotBlank()) {
                     Box(
                         modifier = Modifier
@@ -1350,6 +1435,7 @@ private fun PodcastCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
                         )
                     }
                 }
@@ -1358,6 +1444,7 @@ private fun PodcastCard(
                         text = stringResource(R.string.podcasts_local_badge),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
                     )
                 }
             }

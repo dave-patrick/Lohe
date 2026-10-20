@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.net.URI
@@ -36,6 +37,16 @@ class SubscriptionsViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val searchQueryState: StateFlow<String> = searchQuery.asStateFlow()
+
+    /**
+     * Every subscription, before the search box narrows it.
+     *
+     * The header shows how much the library holds, which is not the same as
+     * how many rows happen to be on screen.
+     */
+    val totalPodcastCount: StateFlow<Int> = repository.observePodcasts()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     val allEpisodes: StateFlow<List<EpisodeSummary>> =
         repository.observeAllEpisodes()

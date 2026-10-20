@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(
@@ -75,6 +76,22 @@ data class ShowPlaybackSettings(
 }
 
 /**
+ * The settings a show has been given for itself.
+ *
+ * A null means the show follows the global setting, which is what lets the
+ * settings screen say "use the global setting" rather than showing a value
+ * that was never chosen here.
+ */
+data class ShowPlaybackOverrides(
+    val volumeBoost: Boolean? = null,
+    val skipSilence: Boolean? = null,
+    val playbackSpeed: Float? = null,
+    val smartSpeed: Boolean? = null,
+    val crossfadeMs: Int? = null,
+    val autoTrim: Boolean? = null,
+)
+
+/**
  * Durable user settings.
  *
  * Reads coerce to the legal range rather than trusting whatever is on disk: a
@@ -97,8 +114,14 @@ class SettingsStore(private val context: Context) {
         val playlistSort = stringPreferencesKey("playlist_sort")
     }
 
-    private fun showKey(podcastUuid: String, suffix: String) =
-        stringPreferencesKey("show_playback_${suffix}_$podcastUuid")
+    private fun showBoolKey(podcastUuid: String, suffix: String) =
+        booleanPreferencesKey("show_playback_${suffix}_$podcastUuid")
+
+    private fun showSpeedKey(podcastUuid: String) =
+        floatPreferencesKey("show_playback_playback_speed_$podcastUuid")
+
+    private fun showCrossfadeKey(podcastUuid: String) =
+        intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
         PlaybackSettings(
@@ -171,27 +194,102 @@ class SettingsStore(private val context: Context) {
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
 
+    /**
+     * The playback settings for one show.
+     *
+     * A show that has never been given a setting of its own follows the
+     * global one, so changing the speed globally changes every show that has
+     * not been given a speed of its own. Setting one here overrides it for
+     * that show only, and clearing it puts the show back on the global value.
+     */
     fun showPlaybackSettings(podcastUuid: String): Flow<ShowPlaybackSettings> =
-        context.settingsStore.data.map { prefs ->
+        combine(context.settingsStore.data, settings) { prefs, global ->
             ShowPlaybackSettings(
-                volumeBoost = prefs[booleanPreferencesKey("show_playback_volume_boost_$podcastUuid")] ?: false,
-                skipSilence = prefs[booleanPreferencesKey("show_playback_skip_silence_$podcastUuid")] ?: false,
-                playbackSpeed = (prefs[floatPreferencesKey("show_playback_playback_speed_$podcastUuid")] ?: 1.0f).coerceIn(0.5f, 3.0f),
-                smartSpeed = prefs[booleanPreferencesKey("show_playback_smart_speed_$podcastUuid")] ?: false,
-                crossfadeMs = (prefs[intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")] ?: 0).coerceIn(0, 30_000),
-                autoTrim = prefs[booleanPreferencesKey("show_playback_auto_trim_$podcastUuid")] ?: false,
+                volumeBoost = prefs[showBoolKey(podcastUuid, "volume_boost")]
+                    ?: global.volumeBoostByDefault,
+                skipSilence = prefs[showBoolKey(podcastUuid, "skip_silence")]
+                    ?: global.skipSilenceByDefault,
+                playbackSpeed = (
+                    prefs[showSpeedKey(podcastUuid)]
+                        ?: global.defaultPlaybackSpeed
+                    ).coerceIn(0.5f, 3.0f),
+                smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")] ?: false,
+                crossfadeMs = (
+                    prefs[showCrossfadeKey(podcastUuid)] ?: 0
+                    ).coerceIn(0, 30_000),
+                autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")] ?: false,
+            )
+        }
+
+    /**
+     * The settings a show has been given for itself.
+     *
+     * Unlike [showPlaybackSettings] this does not fall back to the global
+     * value: a null here means the show has not been given one, and so is
+     * following the global setting.
+     */
+    fun showPlaybackOverrides(podcastUuid: String): Flow<ShowPlaybackOverrides> =
+        context.settingsStore.data.map { prefs ->
+            ShowPlaybackOverrides(
+                volumeBoost = prefs[showBoolKey(podcastUuid, "volume_boost")],
+                skipSilence = prefs[showBoolKey(podcastUuid, "skip_silence")],
+                playbackSpeed = prefs[showSpeedKey(podcastUuid)],
+                smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")],
+                crossfadeMs = prefs[showCrossfadeKey(podcastUuid)],
+                autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")],
             )
         }
 
     suspend fun setShowPlaybackSettings(podcastUuid: String, settings: ShowPlaybackSettings) =
         edit {
-            it[booleanPreferencesKey("show_playback_volume_boost_$podcastUuid")] = settings.volumeBoost
-            it[booleanPreferencesKey("show_playback_skip_silence_$podcastUuid")] = settings.skipSilence
-            it[floatPreferencesKey("show_playback_playback_speed_$podcastUuid")] = settings.playbackSpeed
-            it[booleanPreferencesKey("show_playback_smart_speed_$podcastUuid")] = settings.smartSpeed
-            it[intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")] = settings.crossfadeMs
-            it[booleanPreferencesKey("show_playback_auto_trim_$podcastUuid")] = settings.autoTrim
+            it[showBoolKey(podcastUuid, "volume_boost")] = settings.volumeBoost
+            it[showBoolKey(podcastUuid, "skip_silence")] = settings.skipSilence
+            it[showSpeedKey(podcastUuid)] = settings.playbackSpeed
+            it[showBoolKey(podcastUuid, "smart_speed")] = settings.smartSpeed
+            it[showCrossfadeKey(podcastUuid)] = settings.crossfadeMs
+            it[showBoolKey(podcastUuid, "auto_trim")] = settings.autoTrim
         }
+
+    /**
+     * Sets one setting for a show, or clears it so it follows the global one.
+     *
+     * A null value removes the override, which is what "use the global
+     * setting" means.
+     */
+    suspend fun setShowVolumeBoost(podcastUuid: String, value: Boolean?) = edit {
+        val key = showBoolKey(podcastUuid, "volume_boost")
+        if (value == null) it.remove(key) else it[key] = value
+    }
+
+    suspend fun setShowSkipSilence(podcastUuid: String, value: Boolean?) = edit {
+        val key = showBoolKey(podcastUuid, "skip_silence")
+        if (value == null) it.remove(key) else it[key] = value
+    }
+
+    suspend fun setShowSmartSpeed(podcastUuid: String, value: Boolean?) = edit {
+        val key = showBoolKey(podcastUuid, "smart_speed")
+        if (value == null) it.remove(key) else it[key] = value
+    }
+
+    suspend fun setShowAutoTrim(podcastUuid: String, value: Boolean?) = edit {
+        val key = showBoolKey(podcastUuid, "auto_trim")
+        if (value == null) it.remove(key) else it[key] = value
+    }
+
+    suspend fun setShowPlaybackSpeed(podcastUuid: String, value: Float?) = edit {
+        val key = showSpeedKey(podcastUuid)
+        if (value == null) it.remove(key) else it[key] = value.coerceIn(0.5f, 3.0f)
+    }
+
+    /** Puts every setting for a show back on the global value. */
+    suspend fun clearShowPlaybackSettings(podcastUuid: String) = edit {
+        it.remove(showBoolKey(podcastUuid, "volume_boost"))
+        it.remove(showBoolKey(podcastUuid, "skip_silence"))
+        it.remove(showBoolKey(podcastUuid, "smart_speed"))
+        it.remove(showBoolKey(podcastUuid, "auto_trim"))
+        it.remove(showSpeedKey(podcastUuid))
+        it.remove(showCrossfadeKey(podcastUuid))
+    }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         context.settingsStore.edit(block)

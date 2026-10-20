@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -263,6 +264,13 @@ private fun ChoiceRow(
                     selected = choice == selected,
                     onClick = { onSelect(choice) },
                     label = { Text(format(choice), maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        // The default selected chip takes the theme's
+                        // secondary container, which is a teal that reads as
+                        // green against the blue the app is built on.
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
                 )
             }
         }
@@ -293,6 +301,13 @@ private fun SpeedChoiceRow(
                     selected = kotlin.math.abs(choice - selected) < 0.01f,
                     onClick = { onSelect(choice) },
                     label = { Text(formatSpeedLabel(choice), maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        // The default selected chip takes the theme's
+                        // secondary container, which is a teal that reads as
+                        // green against the blue the app is built on.
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
                 )
             }
         }

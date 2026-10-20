@@ -57,6 +57,15 @@ data class EpisodeEntity(
     val starred: Boolean = false,
     val isDeleted: Boolean = false,
     /**
+     * Set aside by the listener.
+     *
+     * Archived episodes are kept but out of the way: they are left out of the
+     * episode lists and, more to the point, they stop counting towards the
+     * listening figures, so an episode filed away is not still being credited
+     * as heard.
+     */
+    val isArchived: Boolean = false,
+    /**
      * Position in the play queue; null when the episode is not queued.
      *
      * Lower sorts first. Enqueue assigns the next integer, so the queue is an
@@ -146,6 +155,8 @@ data class EpisodeSummary(
     val listenedSeconds: Long = 0,
     val starred: Boolean = false,
     val isDeleted: Boolean = false,
+    /** Set aside by the listener; see [EpisodeEntity.isArchived]. */
+    val isArchived: Boolean = false,
     val queuePosition: Int? = null,
     val lastPlayedAt: Long? = null,
     val localPath: String? = null,
@@ -201,6 +212,7 @@ fun EpisodeEntity.toSummary(): EpisodeSummary = EpisodeSummary(
     listenedSeconds = listenedSeconds,
     starred = starred,
     isDeleted = isDeleted,
+    isArchived = isArchived,
     queuePosition = queuePosition,
     lastPlayedAt = lastPlayedAt,
     localPath = localPath,

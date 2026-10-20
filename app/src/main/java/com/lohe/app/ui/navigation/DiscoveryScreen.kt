@@ -1,7 +1,9 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +18,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
+import com.lohe.app.data.CatalogActionState
 import com.lohe.app.data.CatalogState
 import com.lohe.app.data.DiscoveryViewModel
 import com.lohe.app.data.fetch.CatalogPodcast
@@ -57,12 +62,15 @@ import kotlinx.coroutines.flow.map
 fun DiscoveryScreen(
     viewModel: DiscoveryViewModel,
     onOpenSubscribed: (String) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
 ) {
     val query by viewModel.query.collectAsState()
     val state by viewModel.state.collectAsState()
     val subscriptions by viewModel.subscriptions.collectAsState()
     val previews by viewModel.previews.collectAsState()
     val previewEpisodes by viewModel.previewEpisodes.collectAsState()
+    val action by viewModel.action.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Which catalog result is open, if any. Held by feed URL + title rather
     // than the object so a re-emitted result does not reset the sheet.
@@ -78,13 +86,38 @@ fun DiscoveryScreen(
             .collectLatest { term -> viewModel.search(term) }
     }
 
+    // Say what happened. A subscribe that fails because the feed is
+    // unreachable looks exactly like a button that does nothing.
+    LaunchedEffect(action) {
+        when (val current = action) {
+            is CatalogActionState.Done -> {
+                snackbarHostState.showSnackbar(current.message)
+                viewModel.consumeAction()
+            }
+            is CatalogActionState.Failed -> {
+                snackbarHostState.showSnackbar(current.message)
+                viewModel.consumeAction()
+            }
+            else -> Unit
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        Text(
-            text = stringResource(R.string.discovery_title),
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(top = 20.dp, bottom = 12.dp),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.discovery_title),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f),
+            )
+            HeaderSettingsButton(onClick = onOpenSettings)
+        }
 
         OutlinedTextField(
             value = query,
@@ -143,6 +176,12 @@ fun DiscoveryScreen(
                 }
             }
         }
+    }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     openDetail?.let { podcast ->

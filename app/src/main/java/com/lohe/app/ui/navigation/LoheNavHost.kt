@@ -61,6 +61,7 @@ import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
 import com.lohe.app.utils.FileScanner
 import com.lohe.app.utils.LocalFileManager
+import com.lohe.app.utils.LocalFolderStore
 import com.lohe.app.data.db.entity.toSummary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -136,6 +137,7 @@ fun LoheNavHost(
     // work belongs in a lifecycle-owned effect rather than in a callback that
     // may fire after the composable has moved on.
     var pendingTree by remember { mutableStateOf<Uri?>(null) }
+    val localFolderStore = remember { LocalFolderStore(context) }
     var pendingOpml by remember { mutableStateOf<ByteArray?>(null) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
     var importMessage by remember { mutableStateOf<String?>(null) }
@@ -201,6 +203,12 @@ fun LoheNavHost(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
         }
+        // Remember the folder so it is rescanned on every launch. The
+        // listener drops files into it and expects them to turn up in the
+        // library without asking again.
+        localFolderStore.treeUri = uri.toString()
+        localFolderStore.folderName =
+            FileScanner.displayNameOf(context, uri) ?: "Local Files"
         pendingTree = uri
     }
 
@@ -255,8 +263,21 @@ fun LoheNavHost(
                 context.applicationContext,
                 ServiceLocator.subscriptionRepository(),
             ).importFolder(name, files)
-            importMessage = "Added $imported file${if (imported == 1) "" else "s"} from $name"
+            importMessage = "Added ${imported.size} file${if (imported.size == 1) "" else "s"} from $name"
         }
+    }
+
+    // Rescan the stored folder on launch, so a file dropped into it while the
+    // app was closed turns up in the library.
+    LaunchedEffect(Unit) {
+        val tree = localFolderStore.tree() ?: return@LaunchedEffect
+        val name = localFolderStore.folderName ?: "Local Files"
+        val files = FileScanner.scanFolderForAudio(context, tree)
+        if (files.isEmpty()) return@LaunchedEffect
+        LocalFileManager(
+            context.applicationContext,
+            ServiceLocator.subscriptionRepository(),
+        ).importFolder(name, files)
     }
 
     Scaffold(
@@ -403,7 +424,11 @@ fun LoheNavHost(
                     queueViewModel = queueViewModel,
                     onOpenPodcast = { navController.navigate(Routes.episodes(it)) },
                     onAddLocalFolder = { folderPicker.launch(null) },
+                    localFolderName = localFolderStore.folderName,
+                    onChangeLocalFolder = { folderPicker.launch(null) },
+                    onClearLocalFolder = { localFolderStore.clear() },
                     onManageStorage = { navController.navigate(Dest.STORAGE.route) },
+                    onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPickOpmlToImport = { opmlPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) },
                     onPickExportDestination = { document ->
                         pendingExport = document
@@ -426,6 +451,7 @@ fun LoheNavHost(
                 EpisodesScreen(
                     viewModel = vm,
                     queueViewModel = queueViewModel,
+                    onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onBack = { navController.popBackStack() },
                     onQueue = { episode ->
                         if (episode.isQueued) {
@@ -469,6 +495,7 @@ fun LoheNavHost(
             composable(Dest.DISCOVER.route) {
                 DiscoveryScreen(
                     viewModel = discoveryViewModel,
+                    onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onOpenSubscribed = { uuid ->
                         navController.navigate(Routes.episodes(uuid))
                     },
@@ -478,6 +505,7 @@ fun LoheNavHost(
             composable(Dest.PLAYLISTS.route) {
                 PlaylistsScreen(
                     viewModel = queueViewModel,
+                    onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)
@@ -500,6 +528,7 @@ fun LoheNavHost(
             composable(Dest.QUEUE.route) {
                 QueueScreen(
                     viewModel = queueViewModel,
+                    onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)

@@ -18,12 +18,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -69,6 +71,7 @@ fun EpisodeActionSheet(
     onToggleDownload: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
     onRemoveFromPlaylist: (() -> Unit)? = null,
+    onToggleArchived: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -162,6 +165,24 @@ fun EpisodeActionSheet(
                             label = "Remove from this playlist",
                             accent = MaterialTheme.colorScheme.onSurface,
                             onClick = onRemoveFromPlaylist,
+                        ),
+                    )
+                }
+                if (onToggleArchived != null) {
+                    add(
+                        SheetAction(
+                            icon = if (episode.isArchived) {
+                                Icons.Filled.Unarchive
+                            } else {
+                                Icons.Filled.Archive
+                            },
+                            label = if (episode.isArchived) {
+                                "Bring back from archive"
+                            } else {
+                                "Archive episode"
+                            },
+                            accent = MaterialTheme.colorScheme.onSurface,
+                            onClick = onToggleArchived,
                         ),
                     )
                 }

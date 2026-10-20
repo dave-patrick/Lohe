@@ -53,6 +53,16 @@ class DiscoveryViewModel(
     val subscribed: SharedFlow<String> = _subscribed
 
     /**
+     * What happened when the listener asked for something from the catalog.
+     *
+     * Subscribing fetches the feed, so it can fail for reasons that have
+     * nothing to do with the tap. Without this the button simply did nothing
+     * when the feed was unreachable, which reads as a broken button.
+     */
+    private val _action = MutableStateFlow<CatalogActionState>(CatalogActionState.Idle)
+    val action: StateFlow<CatalogActionState> = _action.asStateFlow()
+
+    /**
      * Followed shows keyed by feed URL, so the detail sheet knows immediately
      * whether a catalog result is already in the library and can show that
      * show's own settings.
@@ -114,8 +124,19 @@ class DiscoveryViewModel(
 
     fun subscribe(podcast: CatalogPodcast) {
         viewModelScope.launch {
+            _action.value = CatalogActionState.Working
             repository.importFeed(podcast.feedUrl)
-                .onSuccess { _subscribed.tryEmit(podcast.feedUrl) }
+                .onSuccess {
+                    _subscribed.tryEmit(podcast.feedUrl)
+                    _action.value = CatalogActionState.Done("Subscribed to ${podcast.title}")
+                }
+                .onFailure { error ->
+                    // Swallowing this left the button looking dead: the feed
+                    // fetch is what fails, not the tap, and nothing said so.
+                    _action.value = CatalogActionState.Failed(
+                        error.message ?: "Couldn't subscribe to that feed.",
+                    )
+                }
         }
     }
 
@@ -126,9 +147,22 @@ class DiscoveryViewModel(
      */
     fun downloadEpisode(podcast: CatalogPodcast, episodeUuid: String) {
         viewModelScope.launch {
+            _action.value = CatalogActionState.Working
             repository.importFeed(podcast.feedUrl)
-                .onSuccess { repository.enqueue(episodeUuid) }
+                .onSuccess {
+                    repository.enqueue(episodeUuid)
+                    _action.value = CatalogActionState.Done("Downloading that episode")
+                }
+                .onFailure { error ->
+                    _action.value = CatalogActionState.Failed(
+                        error.message ?: "Couldn't download that episode.",
+                    )
+                }
         }
+    }
+
+    fun consumeAction() {
+        _action.value = CatalogActionState.Idle
     }
 
     /** The library row behind a catalog result, or null when not followed yet. */
@@ -171,6 +205,16 @@ private val _previews = MutableStateFlow<Map<String, String>>(emptyMap())
     fun setAutoDownload(podcastUuid: String, enabled: Boolean) {
         viewModelScope.launch { repository.setAutoDownload(podcastUuid, enabled) }
     }
+}
+
+/** What happened when the listener asked for something from the catalog. */
+sealed interface CatalogActionState {
+    data object Idle : CatalogActionState
+    data object Working : CatalogActionState
+    /** It worked; [message] says what was done. */
+    data class Done(val message: String) : CatalogActionState
+    /** It did not work; [message] says why. */
+    data class Failed(val message: String) : CatalogActionState
 }
 
 class DiscoveryViewModelFactory : ViewModelProvider.Factory {

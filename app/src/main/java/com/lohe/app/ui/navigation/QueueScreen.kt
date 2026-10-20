@@ -118,6 +118,7 @@ fun QueueScreen(
     viewModel: QueueViewModel,
     onPlay: (QueueEntry) -> Unit,
     onShowMessage: (String) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
 ) {
     val queue by viewModel.queue.collectAsState()
     val queuedSeconds by viewModel.queuedSeconds.collectAsState()
@@ -284,6 +285,8 @@ fun QueueScreen(
                             }
                         }
                     }
+
+                    HeaderSettingsButton(onClick = onOpenSettings)
                 }
             }
         }
@@ -566,6 +569,7 @@ fun PlaylistsScreen(
     viewModel: QueueViewModel,
     onPlay: (QueueEntry) -> Unit,
     onShowMessage: (String) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
 ) {
     val now = remember { System.currentTimeMillis() }
     val userPlaylists by viewModel.userPlaylists.collectAsState()
@@ -580,6 +584,11 @@ fun PlaylistsScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
     var newPlaylistFolder by remember { mutableStateOf("") }
+    // The folders already in use, so a playlist can be made from one of them.
+    val podcastFolders by viewModel.podcastFolders.collectAsState()
+    val existingFolders = remember(podcastFolders) {
+        podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
+    }
     var newPlaylistAutoDl by remember { mutableStateOf(true) }
     var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
@@ -1092,6 +1101,8 @@ fun PlaylistsScreen(
                         Spacer(Modifier.width(6.dp))
                         Text("New Playlist", style = MaterialTheme.typography.labelMedium)
                     }
+
+                    HeaderSettingsButton(onClick = onOpenSettings)
                 }
             }
 
@@ -1334,10 +1345,37 @@ fun PlaylistsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Text(
+                        text = "Folder",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    // A playlist tied to a folder follows it: putting a show
+                    // in the folder adds it to the playlist, and taking it
+                    // out takes it away. The folders already in use are
+                    // offered, so a playlist can be made from one of them
+                    // rather than by typing its name.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        FilterChip(
+                            selected = newPlaylistFolder.isBlank(),
+                            onClick = { newPlaylistFolder = "" },
+                            label = { Text("No folder") },
+                        )
+                        existingFolders.forEach { folder ->
+                            FilterChip(
+                                selected = newPlaylistFolder == folder,
+                                onClick = { newPlaylistFolder = folder },
+                                label = { Text(folder, maxLines = 1) },
+                            )
+                        }
+                    }
                     OutlinedTextField(
                         value = newPlaylistFolder,
                         onValueChange = { newPlaylistFolder = it },
-                        label = { Text("Folder (optional, e.g. Sports, Daily)") },
+                        label = { Text("Or name a new folder") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

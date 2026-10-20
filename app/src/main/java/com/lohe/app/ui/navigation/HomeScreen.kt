@@ -32,13 +32,12 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -77,6 +76,7 @@ import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricBlueMid
+import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.GlassCard
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -286,13 +286,19 @@ private fun HomeTelemetryDashboard(
 
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         SignalReadout(
                             label = "TIME PLAYED",
                             value = formatDashboardDuration(stats.totalPlayedSeconds),
                             caption = "of ${formatDashboardDuration(stats.totalDurationSeconds)}",
                             accent = ElectricBlue,
+                        )
+                        SignalReadout(
+                            label = "TIME SAVED",
+                            value = formatDashboardDuration(stats.timeSavedSeconds),
+                            caption = "playing faster and skipping silence",
+                            accent = ElectricBlueMid,
                         )
                         SignalReadout(
                             label = "STILL TO HEAR",
@@ -341,56 +347,43 @@ private fun HomeTelemetryDashboard(
             }
         }
 
-        // --- 3. The shape of the library ---
-        if (stats.topShows.isNotEmpty()) {
-            GlassCard(contentPadding = 18.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        text = "MOST EPISODES",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.4.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    TopShowsChart(
-                        shows = stats.topShows,
-                        isLight = isLight,
-                    )
-                }
-            }
-        }
-
-        // --- 4. The counts, as one card with four figures ---
+        // --- 3. The counts, as one card with four figures ---
         LibraryStatsCard(
             stats = stats,
             onOpenSubscriptions = onOpenSubscriptions,
             onOpenPlaylists = onOpenPlaylists,
         )
 
-        // --- 5. Time, side by side ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            TimeDetailCard(
-                icon = Icons.Filled.HourglassBottom,
-                title = "Remaining Time",
-                primaryValue = formatDashboardDuration(stats.totalRemainingSeconds),
-                caption = "Left across all files",
-                fraction = (1f - stats.listenedFraction).coerceIn(0f, 1f),
-                accent = ElectricBlueMid,
-                modifier = Modifier.weight(1f),
-            )
-            TimeDetailCard(
-                icon = Icons.Filled.Headphones,
-                title = "Total Time Playing",
-                primaryValue = formatDashboardDuration(stats.totalPlayedSeconds),
-                caption = "of ${formatDashboardDuration(stats.totalDurationSeconds)} total",
-                fraction = stats.listenedFraction,
-                accent = ElectricBlue,
-                modifier = Modifier.weight(1f),
-            )
+        // --- 4. The shape of the library, and what was listened to ---
+        // At the bottom, because it is reference rather than headline: which
+        // shows carry the library, and which ones actually got played.
+        if (stats.showActivity.isNotEmpty()) {
+            GlassCard(contentPadding = 18.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "MOST EPISODES AND MOST LISTENED",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            LegendDot("heard", null, ElectricCyan)
+                            LegendDot("total", null, ElectricBlue)
+                        }
+                    }
+
+                    TopShowsChart(
+                        shows = stats.showActivity,
+                        isLight = isLight,
+                    )
+                }
+            }
         }
     }
 }
@@ -607,6 +600,7 @@ private fun ActivityChart(
 private fun TopShowsChart(
     shows: List<ShowActivity>,
     isLight: Boolean,
+    unit: String = "ep",
 ) {
     val peak = shows.maxOfOrNull { it.episodeCount }?.coerceAtLeast(1) ?: 1
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -627,11 +621,14 @@ private fun TopShowsChart(
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = "${show.episodeCount} ep",
+                        text = "${show.episodeCount} $unit",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // One bar, two colours: the show's whole catalogue in the mid
+                // blue, and the part of it that has been heard in the bright
+                // cyan on top of it.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -641,7 +638,7 @@ private fun TopShowsChart(
                             if (isLight) {
                                 ElectricBlue.copy(alpha = 0.08f)
                             } else {
-                                ElectricBlueMid.copy(alpha = 0.10f)
+                                ElectricBlue.copy(alpha = 0.20f)
                             },
                         ),
                 ) {
@@ -649,9 +646,15 @@ private fun TopShowsChart(
                         modifier = Modifier
                             .fillMaxWidth(show.episodeCount.toFloat() / peak)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
-                    )
+                            .background(ElectricBlue),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(show.listenedCount.toFloat() / peak)
+                                .fillMaxHeight()
+                                .background(Brush.horizontalGradient(listOf(ElectricCyan, ElectricBlueMid))),
+                        )
+                    }
                 }
             }
         }
@@ -897,7 +900,7 @@ private fun LibraryCompositionBar(stats: HomeDashboardStats) {
 
 /** A colour swatch and its count. */
 @Composable
-private fun LegendDot(label: String, count: Int, color: Color) {
+private fun LegendDot(label: String, count: Int?, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
@@ -907,7 +910,7 @@ private fun LegendDot(label: String, count: Int, color: Color) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "$label ${compactCount(count)}",
+            text = if (count == null) label else "$label ${compactCount(count)}",
             style = MaterialTheme.typography.labelSmall,
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1005,76 +1008,6 @@ internal fun compactCount(value: Int): String = when {
     else -> value.toString()
 }
 
-@Composable
-private fun TimeDetailCard(
-    icon: ImageVector,
-    title: String,
-    primaryValue: String,
-    caption: String,
-    fraction: Float,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
-    GlassCard(modifier = modifier, contentPadding = 14.dp) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Text(
-                text = primaryValue,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-
-            Text(
-                text = caption,
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(accent.copy(alpha = 0.15f)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction.coerceIn(0.05f, 1f))
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Brush.horizontalGradient(listOf(ElectricBlue, ElectricBlueMid))),
-                )
-            }
-        }
-    }
-}
 
 /**
  * Formats a total duration in seconds as `Xh Ym`, `Xd Yh`, or `Xm Ys` for the
