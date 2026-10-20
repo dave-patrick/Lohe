@@ -65,6 +65,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
@@ -120,7 +121,10 @@ fun HomeScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 20.dp),
+                // The band around the wordmark and the settings control. The
+                // padding below them is what centres them in the header
+                // instead of leaving them sitting on its bottom edge.
+                .padding(top = 18.dp, bottom = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isLight) {
@@ -131,10 +135,9 @@ fun HomeScreen(
                 )
             } else {
                 // The wordmark artwork carries waveform spikes above and below
-                // the word, so the letters themselves sit about 13% below the
-                // centre of the image. The image is nudged up so the word
-                // lands on the header's centreline, level with the settings
-                // control beside it, rather than hanging below it.
+                // the word, so the letters themselves sit below the centre of
+                // the image. The image is nudged so the word lands on the
+                // same centreline as the settings control beside it.
                 Box(
                     modifier = Modifier
                         .height(24.dp)
@@ -705,14 +708,16 @@ private fun FrequencySpectrumBar(
 /**
  * The library at a glance.
  *
- * This went through two shapes. Four tiles in a row gave each tile a quarter
- * of the width, so every label truncated. A plain 2x2 grid fitted, but read
- * as a table: four numbers in boxes, flat and uninformative about the shape
- * of the library.
+ * This went through three shapes. Four tiles in a row gave each tile a
+ * quarter of the width, so every label truncated. A plain 2x2 grid fitted,
+ * but read as a table: four numbers in boxes, flat and uninformative about
+ * the shape of the library. The one after that was tidier but still a list
+ * of figures with nothing pulling the eye anywhere.
  *
- * This one leads with the total, shows what is left to hear as a single
- * proportioned bar, and puts the three counts that can be acted on in tinted
- * pills. The figures count up as they arrive, so the card settles rather
+ * This one leads with the total, large and lit, and puts a single
+ * proportioned bar under it showing how much of the library is played, in
+ * progress and still waiting. The counts that can be acted on sit below in
+ * badges. Everything counts up as it arrives, so the card settles rather
  * than snapping into place.
  */
 @Composable
@@ -721,57 +726,85 @@ private fun LibraryStatsCard(
     onOpenSubscriptions: () -> Unit,
     onOpenPlaylists: () -> Unit,
 ) {
-    GlassCard(contentPadding = 18.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    GlassCard(contentPadding = 20.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom,
             ) {
-                Text(
-                    text = "YOUR LIBRARY",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = animatedCount(stats.totalEpisodes),
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "YOUR LIBRARY",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "Episodes in your library",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // The total, lit from behind so it reads as the headline
+                // rather than another figure in a row.
+                Box(
+                    modifier = Modifier.size(width = 150.dp, height = 62.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(130.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        ElectricBlueMid.copy(alpha = 0.22f),
+                                        Color.Transparent,
+                                    ),
+                                ),
+                            ),
+                    )
+                    Text(
+                        text = animatedCount(stats.totalEpisodes),
+                        style = MaterialTheme.typography.displaySmall.merge(
+                            TextStyle(
+                                brush = Brush.horizontalGradient(
+                                    listOf(ElectricBlue, ElectricBlueMid),
+                                ),
+                            ),
+                        ),
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                    )
+                }
             }
 
             LibraryCompositionBar(stats = stats)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                LibraryPill(
+                LibraryBadge(
                     icon = Icons.Filled.Podcasts,
                     label = "Subscriptions",
-                    count = stats.subscriptionCount,
+                    value = stats.subscriptionCount,
                     accent = ElectricBlue,
                     onClick = onOpenSubscriptions,
                     modifier = Modifier.weight(1f),
                 )
-                LibraryPill(
+                LibraryBadge(
                     icon = Icons.AutoMirrored.Filled.QueueMusic,
                     label = "Playlists",
-                    count = stats.playlistCount,
+                    value = stats.playlistCount,
                     accent = ElectricBlueMid,
                     onClick = onOpenPlaylists,
-                    modifier = Modifier.weight(1f),
-                )
-                LibraryPill(
-                    icon = Icons.Filled.DownloadDone,
-                    label = "Saved",
-                    count = stats.downloadedCount,
-                    accent = ElectricBlueMid,
-                    onClick = null,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -784,7 +817,9 @@ private fun LibraryStatsCard(
  *
  * Played, in progress and still waiting as three segments of the same
  * width, so the shape of the library is legible at a glance instead of by
- * reading three separate numbers against each other.
+ * reading three separate numbers against each other. The played segment
+ * carries a lit edge, so the bar reads as filling up rather than as a
+ * static scale.
  */
 @Composable
 private fun LibraryCompositionBar(stats: HomeDashboardStats) {
@@ -808,7 +843,7 @@ private fun LibraryCompositionBar(stats: HomeDashboardStats) {
         label = "progress-segment",
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Drawn rather than composed from weighted children. In a Row, a
         // child with fillMaxWidth(fraction) is measured against the space
         // left over by its siblings, so the second segment would be a
@@ -816,13 +851,13 @@ private fun LibraryCompositionBar(stats: HomeDashboardStats) {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(9.dp)
-                .clip(RoundedCornerShape(5.dp)),
+                .height(11.dp)
+                .clip(RoundedCornerShape(6.dp)),
         ) {
             val w = size.width
             val h = size.height
 
-            drawRect(color = ElectricBlue.copy(alpha = 0.12f))
+            drawRect(color = ElectricBlue.copy(alpha = 0.13f))
 
             drawRect(
                 brush = Brush.horizontalGradient(listOf(ElectricBlueMid, ElectricBlue)),
@@ -834,9 +869,25 @@ private fun LibraryCompositionBar(stats: HomeDashboardStats) {
                 topLeft = Offset(w * animatedPlayed, 0f),
                 size = Size(w * animatedProgress, h),
             )
+
+            // A lit edge on the front of what has been played, so the bar
+            // reads as filling rather than as a static scale.
+            if (animatedPlayed > 0.01f) {
+                val edge = w * animatedPlayed
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.9f), Color.Transparent),
+                    ),
+                    radius = h * 0.9f,
+                    center = Offset(edge, h / 2),
+                )
+            }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             LegendDot("Played", stats.playedEpisodesCount, ElectricBlue)
             LegendDot("In progress", stats.inProgressCount, ElectricBlueMid.copy(alpha = 0.5f))
             LegendDot("Waiting", waiting, ElectricBlue.copy(alpha = 0.25f))
@@ -866,47 +917,63 @@ private fun LegendDot(label: String, count: Int, color: Color) {
 }
 
 /**
- * One count in a tinted pill: an icon, the number, and what it counts.
+ * One count in a badge: a lit icon disc, the number, and what it counts.
  */
 @Composable
-private fun LibraryPill(
+private fun LibraryBadge(
     icon: ImageVector,
     label: String,
-    count: Int,
+    value: Int,
     accent: Color,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .background(accent.copy(alpha = 0.08f))
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(15.dp),
-        )
-        Text(
-            text = animatedCount(count),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 9.sp,
-            lineHeight = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        listOf(accent.copy(alpha = 0.38f), accent.copy(alpha = 0.14f)),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = animatedCount(value),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                lineHeight = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
