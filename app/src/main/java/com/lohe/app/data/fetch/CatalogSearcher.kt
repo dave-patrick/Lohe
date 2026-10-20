@@ -1,5 +1,6 @@
 package com.lohe.app.data.fetch
 
+import com.lohe.app.LOHE_USER_AGENT
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,7 +59,7 @@ class CatalogSearcher(
             runCatching {
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Lohe/0.1 (+podcast reader)")
+                    .header("User-Agent", LOHE_USER_AGENT)
                     .build()
 
                 client.newCall(request).execute().use { response ->
