@@ -16,6 +16,7 @@ import kotlinx.serialization.json.intOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 
 /** A podcast returned by the catalog, before it is subscribed to. */
 data class CatalogPodcast(
@@ -47,31 +48,65 @@ class CatalogSearcher(
             val query = term.trim()
             if (query.isEmpty()) return@withContext Result.success(emptyList())
 
-            val url = ITUNES.toHttpUrlOrNull()?.newBuilder()
-                ?.addQueryParameter("media", "podcast")
-                ?.addQueryParameter("entity", "podcast")
-                ?.addQueryParameter("limit", limit.coerceIn(1, 200).toString())
-                ?.addQueryParameter("term", query)
-                ?.build()
-                ?.toString()
-                ?: return@withContext Result.failure(IllegalArgumentException("bad search url"))
-
-            runCatching {
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", LOHE_USER_AGENT)
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        throw IllegalStateException("Search failed (HTTP ${response.code})")
-                    }
-                    val body = response.body?.string()
-                        ?: throw IllegalStateException("Search returned an empty body")
-                    parseResults(body)
-                }
-            }
+            runCatching { parseResults(fetch(query, limit)) }
         }
+
+    /**
+     * Finds a show's current feed address by looking it up in the catalog by
+     * title.
+     *
+     * Feeds move. A 404 on an import usually means the address in the OPML is
+     * stale, and the catalog knows where the show lives now.
+     */
+    suspend fun findFeedForTitle(title: String): Result<CatalogPodcast?> = withContext(io) {
+        val query = title.trim()
+        if (query.isEmpty()) return@withContext Result.success(null)
+        runCatching { bestTitleMatch(query, parseResults(fetch(query, 10))) }
+    }
+
+    /**
+     * Fetches a catalog page, retrying once if the host answers with 304.
+     *
+     * 304 means "the copy you hold is still good", which only makes sense to
+     * a client that sent a validator, and we send none. Some hosts answer a
+     * plain GET that way anyway, so the request is repeated with the caches
+     * bypassed before the search is called unavailable.
+     */
+    private fun fetch(term: String, limit: Int): String {
+        val url = ITUNES.toHttpUrlOrNull()?.newBuilder()
+            ?.addQueryParameter("media", "podcast")
+            ?.addQueryParameter("entity", "podcast")
+            ?.addQueryParameter("limit", limit.coerceIn(1, 200).toString())
+            ?.addQueryParameter("term", term)
+            ?.build()
+            ?.toString()
+            ?: throw IllegalArgumentException("bad search url")
+
+        val first = execute(url, bustCache = false)
+        val response = if (first.code == 304) {
+            first.close()
+            execute(url, bustCache = true)
+        } else {
+            first
+        }
+        return response.use {
+            if (!it.isSuccessful) {
+                throw IllegalStateException("Search failed (HTTP ${it.code})")
+            }
+            it.body?.string() ?: throw IllegalStateException("Search returned an empty body")
+        }
+    }
+
+    private fun execute(url: String, bustCache: Boolean): Response {
+        val builder = Request.Builder()
+            .url(url)
+            .header("User-Agent", LOHE_USER_AGENT)
+        if (bustCache) {
+            builder.header("Cache-Control", "no-cache")
+            builder.header("Pragma", "no-cache")
+        }
+        return client.newCall(builder.build()).execute()
+    }
 
     companion object {
         private const val ITUNES = "https://itunes.apple.com/search"
@@ -130,5 +165,35 @@ class CatalogSearcher(
                 ?.let { it.contentOrNull ?: it.jsonPrimitive.content }
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
+
+        /**
+         * Picks the catalog entry that best matches a wanted title.
+         *
+         * The catalog ranks by relevance, which is usually right but not
+         * always: a search for one show can return a similarly named show
+         * first. An exact match after normalising case and punctuation wins;
+         * otherwise the closest title that starts with the wanted one is taken.
+         */
+        internal fun bestTitleMatch(
+            wanted: String,
+            results: List<CatalogPodcast>,
+        ): CatalogPodcast? {
+            val target = normalize(wanted)
+            if (target.isEmpty()) return null
+            return results.firstOrNull { normalize(it.title) == target }
+                ?: results.firstOrNull { normalize(it.title).startsWith(target) }
+                ?: results.firstOrNull { target.startsWith(normalize(it.title)) }
+                ?: results.firstOrNull { normalize(it.title).contains(target) }
+        }
+
+        /** Lowercases, strips punctuation, and collapses whitespace. */
+        internal fun normalize(value: String): String =
+            value.lowercase()
+                .replace(NON_WORD, " ")
+                .trim()
+                .replace(WHITESPACE, " ")
+
+        private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
+        private val WHITESPACE = Regex("\\s+")
     }
 }

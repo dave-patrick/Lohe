@@ -50,6 +50,9 @@ data class ResolvedPlaylist(
 const val PLAYED_ID = "__system_played__"
 const val DOWNLOADED_ID = "__system_downloaded__"
 
+/** How many playlists the Playlists tab shows beyond the listener's own. */
+private const val BUILT_IN_PLAYLIST_COUNT = 2
+
 /** How many days the Home activity chart covers. */
 private const val ACTIVITY_DAYS = 14
 
@@ -261,7 +264,9 @@ class QueueViewModel(
         HomeDashboardStats(
             isLoaded = true,
             subscriptionCount = shows.size,
-            playlistCount = playlists.size,
+            // The Playlists tab shows the two built-in lists as well, so the
+            // dashboard count has to match what the listener will find there.
+            playlistCount = playlists.size + BUILT_IN_PLAYLIST_COUNT,
             totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
