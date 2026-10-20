@@ -242,6 +242,145 @@ artwork.
 
 ---
 
+## 8. Podrolls — AI knowledge extraction from listening
+
+**Severity: low. New feature, not yet started.**
+
+Built around capturing notes while listening hands-free. Tapping your earbud
+creates an AI "snip" that generates a real-time transcript, title, and summary
+of the segment, then exports directly to Notion, Obsidian, or Readwise. It also
+breaks long episodes into auto-generated, searchable AI chapters.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/ui/player/` — new sheet/screen for capture
+- `app/src/main/java/com/lohe/app/data/` — new entity + DAO for snips/chapters
+- `app/src/main/java/com/lohe/app/playback/` — earbud tap integration (media
+  button / headset hook)
+- `app/src/main/java/com/lohe/app/ui/navigation/` — export targets (Notion,
+  Obsidian, Readwise)
+
+**Not started.** No code exists yet; this is a greenfield feature.
+
+---
+
+## 9. Natural-Language Segment Querying
+
+**Severity: low. New feature, not yet started.**
+
+Apps like CastFox and Snipd run vector embeddings over the raw transcript,
+allowing you to ask: *"What was the second paper the guest mentioned about
+solid-state cooling?"* The app synthesizes an answer and returns an exact
+timestamp link to jump directly to that point in the audio.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/ui/player/` — query UI + timestamp jump
+- `app/src/main/java/com/lohe/app/data/` — transcript + embedding storage
+- `app/src/main/java/com/lohe/app/data/db/` — vector-capable storage or local
+  vector search index
+
+**Not started.** Depends on the Podrolls transcript pipeline being in place
+first.
+
+---
+
+## 10. Pre-Listen Executive Synthesis
+
+**Severity: low. New feature, not yet started.**
+
+Instead of reading vague show notes, AI generates a 3-bullet core takeaway
+list and a structured outline before you commit to a 2-hour recording.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/ui/player/` — pre-listen summary sheet
+- `app/src/main/java/com/lohe/app/data/` — per-episode synthesis cache
+- `app/src/main/java/com/lohe/app/ui/navigation/` — trigger on show detail /
+  episode detail
+
+**Not started.** Depends on the Podrolls transcript pipeline being in place
+first.
+
+---
+
+## 11. Beyond Fixed Timers — Ad Detection
+
+**Severity: low. New feature, not yet started.**
+
+Rather than relying on manual "skip 30 seconds" buttons, experimental builds
+detect the acoustic shifts between host speech and dynamic ad insertion (DAI).
+Transcript semantic boundaries identify sponsor cues (e.g., promo codes,
+standard transition phrases like "we'll be right back after this") in the
+auto-generated transcript and autonomously skip to the exact second the
+interview resumes.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/data/` — ad-marker storage (timestamp +
+  confidence)
+- `app/src/main/java/com/lohe/app/playback/` — skip-to-boundary logic
+- `app/src/main/java/com/lohe/app/ui/player/` — skip-to-boundary UI control
+
+**Not started.** Depends on the Podrolls transcript pipeline being in place
+first.
+
+---
+
+## 12. Podcast-Engine Processing for Non-Podcast Audio
+
+**Severity: low. New feature, not yet started.**
+
+Using the system share sheet, apps like Castro and Podcast Republic let you
+send YouTube audio rips, DRM-free audiobooks, or voice memos directly into
+the player. The audio inherits all app benefits: silence trimming, voice
+boost, bookmarking, and variable playback speeds.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/ui/navigation/` — share-sheet target activity
+- `app/src/main/java/com/lohe/app/data/` — non-podcast audio entity + library
+- `app/src/main/java/com/lohe/app/data/db/` — non-podcast audio table
+- `app/src/main/java/com/lohe/app/playback/` — non-podcast source playback path
+
+**Not started.** No code exists yet.
+
+---
+
+## 13. Synchronized Data & Visual Overlays
+
+**Severity: low. New feature, not yet started.**
+
+Feeds can push dynamic JSON payloads alongside audio timestamps. When a host
+mentions a specific schematic, financial chart, or map, the player surfaces
+interactive 2D data or links on your display without switching to a video file
+or draining high-bandwidth video streams.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/data/` — feed-side JSON payload ingestion +
+  episode overlay schema
+- `app/src/main/java/com/lohe/app/ui/player/` — overlay surface + timestamp
+  sync
+- `app/src/main/java/com/lohe/app/playback/` — timestamped overlay dispatch
+
+**Not started.** No code exists yet.
+
+---
+
+## 14. Auto-Mute on Speech Detection
+
+**Severity: low. New feature, not yet started.**
+
+Using earbud transparency microphones and bone-conduction sensors, the player
+detects when you start talking in the real world (ordering coffee, answering a
+coworker) and automatically pauses the podcast and resumes speech-boosted
+ambient audio — then rewinds 5 seconds once you stop talking.
+
+Files it touches:
+- `app/src/main/java/com/lohe/app/playback/` — audio pause/resume hook +
+  5-second rewind
+- `app/src/main/java/com/lohe/app/ui/player/` — auto-mute UI toggle
+
+**Not started.** No code exists yet; depends on microphone access permission
+and earbud transparency-microphone API support.
+
+---
+
 ## Housekeeping
 
 Clean: `.gitignore` excludes `build/`, `.gradle/` and `local.properties`; the
