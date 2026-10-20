@@ -190,6 +190,9 @@ class SubscriptionRepositoryTest {
         override suspend fun fetch(feedUrl: String): PodcastEntity =
             importFeed(feedUrl).getOrThrow()
 
+        override suspend fun fetchEpisodes(feedUrl: String): List<EpisodeEntity> =
+            emptyList()
+
         override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> {
             attempts += feedUrl
             return if (feedUrl in working) {
@@ -221,6 +224,9 @@ class SubscriptionRepositoryTest {
     ) : PodcastFetcher {
         override suspend fun fetch(feedUrl: String): PodcastEntity =
             importFeed(feedUrl).getOrThrow()
+
+        override suspend fun fetchEpisodes(feedUrl: String): List<EpisodeEntity> =
+            episodesByFeed[feedUrl] ?: emptyList()
 
         override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> {
             val incoming = episodesByFeed[feedUrl]

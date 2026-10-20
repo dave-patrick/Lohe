@@ -375,6 +375,8 @@ fun LoheNavHost(
                     currentEpisodeId = nowPlaying?.episodeId,
                     onOpenPodcast = { navController.navigate(Routes.episodes(it)) },
                     onOpenLibrary = { navController.navigate(Dest.PODCASTS.route) },
+                    onOpenSubscriptions = { navController.navigate(Dest.PODCASTS.route) },
+                    onOpenPlaylists = { navController.navigate(Dest.PLAYLISTS.route) },
                     onOpenDiscover = { navController.navigate(Dest.DISCOVER.route) },
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->

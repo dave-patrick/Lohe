@@ -3,6 +3,7 @@ package com.lohe.app.data.fetch
 import com.lohe.app.data.db.dao.EpisodeDao
 import com.lohe.app.data.db.dao.ListeningHistoryDao
 import com.lohe.app.data.db.dao.PodcastDao
+import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.ListeningHistoryEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import kotlinx.coroutines.CoroutineDispatcher
@@ -17,6 +18,13 @@ import okhttp3.Request
 interface PodcastFetcher {
     /** Parses feed metadata without touching the database. Throws on failure. */
     suspend fun fetch(feedUrl: String): PodcastEntity
+
+    /**
+     * Parses a feed's episodes without saving them to the database.
+     *
+     * Used for previewing a show's episode list before subscribing.
+     */
+    suspend fun fetchEpisodes(feedUrl: String): List<EpisodeEntity>
 
     /** Fetches and upserts both the podcast metadata and its episodes. */
     suspend fun importFeed(feedUrl: String): Result<PodcastEntity>
@@ -52,6 +60,10 @@ class RssPodcastFetcher(
 
     override suspend fun fetch(feedUrl: String): PodcastEntity = withContext(io) {
         parser.parse(feedUrl, download(feedUrl)).podcast
+    }
+
+    override suspend fun fetchEpisodes(feedUrl: String): List<EpisodeEntity> = withContext(io) {
+        parser.parse(feedUrl, download(feedUrl)).episodes
     }
 
     override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> = runCatching {

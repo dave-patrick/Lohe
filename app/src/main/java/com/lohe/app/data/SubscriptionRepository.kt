@@ -222,6 +222,16 @@ class SubscriptionRepository internal constructor(
     suspend fun previewFeed(feedUrl: String): Result<PodcastEntity> =
         runCatching { fetcher.fetch(feedUrl) }
 
+    /**
+     * Fetches a feed's episodes purely to show them, without subscribing.
+     *
+     * Lets a listener browse a show's episode list and download individual
+     * episodes before deciding whether to follow the show. Failure is
+     * returned, not thrown.
+     */
+    suspend fun fetchFeedPreview(feedUrl: String): Result<List<EpisodeEntity>> =
+        runCatching { fetcher.fetchEpisodes(feedUrl) }
+
     /** Serialise every subscribed show that has a feed URL as an OPML document. */
     suspend fun exportOpml(): String =
         OpmlCodec.write(OpmlCodec.fromPodcasts(podcasts.allOnce()))
