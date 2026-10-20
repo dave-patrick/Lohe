@@ -86,6 +86,7 @@ fun PodcastDetailSheet(
                     url = podcast.artworkUrl,
                     contentDescription = null,
                     size = 88.dp,
+                    fallbackLabel = podcast.title,
                     cornerRadius = 16.dp,
                 )
 

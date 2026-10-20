@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
@@ -28,7 +31,9 @@ import com.lohe.app.ui.theme.ElectricCyan
  * Remote artwork with a branded placeholder underneath.
  *
  * The placeholder is always drawn, so a slow or missing image never leaves a
- * hole in a list; the bitmap fades in over it once loaded.
+ * hole in a list; the bitmap fades in over it once loaded. When
+ * [fallbackLabel] is given, its first letter is drawn on the placeholder, so
+ * a show with no artwork of its own is still told apart from its neighbours.
  */
 @Composable
 fun RemoteImage(
@@ -37,6 +42,7 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     size: Dp? = null,
     cornerRadius: Dp = 12.dp,
+    fallbackLabel: String? = null,
 ) {
     val loader = remember { ServiceLocator.artworkLoader() }
     var bitmap by remember(url) { mutableStateOf(loader.cached(url.orEmpty())) }
@@ -66,6 +72,19 @@ fun RemoteImage(
             ),
         contentAlignment = Alignment.Center,
     ) {
+        if (bitmap == null) {
+            val initial = fallbackLabel
+                ?.trim()
+                ?.firstOrNull()
+                ?.uppercase()
+            if (initial != null) {
+                Text(
+                    text = initial,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White.copy(alpha = 0.55f),
+                )
+            }
+        }
         bitmap?.let { image ->
             Image(
                 bitmap = image.asImageBitmap(),

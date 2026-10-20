@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
@@ -152,6 +153,7 @@ fun PodcastsScreen(
     var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
     var showOpmlFailures by remember { mutableStateOf(false) }
     var showLocalFolderDialog by remember { mutableStateOf(false) }
+    var showSettingsFor by remember { mutableStateOf<PodcastEntity?>(null) }
     var lastOpmlFailures by remember { mutableStateOf<List<OpmlImportFailure>>(emptyList()) }
 
     var selectedPodcastUuids by remember { mutableStateOf(emptySet<String>()) }
@@ -474,7 +476,7 @@ fun PodcastsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 12.dp, top = 20.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -563,7 +565,6 @@ fun PodcastsScreen(
                             modifier = Modifier.size(22.dp),
                         )
                     }
-                    HeaderSettingsButton(onClick = onOpenSettings)
                     Box {
                         IconButton(
                             onClick = { menuOpen = true },
@@ -662,6 +663,10 @@ fun PodcastsScreen(
                             )
                         }
                     }
+
+                    // The settings control is the last thing in the header on
+                    // every screen, so it is always in the same place.
+                    HeaderSettingsButton(onClick = onOpenSettings)
                 }
             }
 
@@ -781,6 +786,7 @@ fun PodcastsScreen(
                             },
                             onAssignFolder = { folderDialogPodcast = podcast },
                             onUnsubscribe = { confirmUnsubscribe = podcast },
+                            onShowSettings = { showSettingsFor = podcast },
                             onQueue = {
                                 queueViewModel.enqueue(podcast.uuid)
                                 scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
@@ -817,6 +823,7 @@ fun PodcastsScreen(
                                 },
                                 onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
+                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
@@ -849,6 +856,7 @@ fun PodcastsScreen(
                             },
                             onAssignFolder = { folderDialogPodcast = podcast },
                             onUnsubscribe = { confirmUnsubscribe = podcast },
+                            onShowSettings = { showSettingsFor = podcast },
                             onQueue = {
                                 queueViewModel.enqueue(podcast.uuid)
                                 scope.launch { snackbarHostState.showSnackbar("Added to Up Next") }
@@ -885,6 +893,7 @@ fun PodcastsScreen(
                                 },
                                 onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
+                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
@@ -933,6 +942,14 @@ fun PodcastsScreen(
                 }
             },
             dismissLabel = stringResource(R.string.no),
+        )
+    }
+
+    showSettingsFor?.let { show ->
+        ShowSettingsSheetFor(
+            podcastUuid = show.uuid,
+            showTitle = show.title,
+            onDismiss = { showSettingsFor = null },
         )
     }
 
@@ -1189,6 +1206,7 @@ private fun SwipeablePodcastCard(
     onOpen: () -> Unit,
     onAssignFolder: () -> Unit,
     onUnsubscribe: () -> Unit,
+    onShowSettings: () -> Unit,
     onQueue: () -> Unit,
     onTogglePlayed: () -> Unit,
     onAddToPlaylist: () -> Unit,
@@ -1355,6 +1373,7 @@ private fun PodcastCard(
     onLongClick: () -> Unit,
     onAssignFolder: () -> Unit,
     onUnsubscribe: () -> Unit,
+    onShowSettings: () -> Unit,
 ) {
     GlassRow(
         accent = if (isSelected) ElectricBlue else null,
@@ -1386,6 +1405,7 @@ private fun PodcastCard(
             contentDescription = null,
             size = 40.dp,
             cornerRadius = 8.dp,
+            fallbackLabel = podcast.title,
         )
 
         Spacer(Modifier.size(10.dp))
@@ -1463,6 +1483,17 @@ private fun PodcastCard(
             )
         }
 
+        // The show's own playback settings, reachable from the library so
+        // they do not have to be found on the show's page.
+        IconButton(onClick = onShowSettings, modifier = Modifier.size(34.dp)) {
+            Icon(
+                imageVector = Icons.Filled.GraphicEq,
+                contentDescription = "Show settings",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
         IconButton(onClick = onUnsubscribe, modifier = Modifier.size(34.dp)) {
             Icon(
                 imageVector = Icons.Filled.DeleteOutline,
@@ -1484,6 +1515,7 @@ private fun PodcastGridCard(
     onLongClick: () -> Unit,
     onAssignFolder: () -> Unit,
     onUnsubscribe: () -> Unit,
+    onShowSettings: () -> Unit,
 ) {
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -1503,6 +1535,18 @@ private fun PodcastGridCard(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )
+
+                IconButton(
+                    onClick = onShowSettings,
+                    modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = "Show settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
 
                 if (inSelectionMode) {
                     Icon(
