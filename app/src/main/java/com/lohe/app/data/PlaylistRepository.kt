@@ -15,6 +15,10 @@ import java.util.UUID
  * When [shows] is not empty the playlist follows those shows, so episodes they
  * publish are added without the playlist being touched. [folder] is then only
  * the folder the shows live in.
+ *
+ * A playlist can also be a length rule: [maxDurationMinutes] and
+ * [minDurationMinutes] keep only episodes inside those bounds, across every
+ * show. Zero means "no bound".
  */
 data class UserPlaylist(
     val id: String,
@@ -23,6 +27,8 @@ data class UserPlaylist(
     val folder: String = "",
     val autoDownload: Boolean = true,
     val shows: List<String> = emptyList(),
+    val minDurationMinutes: Int = 0,
+    val maxDurationMinutes: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -272,6 +278,8 @@ class PlaylistRepository(
                     } else {
                         emptyList()
                     }
+                    val minMinutes = parts.getOrNull(7)?.toIntOrNull() ?: 0
+                    val maxMinutes = parts.getOrNull(8)?.toIntOrNull() ?: 0
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -279,6 +287,8 @@ class PlaylistRepository(
                         folder = folder,
                         autoDownload = autoDownload,
                         shows = shows,
+                        minDurationMinutes = minMinutes,
+                        maxDurationMinutes = maxMinutes,
                         createdAt = createdAt,
                     )
                 }
@@ -296,7 +306,7 @@ class PlaylistRepository(
                 val eps = pl.episodeUuids.joinToString(",")
                 val autoDl = if (pl.autoDownload) "1" else "0"
                 val shows = pl.shows.joinToString(",")
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows"
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}"
             }
             target.writeText(text)
         }

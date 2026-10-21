@@ -540,10 +540,25 @@ class QueueViewModel(
         }
 
         val custom = rawPlaylists.map { pl ->
-            // A playlist can follow a set of shows, a whole folder, or a fixed
-            // list of episodes. Archived episodes are filed away, so like
-            // everywhere else in the library they stay out of the playlist.
-            val resolvedEntries = if (pl.shows.isNotEmpty()) {
+            // A playlist can follow a set of shows, a whole folder, a length
+            // rule, or a fixed list of episodes. Archived episodes are filed
+            // away, so like everywhere else in the library they stay out of
+            // the playlist.
+            val hasLengthRule = pl.minDurationMinutes > 0 || pl.maxDurationMinutes > 0
+            val resolvedEntries = if (hasLengthRule) {
+                // Length playlists collect short (or long) episodes from every
+                // show, so new ones land in the list on their own.
+                val minSeconds = pl.minDurationMinutes * 60L
+                val maxSeconds = if (pl.maxDurationMinutes > 0) pl.maxDurationMinutes * 60L else Long.MAX_VALUE
+                allEpisodes
+                    .filter { ep ->
+                        val length = (ep.durationSeconds ?: 0).toLong()
+                        !ep.isDeleted && !ep.isArchived && !ep.isPlayed &&
+                            length > 0L && length > minSeconds && length <= maxSeconds
+                    }
+                    .sortedByDescending { it.published }
+                    .map(::resolve)
+            } else if (pl.shows.isNotEmpty()) {
                 // Following shows: they add their new episodes on their own,
                 // without the playlist being touched.
                 val followed = pl.shows.toSet()
