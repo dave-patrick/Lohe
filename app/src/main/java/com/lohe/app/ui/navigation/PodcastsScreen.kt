@@ -885,7 +885,6 @@ fun PodcastsScreen(
                                         selectedPodcastUuids + podcast.uuid
                                     }
                                 },
-                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
@@ -1615,7 +1614,6 @@ private fun PodcastGridCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onShowSettings: () -> Unit,
 ) {
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -1635,23 +1633,6 @@ private fun PodcastGridCard(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )
-
-                IconButton(
-                    onClick = onShowSettings,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.Black.copy(alpha = 0.42f))
-                        .size(26.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.GraphicEq,
-                        contentDescription = "Show settings",
-                        tint = Color.White,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
 
                 if (inSelectionMode) {
                     Icon(
@@ -1676,8 +1657,7 @@ private fun PodcastGridCard(
                 if (!inSelectionMode && unplayedCount > 0) {
                     // The count is the badge, not a caption: at three columns
                     // there is only room for the number, and the number is the
-                    // whole point. It sits top-left so a long folder name at
-                    // the bottom never runs underneath it.
+                    // whole point.
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -1699,36 +1679,32 @@ private fun PodcastGridCard(
                         )
                     }
                 }
-
-                if (folderName.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(Color.Black.copy(alpha = 0.72f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
-                    ) {
-                        Text(
-                            text = "📁 $folderName",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
             }
 
             Text(
                 text = podcast.title,
                 style = MaterialTheme.typography.labelLarge,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+
+            // The folder reads as part of the caption now instead of sitting on
+            // the cover, where it fought the count for the same corner.
+            if (folderName.isNotBlank()) {
+                Text(
+                    text = "📁 $folderName",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
