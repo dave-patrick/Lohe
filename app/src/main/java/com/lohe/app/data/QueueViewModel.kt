@@ -540,7 +540,18 @@ class QueueViewModel(
         }
 
         val custom = rawPlaylists.map { pl ->
-            val resolvedEntries = if (pl.folder.isNotBlank()) {
+            // A playlist can follow a set of shows, a whole folder, or a fixed
+            // list of episodes. Archived episodes are filed away, so like
+            // everywhere else in the library they stay out of the playlist.
+            val resolvedEntries = if (pl.shows.isNotEmpty()) {
+                // Following shows: they add their new episodes on their own,
+                // without the playlist being touched.
+                val followed = pl.shows.toSet()
+                allEpisodes
+                    .filter { it.podcastUuid in followed && !it.isDeleted && !it.isArchived && !it.isPlayed }
+                    .sortedByDescending { it.published }
+                    .map(::resolve)
+            } else if (pl.folder.isNotBlank()) {
                 // A playlist tied to a folder follows it. Putting a show in
                 // the folder adds it to the playlist, and taking it out
                 // takes it away, without the playlist being touched.
@@ -548,8 +559,6 @@ class QueueViewModel(
                     .filter { podcastFolders[it.uuid] == pl.folder }
                     .map { it.uuid }
                     .toSet()
-                // Archived episodes are filed away, so like everywhere else in
-                // the library they stay out of the playlist.
                 allEpisodes
                     .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived && !it.isPlayed }
                     .sortedByDescending { it.published }

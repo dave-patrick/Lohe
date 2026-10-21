@@ -9,7 +9,12 @@ import java.util.UUID
 
 /**
  * A user-created named playlist storing an ordered list of episode UUIDs,
- * an optional folder name, and whether items added to it should auto-download.
+ * an optional folder name, an optional set of shows it is restricted to, and
+ * whether items added to it should auto-download.
+ *
+ * When [shows] is not empty the playlist follows those shows, so episodes they
+ * publish are added without the playlist being touched. [folder] is then only
+ * the folder the shows live in.
  */
 data class UserPlaylist(
     val id: String,
@@ -17,6 +22,7 @@ data class UserPlaylist(
     val episodeUuids: List<String>,
     val folder: String = "",
     val autoDownload: Boolean = true,
+    val shows: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -261,12 +267,18 @@ class PlaylistRepository(
                     } else {
                         true
                     }
+                    val shows = if (parts.size > 6 && parts[6].isNotBlank()) {
+                        parts[6].split(',').filter { it.isNotBlank() }
+                    } else {
+                        emptyList()
+                    }
                     UserPlaylist(
                         id = id,
                         name = name,
                         episodeUuids = eps,
                         folder = folder,
                         autoDownload = autoDownload,
+                        shows = shows,
                         createdAt = createdAt,
                     )
                 }
@@ -283,7 +295,8 @@ class PlaylistRepository(
                 val encodedFolder = encoder.encodeToString(pl.folder.toByteArray(Charsets.UTF_8))
                 val eps = pl.episodeUuids.joinToString(",")
                 val autoDl = if (pl.autoDownload) "1" else "0"
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl"
+                val shows = pl.shows.joinToString(",")
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows"
             }
             target.writeText(text)
         }
