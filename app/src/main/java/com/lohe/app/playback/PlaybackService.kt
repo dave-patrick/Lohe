@@ -89,6 +89,7 @@ class PlaybackService : MediaLibraryService() {
         startVolumeBoostObserver()
         startSleepTimerPolling()
         startProgressReporting()
+        startOutroSkipping()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -363,9 +364,25 @@ class PlaybackService : MediaLibraryService() {
                     .getOrNull()
 
                 withContext(Dispatchers.Main) {
-                    if (resumeSeconds > 0L) player.seekTo(resumeSeconds * 1_000L)
-                    if (showUuid != null) applyShowSettings(showUuid)
-                    onEpisodeStarted(mediaId, startingAtTheTop = resumeSeconds <= 0L)
+                    if (showUuid != null) {
+                        applyShowSettings(showUuid)
+                    } else {
+                        // No show to ask, so nothing may carry over from the
+                        // previous episode's settings.
+                        _currentAutoTrim = false
+                        _currentSkipIntroMs = 0L
+                        _currentSkipOutroMs = 0L
+                    }
+
+                    // A saved position inside this show's intro is no use: the
+                    // listener was still in the bit the show asks to skip, so
+                    // start from the top and let the head cut do its work.
+                    val insideIntro = _currentSkipIntroMs > 0L &&
+                        resumeSeconds * 1_000L < _currentSkipIntroMs
+                    if (resumeSeconds > 0L && !insideIntro) {
+                        player.seekTo(resumeSeconds * 1_000L)
+                    }
+                    onEpisodeStarted(mediaId, startingAtTheTop = resumeSeconds <= 0L || insideIntro)
                 }
             }
         }
@@ -446,6 +463,39 @@ class PlaybackService : MediaLibraryService() {
             }
         }
     }
+
+    /**
+     * Cuts the last few seconds off an episode when the show asks for it.
+     *
+     * Outros are a fixed property of a show — a credits roll, a sponsor read —
+     * so this is a plain countdown rather than a scan: when the playhead is
+     * within [_currentSkipOutroMs] of the end, the episode is finished. The
+     * end-of-episode listener then marks it played and moves the queue on, so
+     * the cut lands in exactly the same place as a natural ending.
+     *
+     * Polled at half-second resolution: checking once per progress save (five
+     * seconds) would overshoot a short outro on a fast playback speed.
+     */
+    private fun startOutroSkipping() {
+        scope.launch {
+            while (isActive) {
+                val outroMs = _currentSkipOutroMs
+                if (outroMs > 0 && player.isPlaying) {
+                    val duration = player.duration
+                    if (duration > outroMs && duration - player.currentPosition <= outroMs) {
+                        player.seekTo(duration)
+                    }
+                }
+                delay(500)
+            }
+        }
+    }
+
+    /** Currently active per-show head cut (ms), set from per-show settings. */
+    private var _currentSkipIntroMs = 0L
+
+    /** Currently active per-show tail cut (ms), set from per-show settings. */
+    private var _currentSkipOutroMs = 0L
 
     private fun persistProgress(positionMs: Long, durationMs: Long) {
         val episodeId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
@@ -555,6 +605,8 @@ class PlaybackService : MediaLibraryService() {
         _currentCrossfadeMs = settings.crossfadeMs
         _currentAutoTrim = settings.autoTrim
         _currentSmartSpeed = settings.smartSpeed
+        _currentSkipIntroMs = settings.skipIntroSeconds * 1_000L
+        _currentSkipOutroMs = settings.skipOutroSeconds * 1_000L
     }
 
     /** Currently active crossfade duration (ms), set from per-show settings. */
@@ -604,7 +656,11 @@ class PlaybackService : MediaLibraryService() {
      * that reached it was the resume path.
      */
     private fun applyAutoTrim(startingAtTheTop: Boolean) {
-        if (!_currentAutoTrim || !startingAtTheTop) return
+        if (!startingAtTheTop) return
+        val introMs = _currentSkipIntroMs
+        val scanForSilence = _currentAutoTrim
+        if (!scanForSilence && introMs <= 0L) return
+
         val item = player.currentMediaItem ?: return
         val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
         val uri = item.localConfiguration?.uri?.toString() ?: return
@@ -613,16 +669,22 @@ class PlaybackService : MediaLibraryService() {
         if (durationMs in 1..TRIM_MIN_DURATION_MS) return
 
         scope.launch {
-            val silenceMs = SilenceScanner.leadingSilenceMs(this@PlaybackService, mediaId, uri)
-                ?: return@launch
-            if (silenceMs <= 0L) return@launch
+            val silenceMs = if (scanForSilence) {
+                SilenceScanner.leadingSilenceMs(this@PlaybackService, mediaId, uri) ?: 0L
+            } else {
+                0L
+            }
+            // A show with a fixed intro asks for at least that much; the scan
+            // can only push the start later, never earlier.
+            val targetMs = maxOf(silenceMs, introMs)
+            if (targetMs <= 0L) return@launch
 
             withContext(Dispatchers.Main) {
                 // The listener may have moved on, or scrubbed ahead while the
                 // scan was running. Their position wins over the trim.
                 if (player.currentMediaItem?.mediaId != mediaId) return@withContext
-                if (player.currentPosition >= silenceMs) return@withContext
-                player.seekTo(silenceMs)
+                if (player.currentPosition >= targetMs) return@withContext
+                player.seekTo(targetMs)
             }
         }
     }

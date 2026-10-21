@@ -590,6 +590,8 @@ fun EpisodesScreen(
             onSetSpeed = { v -> scope.launch { store.setShowPlaybackSpeed(podcast!!.uuid, v) } },
             onSetSmartSpeed = { v -> scope.launch { store.setShowSmartSpeed(podcast!!.uuid, v) } },
             onSetAutoTrim = { v -> scope.launch { store.setShowAutoTrim(podcast!!.uuid, v) } },
+            onSetSkipIntro = { v -> scope.launch { store.setShowSkipIntroSeconds(podcast!!.uuid, v) } },
+            onSetSkipOutro = { v -> scope.launch { store.setShowSkipOutroSeconds(podcast!!.uuid, v) } },
             onReset = { scope.launch { store.clearShowPlaybackSettings(podcast!!.uuid) } },
             onDismiss = { showSettings = false },
         )

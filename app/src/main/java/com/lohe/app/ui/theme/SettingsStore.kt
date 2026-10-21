@@ -82,9 +82,19 @@ data class ShowPlaybackSettings(
     val crossfadeMs: Int = 0,
     /** Auto-trim leading/trailing silence and detected ads. */
     val autoTrim: Boolean = false,
+    /**
+     * Seconds to skip at the start of every episode of this show, on top of
+     * whatever auto-trim finds. Zero means "start where the audio starts".
+     */
+    val skipIntroSeconds: Int = 0,
+    /** Seconds to cut off the end of every episode of this show. */
+    val skipOutroSeconds: Int = 0,
 ) {
     companion object {
         val EMPTY = ShowPlaybackSettings()
+
+        /** Offered for the intro and outro cuts. */
+        val SKIP_SECONDS_CHOICES = listOf(5, 10, 15, 20, 30, 45, 60, 90, 120)
     }
 }
 
@@ -102,6 +112,8 @@ data class ShowPlaybackOverrides(
     val smartSpeed: Boolean? = null,
     val crossfadeMs: Int? = null,
     val autoTrim: Boolean? = null,
+    val skipIntroSeconds: Int? = null,
+    val skipOutroSeconds: Int? = null,
 )
 
 /**
@@ -137,6 +149,9 @@ class SettingsStore(private val context: Context) {
 
     private fun showCrossfadeKey(podcastUuid: String) =
         intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")
+
+    private fun showSecondsKey(podcastUuid: String, suffix: String) =
+        intPreferencesKey("show_playback_${suffix}_seconds_$podcastUuid")
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
         PlaybackSettings(
@@ -243,6 +258,10 @@ class SettingsStore(private val context: Context) {
                     ).coerceIn(0, 30_000),
                 autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")]
                     ?: global.autoTrimByDefault,
+                skipIntroSeconds = (prefs[showSecondsKey(podcastUuid, "skip_intro")] ?: 0)
+                    .coerceIn(0, 30 * 60),
+                skipOutroSeconds = (prefs[showSecondsKey(podcastUuid, "skip_outro")] ?: 0)
+                    .coerceIn(0, 30 * 60),
             )
         }
 
@@ -262,6 +281,8 @@ class SettingsStore(private val context: Context) {
                 smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")],
                 crossfadeMs = prefs[showCrossfadeKey(podcastUuid)],
                 autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")],
+                skipIntroSeconds = prefs[showSecondsKey(podcastUuid, "skip_intro")],
+                skipOutroSeconds = prefs[showSecondsKey(podcastUuid, "skip_outro")],
             )
         }
 
@@ -273,6 +294,8 @@ class SettingsStore(private val context: Context) {
             it[showBoolKey(podcastUuid, "smart_speed")] = settings.smartSpeed
             it[showCrossfadeKey(podcastUuid)] = settings.crossfadeMs
             it[showBoolKey(podcastUuid, "auto_trim")] = settings.autoTrim
+            it[showSecondsKey(podcastUuid, "skip_intro")] = settings.skipIntroSeconds
+            it[showSecondsKey(podcastUuid, "skip_outro")] = settings.skipOutroSeconds
         }
 
     /**
@@ -301,6 +324,18 @@ class SettingsStore(private val context: Context) {
         if (value == null) it.remove(key) else it[key] = value
     }
 
+    /** Seconds to skip at the head of every episode, or null for none. */
+    suspend fun setShowSkipIntroSeconds(podcastUuid: String, value: Int?) = edit {
+        val key = showSecondsKey(podcastUuid, "skip_intro")
+        if (value == null || value <= 0) it.remove(key) else it[key] = value.coerceIn(0, 30 * 60)
+    }
+
+    /** Seconds to cut off the end of every episode, or null for none. */
+    suspend fun setShowSkipOutroSeconds(podcastUuid: String, value: Int?) = edit {
+        val key = showSecondsKey(podcastUuid, "skip_outro")
+        if (value == null || value <= 0) it.remove(key) else it[key] = value.coerceIn(0, 30 * 60)
+    }
+
     suspend fun setShowPlaybackSpeed(podcastUuid: String, value: Float?) = edit {
         val key = showSpeedKey(podcastUuid)
         if (value == null) it.remove(key) else it[key] = value.coerceIn(0.5f, 3.0f)
@@ -314,6 +349,8 @@ class SettingsStore(private val context: Context) {
         it.remove(showBoolKey(podcastUuid, "auto_trim"))
         it.remove(showSpeedKey(podcastUuid))
         it.remove(showCrossfadeKey(podcastUuid))
+        it.remove(showSecondsKey(podcastUuid, "skip_intro"))
+        it.remove(showSecondsKey(podcastUuid, "skip_outro"))
     }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
