@@ -955,9 +955,7 @@ fun PodcastsScreen(
                                         selectedPodcastUuids + podcast.uuid
                                     }
                                 },
-                                onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
-                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
@@ -1477,9 +1475,7 @@ private fun PodcastCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onAssignFolder: () -> Unit,
     onUnsubscribe: () -> Unit,
-    onShowSettings: () -> Unit,
 ) {
     GlassRow(
         accent = if (isSelected) ElectricBlue else null,
@@ -1569,30 +1565,6 @@ private fun PodcastCard(
                     )
                 }
             }
-        }
-
-        IconButton(onClick = onAssignFolder, modifier = Modifier.size(34.dp)) {
-            Icon(
-                imageVector = Icons.Filled.Folder,
-                contentDescription = "Assign folder",
-                tint = if (folderName.isNotBlank()) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        // The show's own playback settings, reachable from the library so
-        // they do not have to be found on the show's page.
-        IconButton(onClick = onShowSettings, modifier = Modifier.size(34.dp)) {
-            Icon(
-                imageVector = Icons.Filled.GraphicEq,
-                contentDescription = "Show settings",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
         }
 
         IconButton(onClick = onUnsubscribe, modifier = Modifier.size(34.dp)) {
