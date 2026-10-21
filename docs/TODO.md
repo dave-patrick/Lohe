@@ -5,36 +5,43 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
-## 0b. The in-car app (Android Automotive OS) is not built
+## 0b. The in-car app is built but has never run on a head unit
 
-**Severity: medium. The phone side of Android Auto is done and tested; this
-is the other half.**
+**Severity: medium. It compiles, installs and leaves the phone app untouched,
+but no head unit has rendered it yet.**
 
 Android Auto on a phone reaches the app over the media browser service: the
 car browses the library and asks for episodes to be played. That half is
 built and covered by `MediaLibraryBrowseTest`, which walks the tree the way a
 car does and checks that a tap resolves to something playable.
 
-A car running Android Automotive OS does not work that way. It runs the app
-itself, as a native car app, and wants a template it can render. That is a
-separate app surface with its own plumbing:
+Android Automotive OS runs the app itself. `CarPlaybackService` now declares
+a media-category `CarAppService`, `CarSession` returns `CarHomeScreen`, and
+that screen renders a `MediaPlaybackTemplate` after handing the host the live
+Media3 platform token:
 
-- a `CarAppService` whose session returns a screen
-- a `MediaPlaybackTemplate` and a `MediaPlaybackManager`, which hands the
-  car's media host a `MediaSessionCompat` token so the hardware buttons
-  reach the app
-- a `HostValidator` carrying the head unit's certificate digest
-- `res/xml/automotive_app_desc.xml` and the manifest registration
+- `PlaybackService` publishes its player and platform token on its companion
+- `CarHomeScreen` binds `PlaybackService`, converts the token with
+  `MediaSessionCompat.Token.fromToken(...)` and calls
+  `MediaPlaybackManager.registerMediaPlaybackToken(...)`
+- the manifest carries `androidx.car.app.MEDIA_TEMPLATES`, the automotive and
+  Android Auto declarations, and `minCarApiLevel` 8
+- `res/xml/automotive_app_desc.xml` declares `media` and `template`
 
-**Why it was not built blind:** `androidx.car.app` ships the plumbing but
-not the media app itself, so the screen and session have to be written by
-hand, and none of it can be exercised without a head unit or an automotive
-emulator. Guessing at a host validator and a screen contract, with no way to
-see the result, is how a car app ends up registered but blank.
+**Not verified:** the token handshake, the template render, and whether the
+head unit lists Lohe under media apps or under car apps. All of it needs the
+truck, or an automotive emulator.
 
-**To do it:** get an automotive emulator (or a car), build the service
-against `androidx.car.app:app-automotive`, and verify that the same library
-tree the phone publishes comes up in the car.
+**Known gap:** there is no launchable activity, so the app has no icon in the
+AAOS app grid and does not answer
+`androidx.car.app.media.action.SHOW_MEDIA_PLAYBACK` from the system media
+card. Adding `androidx.car.app:app-automotive` fixes that but raises its
+minSdk to 29 (the app is 26), so it needs `tools:overrideLibrary` and a
+`android:enabled="false"` activity; do it only with something to test on.
+
+**To do it:** install the debug APK in the car, open the media app list, and
+check that browsing and playback work; then check whether the templated
+playback screen appears at all.
 
 ---
 
