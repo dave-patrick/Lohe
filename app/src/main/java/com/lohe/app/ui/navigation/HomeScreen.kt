@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -622,6 +623,10 @@ private fun ShowTiles(
             ) {
                 Box(
                     modifier = Modifier
+                        // Never wider than a standard tile. A row with only
+                        // one show in it would otherwise stretch to the full
+                        // width of the card, which is a poster, not a tile.
+                        .widthIn(max = 110.dp)
                         .fillMaxWidth()
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(12.dp)),
@@ -634,7 +639,10 @@ private fun ShowTiles(
                     )
                     if (heard > 0f) {
                         // The part of the show that has been heard, rising
-                        // from the bottom of the tile.
+                        // from the bottom of the tile. It is a tint rather
+                        // than a lid, so the cover stays readable under it,
+                        // and there is a lit edge where the heard part
+                        // meets the rest.
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -643,12 +651,20 @@ private fun ShowTiles(
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
-                                            ElectricBlue.copy(alpha = 0.70f),
-                                            ElectricBlue.copy(alpha = 0.25f),
+                                            ElectricBlue.copy(alpha = 0.47f),
+                                            ElectricBlue.copy(alpha = 0.18f),
                                         ),
                                     ),
                                 ),
-                        )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .height(2.dp)
+                                    .background(ElectricCyan),
+                            )
+                        }
                     }
                 }
 
