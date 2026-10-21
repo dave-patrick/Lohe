@@ -548,17 +548,19 @@ class QueueViewModel(
                     .filter { podcastFolders[it.uuid] == pl.folder }
                     .map { it.uuid }
                     .toSet()
+                // Archived episodes are filed away, so like everywhere else in
+                // the library they stay out of the playlist.
                 allEpisodes
-                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isPlayed }
+                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived && !it.isPlayed }
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else {
                 pl.episodeUuids.mapNotNull { epId ->
                     val ep = epMap[epId] ?: return@mapNotNull null
-                    // Episodes already listened to leave the playlist and show up
-                    // in Played instead, so the list only holds what is left to
-                    // hear.
-                    if (ep.isPlayed) null else resolve(ep)
+                    // Episodes already listened to (or filed away) leave the
+                    // playlist and show up in Played instead, so the list only
+                    // holds what is left to hear.
+                    if (ep.isPlayed || ep.isArchived) null else resolve(ep)
                 }
             }
             ResolvedPlaylist(
