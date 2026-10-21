@@ -1541,18 +1541,24 @@ private fun PodcastCard(
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (folderName.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(11.dp),
+                        )
                         Text(
-                            text = "📁 $folderName",
+                            text = folderName,
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
+                            lineHeight = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1674,15 +1680,26 @@ private fun PodcastGridCard(
             // The folder reads as part of the caption now instead of sitting on
             // the cover, where it fought the count for the same corner.
             if (folderName.isNotBlank()) {
-                Text(
-                    text = "📁 $folderName",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = folderName,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

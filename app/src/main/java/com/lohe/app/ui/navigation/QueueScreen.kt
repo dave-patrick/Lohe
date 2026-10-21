@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -85,14 +86,18 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
@@ -1498,20 +1503,28 @@ private fun PlaylistGridCard(
                     modifier = Modifier.fillMaxSize(),
                 )
 
-                if (playlist.folder.isNotBlank()) {
+                val playlistUnplayed = playlist.entries.count { it.episode.playingStatus != 2 }
+                if (playlistUnplayed > 0) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.72f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                            .padding(4.dp)
+                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .border(1.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
+                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "📁 ${playlist.folder}",
+                            text = playlistUnplayed.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            color = Color.White,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            maxLines = 1,
                         )
                     }
                 }
@@ -1562,12 +1575,36 @@ private fun PlaylistGridCard(
                 Text(
                     text = playlist.name,
                     style = MaterialTheme.typography.titleSmall,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 17.sp,
+                    lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+
+                if (playlist.folder.isNotBlank() && !playlist.folder.equals(playlist.name, ignoreCase = true)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(11.dp),
+                        )
+                        Text(
+                            text = playlist.folder,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
 
                 Text(
                     text = "${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min",
@@ -1647,42 +1684,70 @@ private fun PlaylistListCard(
     dragHandle: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 10.dp, modifier = modifier) {
+    GlassCard(onClick = onOpen, contentPadding = 8.dp, modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             PlaylistArtworkMosaic(
                 entries = playlist.entries,
-                modifier = Modifier.size(52.dp),
+                modifier = Modifier.size(40.dp),
             )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = playlist.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // One line, not three: the folder used to sit under a wrapped
-                // "134 episodes · 3806 min", which turned every row into a
-                // block of text. A folder with the playlist's own name is not
-                // worth repeating.
                 val folderLabel = playlist.folder
                     .takeIf { it.isNotBlank() && !it.equals(playlist.name, ignoreCase = true) }
-                Text(
-                    text = buildString {
-                        if (folderLabel != null) append("📁 $folderLabel · ")
-                        append("${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val unplayed = playlist.entries.count { it.episode.playingStatus != 2 }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (folderLabel != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(11.dp),
+                            )
+                            Text(
+                                text = folderLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    val accent = MaterialTheme.colorScheme.primary
+                    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = if (unplayed > 0) accent else muted, fontWeight = FontWeight.SemiBold)) {
+                                append(if (unplayed > 0) "$unplayed unplayed" else "All listened")
+                            }
+                            withStyle(SpanStyle(color = muted)) {
+                                append(" · ${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min")
+                            }
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
             if (dragHandle != null) {
