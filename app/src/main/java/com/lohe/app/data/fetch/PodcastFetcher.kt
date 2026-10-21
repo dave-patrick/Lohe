@@ -97,6 +97,10 @@ class RssPodcastFetcher(
                         localPath = old.localPath,
                         downloadState = old.downloadState,
                         isDeleted = old.isDeleted,
+                        // Archived is the listener filing an episode away.
+                        // Dropping it here un-archived the whole back catalogue
+                        // on every refresh.
+                        isArchived = old.isArchived,
                     )
                     else -> ep
                 }

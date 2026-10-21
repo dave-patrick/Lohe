@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -114,7 +115,7 @@ import kotlinx.coroutines.launch
 
 private const val ALL_FOLDERS = "__ALL__"
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PodcastsScreen(
     viewModel: SubscriptionsViewModel,
@@ -769,6 +770,13 @@ fun PodcastsScreen(
                 }
             }
 
+            // Pulling the library down re-checks every feed: the gesture
+            // people reach for before they go looking for a menu item.
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = { viewModel.refreshFeeds() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             if (visiblePodcasts.isEmpty()) {
                 EmptyPodcastsState(
                     onAddFeed = { showAddFeed = true },
@@ -918,6 +926,7 @@ fun PodcastsScreen(
                         }
                     }
                 }
+            }
             }
         }
 
@@ -1275,6 +1284,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Up Next",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         IconButton(
                             onClick = onAddToPlaylist,
                             modifier = Modifier.size(36.dp),
@@ -1286,6 +1300,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Playlist",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         IconButton(
                             onClick = onTogglePlayed,
                             modifier = Modifier.size(36.dp),
@@ -1297,6 +1316,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Listened",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 } else if (dir == SwipeToDismissBoxValue.EndToStart) {
                     Row(

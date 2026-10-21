@@ -48,6 +48,7 @@ import com.lohe.app.data.EpisodesViewModel
 import com.lohe.app.data.EpisodesViewModelFactory
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.QueueViewModelFactory
+import com.lohe.app.data.RefreshState
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
 import com.lohe.app.data.SubscriptionsViewModelFactory
@@ -510,9 +511,12 @@ fun LoheNavHost(
             }
 
             composable(Dest.PLAYLISTS.route) {
+                val refreshState by podcastsViewModel.refresh.collectAsState()
                 PlaylistsScreen(
                     viewModel = queueViewModel,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
+                    refreshing = refreshState is RefreshState.Running,
+                    onRefresh = { podcastsViewModel.refreshFeeds() },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)

@@ -322,7 +322,7 @@ class PlaybackService : MediaLibraryService() {
                         ),
                     )
                     applyShowSettings(next.podcastUuid)
-                    onEpisodeStarted(next.uuid)
+                    applyCrossfade(next.uuid)
                     player.prepare()
                     player.play()
                 }
@@ -349,18 +349,23 @@ class PlaybackService : MediaLibraryService() {
             scope.launch(Dispatchers.IO) {
                 val repository = runCatching { ServiceLocator.subscriptionRepository() }
                     .getOrNull() ?: return@launch
-                val seconds = runCatching { repository.playedPosition(mediaId) }
+                val saved = runCatching { repository.playedPosition(mediaId) }
                     .getOrDefault(0L)
-                if (seconds <= 0L) return@launch
 
                 val intoTail = durationMs > 0L &&
-                    durationMs / 1_000L - seconds < PLAYED_TAIL_SECONDS
-                if (intoTail) return@launch
+                    durationMs / 1_000L - saved < PLAYED_TAIL_SECONDS
+                val resumeSeconds = if (saved <= 0L || intoTail) 0L else saved
+
+                // Settings hang off the show, not the episode. Asking for the
+                // episode uuid found nothing, so every per-show setting — trim
+                // included — was silently falling back to the defaults.
+                val showUuid = runCatching { repository.podcastUuidFor(mediaId) }
+                    .getOrNull()
 
                 withContext(Dispatchers.Main) {
-                    player.seekTo(seconds * 1_000L)
-                    applyShowSettings(mediaId)
-                    onEpisodeStarted(mediaId)
+                    if (resumeSeconds > 0L) player.seekTo(resumeSeconds * 1_000L)
+                    if (showUuid != null) applyShowSettings(showUuid)
+                    onEpisodeStarted(mediaId, startingAtTheTop = resumeSeconds <= 0L)
                 }
             }
         }
@@ -516,6 +521,13 @@ class PlaybackService : MediaLibraryService() {
 
         /** Never auto-skip the final few seconds; treat the tail as played. */
         const val PLAYED_TAIL_SECONDS = 10L
+
+        /**
+         * How much of the head auto-trim drops when an episode starts from the
+         * beginning: long enough to clear a cold open, short enough to be
+         * recoverable with one scrub back.
+         */
+        private const val TRIM_LEAD_IN_MS = 30_000L
     }
 
     /**
@@ -578,24 +590,26 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Auto-trim: seeks past leading silence if configured.
-     * Called when a new episode starts playing.
+     * Auto-trim: drops the lead-in of an episode that starts from the top.
+     *
+     * It only makes sense to cut the head off a fresh start. Running it on a
+     * resume threw the listener half a minute past wherever they had left off,
+     * which is why it looked like trimming "did not work at the beginning":
+     * the only path that reached it was the resume path.
      */
-    private fun applyAutoTrim(episodeUuid: String) {
-        if (!_currentAutoTrim) return
+    private fun applyAutoTrim(startingAtTheTop: Boolean) {
+        if (!_currentAutoTrim || !startingAtTheTop) return
         val duration = player.duration
-        if (duration > 60_000L) {
-            // Skip first 30 seconds if the episode is longer than 1 minute
-            player.seekTo(30_000L)
-        }
+        // Only trim when there is clearly something left to listen to.
+        if (duration > TRIM_LEAD_IN_MS * 2) player.seekTo(TRIM_LEAD_IN_MS)
     }
 
     /**
-     * Called when a new episode starts playing. Applies crossfade and
-     * auto-trim if configured.
+     * Called when a new episode starts playing. Applies crossfade, and the
+     * auto-trim when the episode is starting from the beginning.
      */
-    private fun onEpisodeStarted(episodeUuid: String) {
+    private fun onEpisodeStarted(episodeUuid: String, startingAtTheTop: Boolean = false) {
         applyCrossfade(episodeUuid)
-        applyAutoTrim(episodeUuid)
+        applyAutoTrim(startingAtTheTop)
     }
 }

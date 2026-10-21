@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -564,12 +566,15 @@ fun QueueScreen(
  *    auto-download toggle, and one-tap "Add to Up Next" / "Play"
  *  - Drilling into a playlist shows its episode list with reordering & removal
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistsScreen(
     viewModel: QueueViewModel,
     onPlay: (QueueEntry) -> Unit,
     onShowMessage: (String) -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
 ) {
     val now = remember { System.currentTimeMillis() }
     val userPlaylists by viewModel.userPlaylists.collectAsState()
@@ -632,6 +637,13 @@ fun PlaylistsScreen(
         openedPlaylistId = null
     }
 
+    // Pulling down re-checks every feed: playlists are built from what the
+    // feeds have published, so this is the gesture that brings new episodes in.
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1241,6 +1253,7 @@ fun PlaylistsScreen(
                 }
             }
         }
+    }
     }
 
     actionEpisode?.let { entry ->
@@ -1924,7 +1937,7 @@ private fun QueueRow(
                         if (onMoveUp != null) {
                             SwipeActionButton(
                                 icon = Icons.Filled.KeyboardArrowUp,
-                                contentDescription = stringResource(R.string.queue_move_up),
+                                label = "Up",
                                 tint = MaterialTheme.colorScheme.primary,
                                 onClick = {
                                     onMoveUp()
@@ -1935,7 +1948,7 @@ private fun QueueRow(
                         if (onMoveDown != null) {
                             SwipeActionButton(
                                 icon = Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Move down",
+                                label = "Down",
                                 tint = MaterialTheme.colorScheme.primary,
                                 onClick = {
                                     onMoveDown()
@@ -1946,7 +1959,7 @@ private fun QueueRow(
                         if (onTogglePlayed != null) {
                             SwipeActionButton(
                                 icon = Icons.Filled.CheckCircle,
-                                contentDescription = "Mark listened",
+                                label = if (ep.isPlayed) "Unplayed" else "Played",
                                 tint = MaterialTheme.colorScheme.primary,
                                 onClick = {
                                     onTogglePlayed()
@@ -2102,21 +2115,38 @@ private fun QueueRow(
     }
 }
 
-/** One of the actions revealed by swiping a row. */
+/**
+ * One of the actions revealed by swiping a row.
+ *
+ * The icon alone asked the listener to guess, so each one carries its name.
+ */
 @Composable
 private fun SwipeActionButton(
     icon: ImageVector,
-    contentDescription: String,
+    label: String,
     tint: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, modifier = modifier.size(34.dp)) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Icon(
             imageVector = icon,
-            contentDescription = contentDescription,
+            contentDescription = label,
             tint = tint,
             modifier = Modifier.size(19.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            maxLines = 1,
         )
     }
 }

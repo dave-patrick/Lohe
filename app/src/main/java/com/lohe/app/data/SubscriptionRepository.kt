@@ -162,6 +162,15 @@ class SubscriptionRepository internal constructor(
     /** Saved resume point in seconds; 0 when there is nothing to resume. */
     suspend fun playedPosition(uuid: String): Long = episodes.playedPosition(uuid)
 
+    /**
+     * The show an episode belongs to.
+     *
+     * Playback settings are stored per show, so the service needs the show's
+     * uuid; an episode uuid finds no settings at all.
+     */
+    suspend fun podcastUuidFor(episodeUuid: String): String? =
+        episodes.get(episodeUuid)?.podcastUuid
+
     /** Get total storage size used by local files (content:// URIs) */
     fun getLocalFilesStorageSize(): Flow<Long> =
         episodes.observeAllSummaries().map { list ->
