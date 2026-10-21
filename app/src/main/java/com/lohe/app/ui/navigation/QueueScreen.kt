@@ -1160,9 +1160,9 @@ fun PlaylistsScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 6.dp, bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     itemsIndexed(visiblePlaylists, key = { _, pl -> pl.id }) { index, pl ->
                         PlaylistGridCard(
@@ -1205,8 +1205,8 @@ fun PlaylistsScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 6.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     itemsIndexed(items, key = { _, pl -> pl.id }) { index, pl ->
                         val dragging = dragState.draggedIndex == index
@@ -1483,12 +1483,15 @@ private fun PlaylistGridCard(
     onMoveDown: () -> Unit,
     onAssignFolder: () -> Unit,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 12.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    GlassCard(onClick = onOpen, contentPadding = 8.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f),
+                    // 4:3 rather than a square: the mosaic crops nothing
+                    // important and the shorter card puts another row of
+                    // playlists on screen.
+                    .aspectRatio(4f / 3f),
             ) {
                 PlaylistArtworkMosaic(
                     entries = playlist.entries,
@@ -1552,68 +1555,77 @@ private fun PlaylistGridCard(
                 }
             }
 
-            Text(
-                text = playlist.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Name and count sit tight under the artwork: they are one caption,
+            // not two paragraphs, and the gap between them was reading as a
+            // separate block.
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
 
-            Text(
-                text = "${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                Text(
+                    text = "${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min",
+                    style = MaterialTheme.typography.labelSmall,
+                    lineHeight = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onAssignFolder, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
                     Icon(
                         imageVector = Icons.Filled.Folder,
                         contentDescription = "Folder",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(15.dp),
                     )
                 }
                 if (canMoveUp) {
-                    IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onMoveUp, modifier = Modifier.size(26.dp)) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowUp,
                             contentDescription = "Move playlist earlier",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(17.dp),
                         )
                     }
                 }
                 if (canMoveDown) {
-                    IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onMoveDown, modifier = Modifier.size(26.dp)) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
                             contentDescription = "Move playlist later",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(17.dp),
                         )
                     }
                 }
-                IconButton(onClick = onAddToUpNext, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onAddToUpNext, modifier = Modifier.size(26.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = "Add to Up Next",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(17.dp),
                     )
                 }
-                IconButton(onClick = onPlayAll, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onPlayAll, modifier = Modifier.size(26.dp)) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = "Play playlist",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(19.dp),
                     )
                 }
             }
@@ -1635,15 +1647,15 @@ private fun PlaylistListCard(
     dragHandle: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 12.dp, modifier = modifier) {
+    GlassCard(onClick = onOpen, contentPadding = 10.dp, modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             PlaylistArtworkMosaic(
                 entries = playlist.entries,
-                modifier = Modifier.size(58.dp),
+                modifier = Modifier.size(52.dp),
             )
 
             Column(modifier = Modifier.weight(1f)) {
@@ -1655,54 +1667,64 @@ private fun PlaylistListCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // One line, not three: the folder used to sit under a wrapped
+                // "134 episodes · 3806 min", which turned every row into a
+                // block of text. A folder with the playlist's own name is not
+                // worth repeating.
+                val folderLabel = playlist.folder
+                    .takeIf { it.isNotBlank() && !it.equals(playlist.name, ignoreCase = true) }
                 Text(
-                    text = "${playlist.entries.size} episodes · ${playlist.totalSeconds / 60L} min",
+                    text = buildString {
+                        if (folderLabel != null) append("📁 $folderLabel · ")
+                        append("${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min")
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (playlist.folder.isNotBlank()) {
-                    Text(
-                        text = "📁 ${playlist.folder}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
             }
 
             if (dragHandle != null) {
                 Box(
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     dragHandle()
                 }
             }
 
-            if (canMoveUp) {
-                IconButton(onClick = onMoveUp, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(18.dp))
+            // Dragging is the reorder control when it is available; the arrows
+            // are only for the times it is not.
+            if (dragHandle == null) {
+                if (canMoveUp) {
+                    IconButton(onClick = onMoveUp, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(17.dp))
+                    }
+                }
+                if (canMoveDown) {
+                    IconButton(onClick = onMoveDown, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(17.dp))
+                    }
                 }
             }
-            if (canMoveDown) {
-                IconButton(onClick = onMoveDown, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(18.dp))
-                }
+            IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
+                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(17.dp))
             }
-            IconButton(onClick = onAssignFolder, modifier = Modifier.size(30.dp)) {
-                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = onAddToUpNext, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onAddToUpNext, modifier = Modifier.size(28.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                     contentDescription = "Add to Up Next",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(19.dp),
                 )
             }
-            IconButton(onClick = onPlayAll, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onPlayAll, modifier = Modifier.size(28.dp)) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "Play playlist",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(21.dp),
                 )
             }
         }
