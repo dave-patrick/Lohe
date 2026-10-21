@@ -1534,6 +1534,26 @@ private fun PlaylistGridCard(
                             maxLines = 1,
                         )
                     }
+                } else if (playlist.entries.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp)
+                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
+                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "All listened",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
                 }
 
                 if (playlist.autoDownload && !playlist.system) {
