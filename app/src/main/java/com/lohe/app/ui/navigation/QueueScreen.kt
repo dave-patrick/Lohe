@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -1963,14 +1964,15 @@ private fun QueueRow(
     // One line, not four. The runtime, the date and where the episode is up
     // to come first and the show name last: a long show title would
     // otherwise push out the number the listener is actually reading.
-    val metaLine = remember(entry.showTitle, ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus, ep.published, now) {
+    val metaLine = remember(entry.showTitle, ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus, ep.published, ep.isArchived, now) {
         val state = EpisodeMeta.line(ep, now)
         val show = entry.showTitle.trim()
-        when {
+        val base = when {
             state.isNotEmpty() && show.isNotEmpty() -> "$state · $show"
             state.isNotEmpty() -> state
             else -> show
         }
+        if (ep.isArchived && base.isNotEmpty()) "Archived · $base" else base
     }
 
     // Swiping left takes the episode out of the queue.
@@ -2170,6 +2172,22 @@ private fun QueueRow(
                                     .height(2.dp),
                             )
                         }
+                    }
+
+                    if (ep.isPlayed) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "Listened",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    } else if (ep.isArchived) {
+                        Icon(
+                            imageVector = Icons.Filled.Archive,
+                            contentDescription = "Archived",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
                     }
 
                     IconButton(onClick = onPlay, modifier = Modifier.size(30.dp)) {
