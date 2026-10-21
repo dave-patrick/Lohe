@@ -677,9 +677,15 @@ fun PlaylistsScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = buildString {
-                            if (openedPlaylist.folder.isNotBlank()) append("📁 ${openedPlaylist.folder} · ")
-                            append("${openedPlaylist.entries.size} episodes · ${openedPlaylist.totalSeconds / 60L} min")
+                        text = buildAnnotatedString {
+                            if (openedPlaylist.folder.isNotBlank()) {
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                                    append("${openedPlaylist.folder} · ")
+                                }
+                            }
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                append("${openedPlaylist.entries.size} episodes · ${openedPlaylist.totalSeconds / 60L} min")
+                            }
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
