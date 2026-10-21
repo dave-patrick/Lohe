@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      androidx.car.app:app-automotive declares minSdk 29 because the Android
+      Automotive OS surface it provides only exists from API 29 on. Lohe keeps
+      minSdk 26 for phones: the automotive classes are never loaded on a phone,
+      so the library's floor is overridden rather than raised for the whole app.
+    -->
+    <uses-sdk tools:overrideLibrary="androidx.car.app.automotive" />
 
     <uses-permission android:name="android.permission.INTERNET" />
 

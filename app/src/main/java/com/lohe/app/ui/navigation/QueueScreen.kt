@@ -938,6 +938,14 @@ fun PlaylistsScreen(
                 var items by remember(openedPlaylist.id) {
                     mutableStateOf(openedPlaylist.entries)
                 }
+                var unplayedOnly by remember(openedPlaylist.id) {
+                    mutableStateOf(false)
+                }
+                val displayItems = if (unplayedOnly) {
+                    items.filter { !it.episode.isPlayed }
+                } else {
+                    items
+                }
                 val listState = rememberLazyListState()
                 val dragState = rememberDragReorderState(
                     listState = listState,
@@ -955,6 +963,28 @@ fun PlaylistsScreen(
                     if (!dragState.isDragging) items = openedPlaylist.entries
                 }
 
+                if (openedPlaylist.entries.any { it.episode.isPlayed }) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = unplayedOnly,
+                            onClick = { unplayedOnly = !unplayedOnly },
+                            label = { Text(if (unplayedOnly) "Showing unplayed" else "Unplayed only") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.RadioButtonUnchecked,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -962,10 +992,10 @@ fun PlaylistsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     itemsIndexed(
-                        items,
+                        displayItems,
                         key = { _, entry -> "${openedPlaylist.id}-${entry.episode.uuid}" },
                     ) { index, entry ->
-                        val dragging = dragState.draggedIndex == index
+                        val dragging = !unplayedOnly && dragState.draggedIndex == index
                         val isSelected = entry.episode.uuid in selectedEpisodeUuids
                         QueueRow(
                             positionNumber = index + 1,
@@ -974,9 +1004,9 @@ fun PlaylistsScreen(
                             inSelectionMode = selectedEpisodeUuids.isNotEmpty(),
                             isSelected = isSelected,
                             now = now,
-                            dragHandle = {
+                            dragHandle = if (unplayedOnly) null else ({
                                 DragHandle(state = dragState, index = index, key = entry.episode.uuid)
-                            },
+                            }),
                             modifier = Modifier
                                 .then(
                                     if (dragging) {
@@ -1001,7 +1031,7 @@ fun PlaylistsScreen(
                                     selectedEpisodeUuids + uuid
                                 }
                             },
-                            onMoveUp = if (index > 0) {
+                            onMoveUp = if (unplayedOnly || index <= 0) null else {
                                 {
                                     viewModel.moveEpisodeInPlaylist(
                                         openedPlaylist.id,
@@ -1009,10 +1039,8 @@ fun PlaylistsScreen(
                                         -1,
                                     )
                                 }
-                            } else {
-                                null
                             },
-                            onMoveDown = if (index < items.lastIndex) {
+                            onMoveDown = if (unplayedOnly || index >= displayItems.lastIndex) null else {
                                 {
                                     viewModel.moveEpisodeInPlaylist(
                                         openedPlaylist.id,
@@ -1020,8 +1048,6 @@ fun PlaylistsScreen(
                                         +1,
                                     )
                                 }
-                            } else {
-                                null
                             },
                             onTogglePlayed = {
                                 if (entry.episode.isPlayed) {
