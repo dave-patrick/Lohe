@@ -88,6 +88,10 @@ implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.session)
 
+    // Android Automotive OS embedded app surface (CarAppService).
+    implementation(libs.androidx.car.app)
+    implementation(libs.androidx.media)
+
     // SAF tree traversal for local folder playback
     implementation(libs.androidx.documentfile)
 

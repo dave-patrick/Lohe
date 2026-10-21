@@ -20,6 +20,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Android Automotive OS / templated media app. -->
+    <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" />
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
+    <uses-feature
+        android:name="android.software.car.templates_host.media"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -51,6 +60,35 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <!-- Android Automotive OS car app service. -->
+        <service
+            android:name=".playback.CarPlaybackService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MEDIA" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.car.app.minCarApiLevel"
+                android:value="8" />
+        </service>
+
+        <!--
+          The head unit renders media browsing and playback through the
+          MediaLibraryService above; CarPlaybackService adds the templated
+          MediaPlaybackTemplate surface where the car host supports it.
+        -->
+
+        <!-- Android Auto (projection) declaration. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!-- Automotive OS declaration. -->
+        <meta-data
+            android:name="com.android.automotive"
+            android:resource="@xml/automotive_app_desc" />
 
     </application>
 

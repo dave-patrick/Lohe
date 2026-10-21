@@ -81,6 +81,10 @@ class PlaybackService : MediaLibraryService() {
             .setSessionActivity(openAppIntent())
             .build()
 
+        // Expose the platform token so the Android Automotive OS car app can
+        // register media playback with its MediaPlaybackManager.
+        platformToken = session?.platformToken
+
         player.addListener(EndOfEpisodeWatcher())
         startVolumeBoostObserver()
         startSleepTimerPolling()
@@ -104,6 +108,7 @@ class PlaybackService : MediaLibraryService() {
         loudnessEnhancer = null
         session?.release()
         session = null
+        platformToken = null
         player.release()
         super.onDestroy()
     }
@@ -467,6 +472,14 @@ class PlaybackService : MediaLibraryService() {
          */
         const val VOLUME_BOOST_MILLIBELS = 500
         const val VOLUME_BOOST_GAIN = 1.8f
+
+        /** The ExoPlayer, exposed so the Android Automotive OS car app can drive it. */
+        var player: ExoPlayer? = null
+            private set
+
+        /** The platform token, exposed so the car app can register playback. */
+        var platformToken: android.media.session.MediaSession.Token? = null
+            private set
 
         /**
          * Builds an item for [episodeUuid].
