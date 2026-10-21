@@ -87,6 +87,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -1662,8 +1663,14 @@ private fun PodcastGridCard(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(4.dp)
+                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
                             .clip(RoundedCornerShape(50))
                             .background(MaterialTheme.colorScheme.primary)
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.9f),
+                                shape = RoundedCornerShape(50),
+                            )
                             .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
                             .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.Center,
