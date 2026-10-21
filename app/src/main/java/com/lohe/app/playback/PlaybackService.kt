@@ -523,11 +523,10 @@ class PlaybackService : MediaLibraryService() {
         const val PLAYED_TAIL_SECONDS = 10L
 
         /**
-         * How much of the head auto-trim drops when an episode starts from the
-         * beginning: long enough to clear a cold open, short enough to be
-         * recoverable with one scrub back.
+         * Episodes shorter than this are left alone: the head scan alone would
+         * eat a noticeable share of them.
          */
-        private const val TRIM_LEAD_IN_MS = 30_000L
+        private const val TRIM_MIN_DURATION_MS = 60_000L
     }
 
     /**
@@ -590,18 +589,42 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Auto-trim: drops the lead-in of an episode that starts from the top.
+     * Auto-trim: drops the dead air at the top of an episode that starts from
+     * the beginning.
+     *
+     * The head is measured, not assumed. Trimming means skipping the silence
+     * before the talking starts, which differs from show to show and is often
+     * only a second or two; a flat thirty-second cut chopped real content
+     * whenever the cold open was short. [SilenceScanner] decodes the opening
+     * and reports where the speech begins.
      *
      * It only makes sense to cut the head off a fresh start. Running it on a
-     * resume threw the listener half a minute past wherever they had left off,
-     * which is why it looked like trimming "did not work at the beginning":
-     * the only path that reached it was the resume path.
+     * resume threw the listener past wherever they had left off, which is why
+     * it looked like trimming "did not work at the beginning": the only path
+     * that reached it was the resume path.
      */
     private fun applyAutoTrim(startingAtTheTop: Boolean) {
         if (!_currentAutoTrim || !startingAtTheTop) return
-        val duration = player.duration
-        // Only trim when there is clearly something left to listen to.
-        if (duration > TRIM_LEAD_IN_MS * 2) player.seekTo(TRIM_LEAD_IN_MS)
+        val item = player.currentMediaItem ?: return
+        val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
+        val uri = item.localConfiguration?.uri?.toString() ?: return
+        // A clip barely longer than the scan has nothing worth cutting.
+        val durationMs = player.duration
+        if (durationMs in 1..TRIM_MIN_DURATION_MS) return
+
+        scope.launch {
+            val silenceMs = SilenceScanner.leadingSilenceMs(this@PlaybackService, mediaId, uri)
+                ?: return@launch
+            if (silenceMs <= 0L) return@launch
+
+            withContext(Dispatchers.Main) {
+                // The listener may have moved on, or scrubbed ahead while the
+                // scan was running. Their position wins over the trim.
+                if (player.currentMediaItem?.mediaId != mediaId) return@withContext
+                if (player.currentPosition >= silenceMs) return@withContext
+                player.seekTo(silenceMs)
+            }
+        }
     }
 
     /**
