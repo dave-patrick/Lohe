@@ -1588,7 +1588,7 @@ private fun PlaylistGridCard(
                     Icon(
                         imageVector = Icons.Filled.Folder,
                         contentDescription = "Folder",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(15.dp),
                     )
                 }
@@ -1709,7 +1709,7 @@ private fun PlaylistListCard(
                 }
             }
             IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
-                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = onAddToUpNext, modifier = Modifier.size(28.dp)) {
                 Icon(
