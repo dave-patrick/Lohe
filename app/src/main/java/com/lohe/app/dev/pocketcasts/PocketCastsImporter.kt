@@ -207,10 +207,14 @@ class PocketCastsImporter(
             loheShowMap[show.title.trim().lowercase()]?.let { pcShowToLoheShow[show.uuid] = it.uuid }
         }
 
-        // Load all Lohe episodes once, keyed by (Lohe show UUID, episode title).
+        // Load all Lohe episodes once, keyed by (Lohe show UUID, media URL filename) and (Lohe show UUID, episode title).
         val loheEpisodes = repository.observeAllEpisodes().first()
+        val loheByShowAndUrl = mutableMapOf<String, MutableMap<String, EpisodeSummary>>()
         val loheByShowAndTitle = mutableMapOf<String, MutableMap<String, EpisodeSummary>>()
         loheEpisodes.forEach { ep ->
+            val urlKey = ep.audioUrl.substringAfterLast('/').trim().lowercase()
+            loheByShowAndUrl[ep.podcastUuid]?.put(urlKey, ep)
+                ?: run { loheByShowAndUrl[ep.podcastUuid] = mutableMapOf(urlKey to ep) }
             val titleKey = ep.title.trim().lowercase()
             loheByShowAndTitle[ep.podcastUuid]?.put(titleKey, ep)
                 ?: run { loheByShowAndTitle[ep.podcastUuid] = mutableMapOf(titleKey to ep) }
@@ -225,8 +229,16 @@ class PocketCastsImporter(
             if (title.isEmpty()) return@forEach
 
             val loheShowUuid = pcShowToLoheShow[episode.podcastUuid] ?: return@forEach
-            val epMap = loheByShowAndTitle[loheShowUuid] ?: return@forEach
-            val loheMatch = epMap[title.lowercase()] ?: return@forEach
+
+            // Try matching by media URL filename first (more reliable), then by title as fallback.
+            val mediaFilename = episode.mediaUrl?.substringAfterLast('/')?.trim()?.lowercase()
+            val loheMatch = if (mediaFilename?.isNotEmpty() == true) {
+                loheByShowAndUrl[loheShowUuid]?.get(mediaFilename)
+            } else {
+                null
+            } ?: loheByShowAndTitle[loheShowUuid]?.get(title.lowercase())
+
+            if (loheMatch == null) return@forEach
 
             matched++
 
