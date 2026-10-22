@@ -20,6 +20,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetAddress
@@ -434,18 +435,30 @@ object DevApi {
         }.toMap()
     }
 
+    /**
+     * Writes the response.
+     *
+     * A client that hangs up mid-answer is ordinary — a request that takes
+     * too long, a script that gives up — and it must not take the app with
+     * it. The write is therefore contained: a broken pipe ends this one
+     * exchange and nothing else.
+     */
     private fun respond(socket: Socket, status: Int, body: String) {
         val bytes = body.toByteArray(Charsets.UTF_8)
-        val out = socket.getOutputStream()
-        val w = OutputStreamWriter(out, Charsets.UTF_8)
-        w.write("HTTP/1.1 $status ${statusText(status)}\r\n")
-        w.write("Content-Type: application/json; charset=utf-8\r\n")
-        w.write("Content-Length: ${bytes.size}\r\n")
-        w.write("Connection: close\r\n")
-        w.write("\r\n")
-        w.flush()
-        out.write(bytes)
-        out.flush()
+        try {
+            val out = socket.getOutputStream()
+            val w = OutputStreamWriter(out, Charsets.UTF_8)
+            w.write("HTTP/1.1 $status ${statusText(status)}\r\n")
+            w.write("Content-Type: application/json; charset=utf-8\r\n")
+            w.write("Content-Length: ${bytes.size}\r\n")
+            w.write("Connection: close\r\n")
+            w.write("\r\n")
+            w.flush()
+            out.write(bytes)
+            out.flush()
+        } catch (e: IOException) {
+            Log.i(TAG, "the client hung up before the answer was written: ${e.message}")
+        }
     }
 
     private fun statusText(status: Int): String = when (status) {

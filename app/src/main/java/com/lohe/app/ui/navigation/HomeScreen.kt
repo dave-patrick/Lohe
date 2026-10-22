@@ -144,8 +144,8 @@ fun HomeScreen(
                 // same centreline as the settings control beside it.
                 Box(
                     modifier = Modifier
-                        .height(30.dp)
-                        .width(175.dp),
+                        .height(37.5.dp)
+                        .width(218.75.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
@@ -154,7 +154,7 @@ fun HomeScreen(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxSize()
-                            .offset(y = (-4.25).dp),
+                            .offset(y = (-5.3125).dp),
                     )
                 }
             }

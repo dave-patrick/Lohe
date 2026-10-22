@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lohe.app.data.ServiceLocator
@@ -43,7 +44,9 @@ class MainActivity : ComponentActivity() {
             val persisted by settings.appearance.collectAsState(initial = Appearance.DARK)
 
             // Show the branded splash screen briefly before the main app.
-            var showSplash by remember { mutableStateOf(true) }
+            // rememberSaveable (not remember) so the "already shown" flag
+            // survives a rotation instead of resetting and replaying it.
+            var showSplash by rememberSaveable { mutableStateOf(true) }
 
             LaunchedEffect(persisted) {
                 appearance = persisted

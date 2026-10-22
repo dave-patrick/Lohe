@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -97,64 +98,66 @@ fun AboutScreen(
         Spacer(Modifier.height(12.dp))
 
         // The wordmark, with the staging mark beside it. The mark is null in a
-        // release build, which leaves the wordmark alone.
+        // release build, which leaves the wordmark alone. The version sits
+        // under the wordmark — larger than the staging mark, and white — so
+        // the brand and the build number read together.
         val stagingMark = rememberStagingMark()
 
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (isLight) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            } else {
-                Image(
-                    painter = painterResource(id = R.drawable.wordmark),
-                    contentDescription = stringResource(R.string.about_wordmark_description),
-                    contentScale = ContentScale.Fit,
-                    // The height alone, so the mark is sized by its own
-                    // proportions and the version can sit against its edge
-                    // rather than against the far side of the page.
-                    modifier = Modifier.height(34.dp),
-                )
-            }
-            stagingMark?.let { mark ->
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = mark,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = stringResource(R.string.about_tagline),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        // The version, unless the staging mark beside the wordmark has already
-        // said it. Saying it twice on the same page reads as an oversight.
-        if (stagingMark == null) {
-            Text(
-                text = if (version != null) {
-                    stringResource(R.string.about_version, version)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isLight) {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
                 } else {
-                    stringResource(R.string.about_version_unknown)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Image(
+                        painter = painterResource(id = R.drawable.wordmark),
+                        contentDescription = stringResource(R.string.about_wordmark_description),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.height(42.5.dp),
+                    )
+                }
+                stagingMark?.let { mark ->
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = mark,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // The version under the wordmark, unless the staging mark beside
+            // it has already said it.
+            if (stagingMark == null) {
+                Text(
+                    text = if (version != null) {
+                        stringResource(R.string.about_version, version)
+                    } else {
+                        stringResource(R.string.about_version_unknown)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            Text(
+                text = stringResource(R.string.about_tagline),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )

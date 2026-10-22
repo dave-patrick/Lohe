@@ -442,12 +442,29 @@ class PocketCastsImporter(
         /**
          * Media URLs are compared the same way, but keep their path's case:
          * a file name can differ by case and still be a different file.
+         *
+         * Tracking redirects are stripped: Pocket Casts (and some feeds) wrap
+         * the real media URL in a redirector such as
+         * `tracking.swap.fm/track/<id>/<actual-url>`. Both apps should end up
+         * at the same `<actual-url>`, so the wrapper is removed before
+         * comparison.
          */
-        fun normaliseMedia(url: String): String =
-            url.trim()
+        fun normaliseMedia(url: String): String {
+            var result = url.trim()
                 .substringBefore('?')
                 .substringBefore('#')
                 .trimEnd('/')
+            // Strip a tracking redirect wrapper: <domain>/track/<id>/<actual-url>
+            val trackIdx = result.indexOf("/track/")
+            if (trackIdx >= 0) {
+                val afterTrack = result.substring(trackIdx + "/track/".length)
+                val idEnd = afterTrack.indexOf('/')
+                if (idEnd >= 0) {
+                    result = afterTrack.substring(idEnd + 1)
+                }
+            }
+            return result
+        }
     }
 }
 
