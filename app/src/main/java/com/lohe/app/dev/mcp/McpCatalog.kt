@@ -340,7 +340,9 @@ object McpCatalog {
                 "The state is the canonical JSON written by " +
                 "tools/pocketcasts-export.py. A whole library is far too large " +
                 "to hand over inline, so it can be named as a file in the " +
-                "app's own files directory instead.",
+                "app's own files directory instead. Phases: shows, episodes, " +
+                "playlists, sync-played (repairs played/unplayed state for " +
+                "episodes that exist in both apps).",
             inputSchema = schema(
                 properties = mapOf(
                     "state" to objectProp(

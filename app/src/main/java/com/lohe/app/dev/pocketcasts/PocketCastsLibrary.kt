@@ -1,5 +1,6 @@
 package com.lohe.app.dev.pocketcasts
 
+import android.util.Log
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -32,6 +33,7 @@ data class PocketCastsLibrary(
 
         /** Reads the canonical export written by `tools/pocketcasts-export.py`. */
         fun fromJson(root: JsonObject): PocketCastsLibrary {
+            android.util.Log.e("PocketCastsImporter", "fromJson: root keys=${root.keys.toList()}")
             val shows = root.array("podcasts").mapNotNull { element ->
                 val obj = element as? JsonObject ?: return@mapNotNull null
                 val uuid = obj.string("uuid") ?: return@mapNotNull null
@@ -41,6 +43,7 @@ data class PocketCastsLibrary(
                     feedUrl = obj.string("feedUrl"),
                 )
             }
+            android.util.Log.e("PocketCastsImporter", "fromJson: parsed shows=${shows.size}")
 
             val episodes = root.array("episodes").mapNotNull { element ->
                 val obj = element as? JsonObject ?: return@mapNotNull null

@@ -536,8 +536,15 @@ class LoheToolkit(context: Context) {
      * "playlists", or "all" for a small library.
      */
     private suspend fun importPocketCasts(args: JsonObject): JsonObject {
-        val state = args["state"] as? JsonObject ?: readExportFile(args)
-        val library = PocketCastsLibrary.fromJson(state)
+        val state = args["state"] as? JsonObject
+        val library = when {
+            state != null && state.containsKey("podcasts") ->
+                PocketCastsLibrary.fromJson(state)
+            else ->
+                // state is either null or a file reference like {"fileName":"..."}
+                // read the export from the app's files directory
+                PocketCastsLibrary.fromJson(readExportFile(args))
+        }
         val subscribe = args.booleanOrNull("subscribeMissingShows") ?: false
         val replaceFolders = args.booleanOrNull("replaceFolders") ?: false
         val importer = PocketCastsImporter(
@@ -586,6 +593,18 @@ class LoheToolkit(context: Context) {
                         report.playlistEpisodesUnmatched.map { it.toJsonElement() },
                     ),
                     "playlistsSkipped" to JsonArray(report.playlistsSkipped.map { it.toJsonElement() }),
+                )
+            }
+            "sync-played" -> {
+                val report = importer.syncPlayedState(library)
+                jsonObject(
+                    "ok" to true,
+                    "phase" to phase,
+                    "matched" to report.matched,
+                    "markedPlayed" to report.markedPlayed,
+                    "markedUnplayed" to report.markedUnplayed,
+                    "libraryShows" to library.shows.size,
+                    "libraryEpisodes" to library.episodes.size,
                 )
             }
             else -> {
@@ -662,7 +681,9 @@ class LoheToolkit(context: Context) {
     }
 
     /** Reads an export file the host pushed into the app's files directory. */
-    private fun readExportFile(args: JsonObject): JsonObject {        val fileName = args.stringOrNull("fileName")
+    private fun readExportFile(args: JsonObject): JsonObject {
+        val fileName = args.stringOrNull("fileName")
+            ?: args["state"]?.let { (it as? JsonObject)?.stringOrNull("fileName") }
             ?: throw ToolException("state or fileName is required: the Pocket Casts export")
         if (fileName.contains('/') || fileName.contains('\\')) {
             throw ToolException("fileName must be a plain file name")
@@ -671,7 +692,10 @@ class LoheToolkit(context: Context) {
         if (!file.exists()) {
             throw ToolException("No export file called $fileName in the app's files directory")
         }
-        val root = kotlinx.serialization.json.Json.parseToJsonElement(file.readText())
+        val text = file.readText()
+        android.util.Log.e("PocketCastsImporter", "readExportFile: fileSize=${text.length}, firstChars=${text.take(100)}")
+        val root = kotlinx.serialization.json.Json.parseToJsonElement(text)
+        android.util.Log.e("PocketCastsImporter", "readExportFile: parsed root=${root::class.simpleName}, keys=${(root as? kotlinx.serialization.json.JsonObject)?.keys?.toList()}")
         return root as? kotlinx.serialization.json.JsonObject
             ?: throw ToolException("The export file is not a JSON object")
     }

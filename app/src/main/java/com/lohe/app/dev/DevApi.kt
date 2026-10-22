@@ -362,7 +362,7 @@ object DevApi {
         // been matched.
         if (method == "POST" && path.startsWith("/import/pocketcasts")) {
             val phase = path.substringAfter("/import/pocketcasts").trim('/').ifEmpty { "all" }
-            if (phase !in setOf("all", "shows", "episodes", "playlists")) {
+            if (phase !in setOf("all", "shows", "episodes", "playlists", "sync-played")) {
                 return 400 to errorJson("unknown phase \"$phase\"")
             }
             val state = kotlinx.serialization.json.Json.parseToJsonElement(body)

@@ -1,8 +1,10 @@
 package com.lohe.app.dev.pocketcasts
 
+import android.util.Log
 import com.lohe.app.data.PlaylistRepository
 import com.lohe.app.data.SubscriptionRepository
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
 import com.lohe.app.data.db.entity.PodcastEntity
 import kotlinx.coroutines.flow.first
 import kotlin.math.abs
@@ -183,6 +185,69 @@ class PocketCastsImporter(
             playlistsSkipped = written.skipped,
             queued = queued,
         )
+    }
+
+    /**
+     * Syncs played/unplayed state for episodes that exist in both apps.
+     *
+     * Matches episodes by title within the same show, and updates Lohe's
+     * playing status to match Pocket Casts'. This repairs mismatches left
+     * behind when the initial import matched an episode by title to the
+     * wrong row, or when playback state changed after the import.
+     *
+     * Returns how many episodes were changed in each direction.
+     */
+    suspend fun syncPlayedState(library: PocketCastsLibrary): PlayedSyncReport {
+        val loheShows = repository.observePodcasts().first()
+        val loheShowMap = loheShows.associateBy { it.title.trim().lowercase() }
+
+        // Build PC show UUID -> Lohe show UUID mapping by title.
+        val pcShowToLoheShow = mutableMapOf<String, String>()
+        library.shows.forEach { show ->
+            loheShowMap[show.title.trim().lowercase()]?.let { pcShowToLoheShow[show.uuid] = it.uuid }
+        }
+
+        // Load all Lohe episodes once, keyed by (Lohe show UUID, episode title).
+        val loheEpisodes = repository.observeAllEpisodes().first()
+        val loheByShowAndTitle = mutableMapOf<String, MutableMap<String, EpisodeSummary>>()
+        loheEpisodes.forEach { ep ->
+            val titleKey = ep.title.trim().lowercase()
+            loheByShowAndTitle[ep.podcastUuid]?.put(titleKey, ep)
+                ?: run { loheByShowAndTitle[ep.podcastUuid] = mutableMapOf(titleKey to ep) }
+        }
+
+        var playedToUnplayed = 0
+        var unplayedToPlayed = 0
+        var matched = 0
+
+        library.episodes.forEach { episode ->
+            val title = episode.title?.trim() ?: return@forEach
+            if (title.isEmpty()) return@forEach
+
+            val loheShowUuid = pcShowToLoheShow[episode.podcastUuid] ?: return@forEach
+            val epMap = loheByShowAndTitle[loheShowUuid] ?: return@forEach
+            val loheMatch = epMap[title.lowercase()] ?: return@forEach
+
+            matched++
+
+            val pcPlayed = episode.status == "played"
+            val lohePlayed = loheMatch.playingStatus == EpisodeEntity.PLAYED
+
+            when {
+                pcPlayed && !lohePlayed -> {
+                    repository.markPlayed(loheMatch.uuid)
+                    playedToUnplayed++
+                }
+                !pcPlayed && lohePlayed -> {
+                    repository.applyUnplayed(loheMatch.uuid)
+                    unplayedToPlayed++
+                }
+            }
+        }
+
+        android.util.Log.e("PocketCastsImporter", "syncPlayedState: library shows=${library.shows.size}, episodes=${library.episodes.size}, showMatches=${pcShowToLoheShow.size}, episodeMatches=$matched, markedPlayed=$playedToUnplayed, markedUnplayed=$unplayedToPlayed")
+
+        return PlayedSyncReport(matched, playedToUnplayed, unplayedToPlayed)
     }
 
     /**
@@ -533,6 +598,13 @@ data class PlaylistReport(
     /** The playlists that could not be copied, and why they were left alone. */
     val playlistsSkipped: List<String> = emptyList(),
     val queued: Int = 0,
+)
+
+/** What the played-state sync phase did. */
+data class PlayedSyncReport(
+    val matched: Int = 0,
+    val markedPlayed: Int = 0,
+    val markedUnplayed: Int = 0,
 )
 
 /**
