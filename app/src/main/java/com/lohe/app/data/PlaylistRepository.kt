@@ -29,6 +29,7 @@ data class UserPlaylist(
     val shows: List<String> = emptyList(),
     val minDurationMinutes: Int = 0,
     val maxDurationMinutes: Int = 0,
+    val finished: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -54,6 +55,7 @@ class PlaylistRepository(
         shows: Collection<String> = emptyList(),
         minDurationMinutes: Int = 0,
         maxDurationMinutes: Int = 0,
+        finished: Boolean = false,
     ): UserPlaylist {
         val cleanName = name.trim().ifBlank { "Untitled Playlist" }
         val created = UserPlaylist(
@@ -65,6 +67,7 @@ class PlaylistRepository(
             shows = shows.distinct(),
             minDurationMinutes = minDurationMinutes.coerceAtLeast(0),
             maxDurationMinutes = maxDurationMinutes.coerceAtLeast(0),
+            finished = finished,
         )
         synchronized(lock) {
             val next = _playlists.value + created
@@ -179,6 +182,20 @@ class PlaylistRepository(
                 } else {
                     pl
                 }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    /**
+     * Sets the finished filter: when true, only played episodes are shown in
+     * the playlist; when false, only unplayed episodes are shown.
+     */
+    fun setPlaylistFinished(playlistId: String, finished: Boolean) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) pl.copy(finished = finished) else pl
             }
             _playlists.value = next
             saveToDisk(next)
@@ -327,6 +344,7 @@ class PlaylistRepository(
                     }
                     val minMinutes = parts.getOrNull(7)?.toIntOrNull() ?: 0
                     val maxMinutes = parts.getOrNull(8)?.toIntOrNull() ?: 0
+                    val finished = parts.getOrNull(9)?.toBoolean() ?: false
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -336,6 +354,7 @@ class PlaylistRepository(
                         shows = shows,
                         minDurationMinutes = minMinutes,
                         maxDurationMinutes = maxMinutes,
+                        finished = finished,
                         createdAt = createdAt,
                     )
                 }
@@ -353,7 +372,8 @@ class PlaylistRepository(
                 val eps = pl.episodeUuids.joinToString(",")
                 val autoDl = if (pl.autoDownload) "1" else "0"
                 val shows = pl.shows.joinToString(",")
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}"
+                val finished = if (pl.finished) "1" else "0"
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished"
             }
             target.writeText(text)
         }

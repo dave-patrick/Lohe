@@ -557,6 +557,8 @@ class QueueViewModel(
                 return length > 0L && length > minSeconds && length <= maxSeconds
             }
 
+            val finishedFilter = if (pl.finished) { ep: com.lohe.app.data.db.entity.EpisodeSummary -> ep.isPlayed } else { ep: com.lohe.app.data.db.entity.EpisodeSummary -> !ep.isPlayed }
+
             val resolvedEntries = if (followed.isNotEmpty()) {
                 // Following shows: they add their new episodes on their own,
                 // without the playlist being touched. A length rule, if the
@@ -564,7 +566,7 @@ class QueueViewModel(
                 allEpisodes
                     .filter { ep ->
                         ep.podcastUuid in followed && !ep.isDeleted && !ep.isArchived &&
-                            !ep.isPlayed && fitsLength(ep)
+                            finishedFilter(ep) && fitsLength(ep)
                     }
                     .sortedByDescending { it.published }
                     .map(::resolve)
@@ -573,7 +575,7 @@ class QueueViewModel(
                 // show, so new ones land in the list on their own.
                 allEpisodes
                     .filter { ep ->
-                        !ep.isDeleted && !ep.isArchived && !ep.isPlayed && fitsLength(ep)
+                        !ep.isDeleted && !ep.isArchived && finishedFilter(ep) && fitsLength(ep)
                     }
                     .sortedByDescending { it.published }
                     .map(::resolve)
@@ -586,16 +588,15 @@ class QueueViewModel(
                     .map { it.uuid }
                     .toSet()
                 allEpisodes
-                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived && !it.isPlayed }
+                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived && finishedFilter(it) }
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else {
                 pl.episodeUuids.mapNotNull { epId ->
                     val ep = epMap[epId] ?: return@mapNotNull null
-                    // Episodes already listened to (or filed away) leave the
-                    // playlist and show up in Played instead, so the list only
-                    // holds what is left to hear.
-                    if (ep.isPlayed || ep.isArchived) null else resolve(ep)
+                    // Archived episodes leave the playlist and show up in
+                    // Played instead; finished controls played vs unplayed.
+                    if (ep.isArchived) null else if (finishedFilter(ep)) resolve(ep) else null
                 }
             }
             ResolvedPlaylist(

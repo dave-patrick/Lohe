@@ -463,6 +463,7 @@ class PocketCastsImporter(
                     shows = if (playlist.isRule) followed else emptyList(),
                     minDurationMinutes = if (playlist.isRule) playlist.minDurationMinutes else 0,
                     maxDurationMinutes = if (playlist.isRule) playlist.maxDurationMinutes else 0,
+                    finished = playlist.finished,
                 )
             } else {
                 playlists.reorderEpisodes(existing.id, explicit)
@@ -473,6 +474,7 @@ class PocketCastsImporter(
                         playlist.minDurationMinutes,
                         playlist.maxDurationMinutes,
                     )
+                    playlists.setPlaylistFinished(existing.id, playlist.finished)
                 } else {
                     // A fixed list of episodes. The rules that would show
                     // something else entirely are cleared, so the list is
@@ -480,6 +482,7 @@ class PocketCastsImporter(
                     playlists.setPlaylistShows(existing.id, emptyList())
                     playlists.setPlaylistDuration(existing.id, 0, 0)
                     playlists.setPlaylistFolder(existing.id, "")
+                    playlists.setPlaylistFinished(existing.id, false)
                 }
             }
             applied++
