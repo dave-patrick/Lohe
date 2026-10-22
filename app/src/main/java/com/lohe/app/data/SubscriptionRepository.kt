@@ -143,6 +143,18 @@ class SubscriptionRepository internal constructor(
     /** Mark finished and drop the resume point so it never restarts. */
     suspend fun markPlayed(uuid: String) = episodes.markPlayedAndClearProgress(uuid)
 
+    /**
+     * Sets a resume point without counting it as time listened.
+     *
+     * Used when an episode's state is copied in from elsewhere: the position
+     * is the listener's, but the listening happened somewhere else.
+     */
+    suspend fun applyProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) =
+        episodes.applyProgress(uuid, positionSeconds, durationSeconds)
+
+    /** Puts an episode back to unplayed without erasing the listening total. */
+    suspend fun applyUnplayed(uuid: String) = episodes.applyUnplayed(uuid)
+
     /** Undo [markPlayed]: back to unplayed, restarting from the beginning. */
     suspend fun reopenEpisode(uuid: String) = episodes.reopenEpisode(uuid)
 

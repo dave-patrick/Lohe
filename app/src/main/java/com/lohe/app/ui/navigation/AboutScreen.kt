@@ -96,23 +96,40 @@ fun AboutScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        if (isLight) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.wordmark),
-                contentDescription = stringResource(R.string.about_wordmark_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp),
-            )
+        // The wordmark, with the staging mark beside it. The mark is null in a
+        // release build, which leaves the wordmark alone.
+        val stagingMark = rememberStagingMark()
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isLight) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.wordmark),
+                    contentDescription = stringResource(R.string.about_wordmark_description),
+                    contentScale = ContentScale.Fit,
+                    // The height alone, so the mark is sized by its own
+                    // proportions and the version can sit against its edge
+                    // rather than against the far side of the page.
+                    modifier = Modifier.height(34.dp),
+                )
+            }
+            stagingMark?.let { mark ->
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = mark,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Spacer(Modifier.height(6.dp))
@@ -127,17 +144,21 @@ fun AboutScreen(
 
         Spacer(Modifier.height(6.dp))
 
-        Text(
-            text = if (version != null) {
-                stringResource(R.string.about_version, version)
-            } else {
-                stringResource(R.string.about_version_unknown)
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
+        // The version, unless the staging mark beside the wordmark has already
+        // said it. Saying it twice on the same page reads as an oversight.
+        if (stagingMark == null) {
+            Text(
+                text = if (version != null) {
+                    stringResource(R.string.about_version, version)
+                } else {
+                    stringResource(R.string.about_version_unknown)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
         HorizontalDivider()

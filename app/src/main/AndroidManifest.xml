@@ -3,10 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      androidx.car.app:app-automotive declares minSdk 29 because the Android
+      androidx.car.app:app-automotive declares minSdk 29, because the Android
       Automotive OS surface it provides only exists from API 29 on. Lohe keeps
-      minSdk 26 for phones: the automotive classes are never loaded on a phone,
-      so the library's floor is overridden rather than raised for the whole app.
+      minSdk 26 for phones: the automotive classes are only ever loaded on a
+      head unit, so the library's floor is overridden rather than raised for
+      the whole app.
     -->
     <uses-sdk tools:overrideLibrary="androidx.car.app.automotive" />
 
@@ -68,7 +69,51 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
+
+            <!--
+              The head unit browses this service to find the catalogue. When it
+              can render the templated surface instead, the media host starts
+              the car activity below in place of the browser UI. The value is a
+              flattened component name.
+            -->
+            <meta-data
+                android:name="androidx.car.app.media.CalMediaActivityComponent"
+                android:value="com.lohe.app/androidx.car.app.activity.CarAppActivity" />
         </service>
+
+        <!--
+          The launchable Android Automotive OS surface. It is disabled by
+          default so the phone keeps a single Lohe icon in its launcher; the
+          media host enables it when the head unit is ready to render the
+          templated surface.
+
+          Instantiatable is suppressed because lint cannot follow the class
+          hierarchy: the activity extends BaseCarAppActivity, which extends
+          androidx.fragment.app.FragmentActivity, and androidx.fragment is a
+          runtime-scoped dependency of the automotive artifact, so it is not
+          on the compile classpath lint resolves against. The class is public
+          and final with a public no-argument constructor, and it does extend
+          android.app.Activity. The library's own manifest suppresses the same
+          check for the same reason.
+        -->
+        <activity
+            android:name="androidx.car.app.activity.CarAppActivity"
+            android:configChanges="uiMode"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="androidx.car.app.media.action.SHOW_MEDIA_PLAYBACK" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
 
         <!-- Android Automotive OS car app service. -->
         <service

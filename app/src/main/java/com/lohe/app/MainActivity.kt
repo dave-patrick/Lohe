@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
+        com.lohe.app.dev.DevApi.start(this)
 
         setContent {
             val context = LocalContext.current

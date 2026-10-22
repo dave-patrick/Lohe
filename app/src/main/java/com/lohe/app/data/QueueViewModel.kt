@@ -545,25 +545,36 @@ class QueueViewModel(
             // away, so like everywhere else in the library they stay out of
             // the playlist.
             val hasLengthRule = pl.minDurationMinutes > 0 || pl.maxDurationMinutes > 0
-            val resolvedEntries = if (hasLengthRule) {
-                // Length playlists collect short (or long) episodes from every
-                // show, so new ones land in the list on their own.
-                val minSeconds = pl.minDurationMinutes * 60L
-                val maxSeconds = if (pl.maxDurationMinutes > 0) pl.maxDurationMinutes * 60L else Long.MAX_VALUE
+            val minSeconds = pl.minDurationMinutes * 60L
+            val maxSeconds = if (pl.maxDurationMinutes > 0) pl.maxDurationMinutes * 60L else Long.MAX_VALUE
+            val followed = pl.shows.toSet()
+
+            // A length rule on its own collects from every show; on a
+            // playlist that follows shows it narrows what counts.
+            fun fitsLength(ep: com.lohe.app.data.db.entity.EpisodeSummary): Boolean {
+                if (!hasLengthRule) return true
+                val length = (ep.durationSeconds ?: 0).toLong()
+                return length > 0L && length > minSeconds && length <= maxSeconds
+            }
+
+            val resolvedEntries = if (followed.isNotEmpty()) {
+                // Following shows: they add their new episodes on their own,
+                // without the playlist being touched. A length rule, if the
+                // playlist has one, narrows what they bring.
                 allEpisodes
                     .filter { ep ->
-                        val length = (ep.durationSeconds ?: 0).toLong()
-                        !ep.isDeleted && !ep.isArchived && !ep.isPlayed &&
-                            length > 0L && length > minSeconds && length <= maxSeconds
+                        ep.podcastUuid in followed && !ep.isDeleted && !ep.isArchived &&
+                            !ep.isPlayed && fitsLength(ep)
                     }
                     .sortedByDescending { it.published }
                     .map(::resolve)
-            } else if (pl.shows.isNotEmpty()) {
-                // Following shows: they add their new episodes on their own,
-                // without the playlist being touched.
-                val followed = pl.shows.toSet()
+            } else if (hasLengthRule) {
+                // Length playlists collect short (or long) episodes from every
+                // show, so new ones land in the list on their own.
                 allEpisodes
-                    .filter { it.podcastUuid in followed && !it.isDeleted && !it.isArchived && !it.isPlayed }
+                    .filter { ep ->
+                        !ep.isDeleted && !ep.isArchived && !ep.isPlayed && fitsLength(ep)
+                    }
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else if (pl.folder.isNotBlank()) {

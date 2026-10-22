@@ -77,6 +77,11 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        // The static handle, so that anything outside the service — the
+        // debug control surface, the car app — can reach the same player
+        // rather than a second one.
+        PlaybackService.player = player
+
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(openAppIntent())
             .build()
@@ -110,6 +115,7 @@ class PlaybackService : MediaLibraryService() {
         session?.release()
         session = null
         platformToken = null
+        PlaybackService.player = null
         player.release()
         super.onDestroy()
     }

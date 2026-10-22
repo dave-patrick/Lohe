@@ -56,11 +56,20 @@ import kotlin.math.roundToInt
 /**
  * Wraps the entire app in the local-dev build with a draggable floating "BUG"
  * button that captures a live screenshot + full diagnostic logs for review.
+ *
+ * The button is a dev-build affordance and nothing more: a release build has
+ * no way to collect a bug report, so the button would be a lie there. The
+ * content is drawn either way.
  */
 @Composable
 fun BugReportOverlay(
     content: @Composable () -> Unit,
 ) {
+    if (!com.lohe.app.BuildConfig.DEBUG) {
+        content()
+        return
+    }
+
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
@@ -80,8 +89,12 @@ fun BugReportOverlay(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 38.dp)
+                    // Top right rather than top centre: the centre of the
+                    // header is where the wordmark and its staging mark sit,
+                    // and a pill parked there would cover both. Low enough to
+                    // clear the settings control, which lives in the corner.
+                    .align(Alignment.TopEnd)
+                    .padding(top = 80.dp, end = 8.dp)
                     .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->

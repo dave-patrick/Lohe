@@ -50,6 +50,9 @@ android {
 
     buildFeatures {
         compose = true
+        // The debug control surface checks BuildConfig.DEBUG to decide
+        // whether it may run at all.
+        buildConfig = true
     }
 }
 
@@ -90,6 +93,8 @@ implementation(libs.androidx.compose.foundation)
 
     // Android Automotive OS embedded app surface (CarAppService).
     implementation(libs.androidx.car.app)
+    // The in-vehicle CarAppActivity the head unit launches for templated apps.
+    implementation(libs.androidx.car.app.automotive)
     implementation(libs.androidx.media)
 
     // SAF tree traversal for local folder playback

@@ -158,6 +158,16 @@ fun HomeScreen(
                     )
                 }
             }
+            // The staging mark: which build this is, right beside the word it
+            // belongs to. Null in a release build, which says nothing.
+            rememberStagingMark()?.let { mark ->
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = mark,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.weight(1f))
             // The same control, the same size and the same place as on every
             // other screen.

@@ -51,6 +51,9 @@ class PlaylistRepository(
         initialEpisodes: Collection<String> = emptyList(),
         folder: String = "",
         autoDownload: Boolean = true,
+        shows: Collection<String> = emptyList(),
+        minDurationMinutes: Int = 0,
+        maxDurationMinutes: Int = 0,
     ): UserPlaylist {
         val cleanName = name.trim().ifBlank { "Untitled Playlist" }
         val created = UserPlaylist(
@@ -59,6 +62,9 @@ class PlaylistRepository(
             episodeUuids = initialEpisodes.distinct(),
             folder = folder.trim(),
             autoDownload = autoDownload,
+            shows = shows.distinct(),
+            minDurationMinutes = minDurationMinutes.coerceAtLeast(0),
+            maxDurationMinutes = maxDurationMinutes.coerceAtLeast(0),
         )
         synchronized(lock) {
             val next = _playlists.value + created
@@ -132,6 +138,47 @@ class PlaylistRepository(
         synchronized(lock) {
             val next = _playlists.value.map { pl ->
                 if (pl.id == playlistId) pl.copy(autoDownload = enabled) else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    /**
+     * Points a playlist at a set of shows.
+     *
+     * The playlist then follows those shows: their new episodes join it
+     * without the playlist being touched. A playlist with no shows falls back
+     * to its length rule, its folder, or its own list of episodes.
+     */
+    fun setPlaylistShows(playlistId: String, shows: Collection<String>) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) pl.copy(shows = shows.distinct()) else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    /**
+     * Sets the length rule: episodes longer than [minMinutes] and no longer
+     * than [maxMinutes]. Zero means no bound on that side.
+     *
+     * The rule can stand on its own — every show in the library — or narrow
+     * the shows the playlist already follows.
+     */
+    fun setPlaylistDuration(playlistId: String, minMinutes: Int, maxMinutes: Int) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) {
+                    pl.copy(
+                        minDurationMinutes = minMinutes.coerceAtLeast(0),
+                        maxDurationMinutes = maxMinutes.coerceAtLeast(0),
+                    )
+                } else {
+                    pl
+                }
             }
             _playlists.value = next
             saveToDisk(next)

@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -31,6 +33,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +60,7 @@ import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.playback.Playback
 import com.lohe.app.playback.rememberPlayerConnection
 import com.lohe.app.playback.rememberTransportState
+import com.lohe.app.ui.player.FloatingPlayerControls
 import com.lohe.app.ui.player.NowPlayingBar
 import com.lohe.app.ui.player.PlayerScreen
 import com.lohe.app.ui.theme.Appearance
@@ -290,6 +295,7 @@ fun LoheNavHost(
 
     Scaffold(
         bottomBar = {
+            Box(modifier = Modifier.fillMaxWidth()) {
             Column {
                 val fallbackEntry = inProgress.firstOrNull()
                 // The episode that plays once the current one finishes: the
@@ -383,6 +389,11 @@ fun LoheNavHost(
                         }
                     },
                 )
+                FloatingPlayerControls(
+                    connection = playerConnection,
+                    transport = transport.value,
+                )
+            }
             }
         },
         containerColor = Color.Transparent,

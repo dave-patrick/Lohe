@@ -21,6 +21,15 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes WHERE podcastUuid = :podcastUuid ORDER BY published DESC")
     suspend fun byPodcastOnce(podcastUuid: String): List<EpisodeEntity>
 
+    /**
+     * Every episode, newest first.
+     *
+     * A snapshot rather than a flow: the dev surface asks for the library in
+     * one go and wants it now, not a stream it has to collect from.
+     */
+    @Query("SELECT * FROM episodes ORDER BY published DESC")
+    suspend fun allOnce(): List<EpisodeEntity>
+
     @Query("SELECT * FROM episodes ORDER BY published DESC LIMIT :limit")
     fun observeLatest(limit: Int = 50): Flow<List<EpisodeEntity>>
 
@@ -229,6 +238,43 @@ interface EpisodeDao {
     )
     suspend fun reopenEpisode(uuid: String)
 
+    /**
+     * Sets a resume point without touching the listening total.
+     *
+     * [saveProgress] counts the forward progress as time listened, which is
+     * right for a player and wrong for an import: a resume point copied in
+     * from another app is a position, not something that was heard here.
+     */
+    @Query(
+        """
+        UPDATE episodes
+        SET playedUpToSeconds = :position,
+            playingStatus = 1,
+            durationSeconds = CASE
+                WHEN durationSeconds IS NULL OR durationSeconds = 0 THEN :duration
+                ELSE durationSeconds
+            END
+        WHERE uuid = :uuid
+        """
+    )
+    suspend fun applyProgress(uuid: String, position: Long, duration: Long)
+
+    /**
+     * Puts an episode back to unplayed without erasing the listening total.
+     *
+     * [reopenEpisode] clears `listenedSeconds` too, which is right when the
+     * listener un-marks an episode by hand and wrong for an import, where
+     * the point is that the two apps agree on what has been heard.
+     */
+    @Query(
+        """
+        UPDATE episodes
+        SET playingStatus = 0, playedUpToSeconds = 0
+        WHERE uuid = :uuid
+        """
+    )
+    suspend fun applyUnplayed(uuid: String)
+
     @Query("SELECT playedUpToSeconds FROM episodes WHERE uuid = :uuid")
     suspend fun playedPosition(uuid: String): Long
 
@@ -246,6 +292,16 @@ interface EpisodeDao {
      */
     @Query("UPDATE episodes SET isArchived = :archived WHERE uuid = :uuid")
     suspend fun setArchived(uuid: String, archived: Boolean)
+
+    /**
+     * Files several episodes away, or brings them back, in one statement.
+     *
+     * A repair over tens of thousands of rows cannot be done one write at a
+     * time: the caller splits the list into chunks, because SQLite has a
+     * limit on how many parameters one statement may carry.
+     */
+    @Query("UPDATE episodes SET isDeleted = :deleted WHERE uuid IN (:uuids)")
+    suspend fun setDeletedFor(uuids: List<String>, deleted: Boolean)
 
     @Query("DELETE FROM episodes WHERE podcastUuid = :podcastUuid")
     suspend fun deleteForPodcast(podcastUuid: String)

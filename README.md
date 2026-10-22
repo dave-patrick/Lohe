@@ -76,6 +76,7 @@ data/db/       Room — podcasts, episodes. Schema v4, real migrations
 data/fetch/    FeedParser (RSS + Atom), CatalogSearcher (iTunes), OpmlCodec
 playback/      PlaybackService (MediaSession), PlayerConnection, SleepTimer
 download/      DownloadManager — resumable, per-episode
+dev/           DevApi — the debug control surface: MCP and REST over a socket
 ```
 
 `SubscriptionRepository` takes DAOs and a fetcher, never a `Context`, so the
@@ -98,13 +99,32 @@ without a network. Anything needing Android resolves through `ServiceLocator`.
   `ui/theme/Color.kt`. `res/values/colors.xml` exists only because the window
   background is read before Compose starts.
 
+## The dev surface
+
+The debug build carries a control surface so an agent can drive the app
+without tapping through the UI: it speaks the Model Context Protocol, so the
+library, the playlists, the queue and the player are all reachable as
+tools. It binds the loopback interface inside the app and is reached
+through `adb forward`.
+
+See [`docs/MCP.md`](docs/MCP.md) for the tool list, the setup and the
+OpenCode configuration.
+
+It also reads a Pocket Casts account and brings the library into line with
+it — the same episodes, in the same state, in the same playlists — through
+`tools/pocketcasts-export.py`.
+
+A debug build also wears a staging mark: the version, beside the wordmark on
+the home screen and on the About page. A release build has no mark and no
+BUG button.
+
 ## Tests
 
-199 JVM unit tests, no instrumentation. They cover the parts worth pinning:
+245 JVM unit tests, no instrumentation. They cover the parts worth pinning:
 feed parsing across RSS/Atom, entity decoding, date and duration formats,
 queue and filter ordering, artwork caching and sampling, OPML round-trips,
-download naming and path-traversal safety, sleep-timer deadlines, and the
-repository's failure isolation.
+download naming and path-traversal safety, sleep-timer deadlines, the
+MCP wire format, and the repository's failure isolation.
 
 ```cmd
 ./gradlew testDebugUnitTest
