@@ -77,6 +77,7 @@ data class PocketCastsLibrary(
                     starred = obj.bool("starred") ?: false,
                     downloaded = obj.bool("downloaded") ?: false,
                     notDownloaded = obj.bool("notDownloaded") ?: false,
+                    unplayed = obj.bool("unplayed") ?: false,
                     allPodcasts = obj.bool("allPodcasts") ?: false,
                 )
             }
@@ -186,6 +187,8 @@ data class PcPlaylist(
     val notDownloaded: Boolean = false,
     /** Covers every show in the library rather than a set of them. */
     val allPodcasts: Boolean = false,
+    /** Collects the episodes that have not been played. */
+    val unplayed: Boolean = false,
 ) {
     /**
      * Whether this playlist collects by a rule rather than by a list.

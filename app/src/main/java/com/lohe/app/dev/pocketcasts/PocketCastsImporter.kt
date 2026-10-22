@@ -64,6 +64,48 @@ class PocketCastsImporter(
     }
 
     /**
+     * Works out which Pocket Casts show is which Lohe show.
+     *
+     * The title is the signal that works across both apps: Pocket Casts
+     * knows a podcast by its name, Lohe by its feed. The feed is used when
+     * both have one, as a second opinion.
+     */
+    private suspend fun matchShows(
+        library: PocketCastsLibrary,
+        loheShows: List<PodcastEntity>,
+    ): ShowMatching {
+        val byTitle = loheShows.groupBy { it.title.trim().lowercase() }
+        val byFeed = loheShows
+            .filter { it.feedUrl.isNotBlank() }
+            .associateBy { normaliseFeed(it.feedUrl) }
+
+        val matches = mutableMapOf<String, String>()
+        val unmatched = mutableListOf<String>()
+        var fetched = 0
+
+        library.shows.forEach { show ->
+            val byTitleMatch = byTitle[show.title.trim().lowercase()]?.firstOrNull()
+            val byFeedMatch = show.feedUrl?.let { byFeed[normaliseFeed(it)] }
+            val match = byFeedMatch ?: byTitleMatch
+            if (match != null) {
+                matches[show.uuid] = match.uuid
+                return@forEach
+            }
+            if (subscribeMissingShows && !show.feedUrl.isNullOrBlank()) {
+                val imported = repository.importFeed(show.feedUrl).getOrNull()
+                if (imported != null) {
+                    matches[show.uuid] = imported.uuid
+                    fetched++
+                    return@forEach
+                }
+            }
+            unmatched += show.title
+        }
+
+        return ShowMatching(matches, fetched, unmatched)
+    }
+
+    /**
      * Applies the state of every episode Pocket Casts knows about.
      */
     suspend fun applyEpisodes(library: PocketCastsLibrary): EpisodeReport {
@@ -139,10 +181,8 @@ class PocketCastsImporter(
             // finished with is filed away there. Lohe's own "deleted" means
             // something else — the listener removed it — and there is no
             // Pocket Casts counterpart for that, so it is left alone.
-            if (episode.archived != row.isArchived) {
-                repository.setArchived(row.uuid, episode.archived)
-                if (episode.archived) archived++
-            }
+            repository.setArchived(row.uuid, episode.archived)
+            if (episode.archived) archived++
         }
 
         return EpisodeReport(
@@ -163,7 +203,8 @@ class PocketCastsImporter(
      * is taken out of the queue, and a queue written before that would lose it.
      */
     suspend fun applyPlaylists(library: PocketCastsLibrary): PlaylistReport {
-        val episodeMatches = PocketCastsImportSession.episodeMatches
+        val showMatches = resolveShowMatches(library)
+        val episodeMatches = resolveEpisodeMatches(library, showMatches)
 
         repository.clearAllQueue()
         var queued = 0
@@ -173,8 +214,8 @@ class PocketCastsImporter(
             queued++
         }
 
-        val folders = applyFolders(library, PocketCastsImportSession.showMatches)
-        val written = applyPlaylistRules(library, episodeMatches)
+        val folders = applyFolders(library, showMatches)
+        val written = applyPlaylistRules(library, episodeMatches, showMatches)
 
         return PlaylistReport(
             foldersApplied = folders.applied,
@@ -263,8 +304,50 @@ class PocketCastsImporter(
     }
 
     /**
-     * Applies the whole library in one go, for a library small enough to
-     * arrive in a single request.
+     * Pocket Casts show UUID to Lohe show UUID.
+     *
+     * The session's matches are the better answer when the shows phase has
+     * run: they include the shows that were subscribed on the way. They are
+     * empty when this phase runs on its own, so the titles are matched
+     * directly, which is what the shows phase does anyway.
+     */
+    private suspend fun resolveShowMatches(library: PocketCastsLibrary): Map<String, String> {
+        val matches = PocketCastsImportSession.showMatches.toMutableMap()
+        if (matches.isNotEmpty()) return matches
+        val loheShows = repository.observePodcasts().first()
+        val byTitle = loheShows.associateBy { it.title.trim().lowercase() }
+        library.shows.forEach { show ->
+            byTitle[show.title.trim().lowercase()]?.let { matches[show.uuid] = it.uuid }
+        }
+        return matches
+    }
+
+    /**
+     * Pocket Casts episode UUID to Lohe episode UUID.
+     *
+     * Read from the session when the episodes phase has run; otherwise the
+     * episodes are matched here, by media URL first and by title after that,
+     * so this phase can be run on its own.
+     */
+    private suspend fun resolveEpisodeMatches(
+        library: PocketCastsLibrary,
+        showMatches: Map<String, String>,
+    ): Map<String, String> {
+        val session = PocketCastsImportSession.episodeMatches
+        if (session.isNotEmpty()) return session
+        val rowsByShow = mutableMapOf<String, List<EpisodeEntity>>()
+        val matches = mutableMapOf<String, String>()
+        library.episodes.forEach { episode ->
+            val loheShowUuid = showMatches[episode.podcastUuid] ?: return@forEach
+            val rows = rowsByShow.getOrPut(loheShowUuid) {
+                repository.allEpisodesOnce(loheShowUuid)
+            }
+            matchEpisode(episode, rows)?.let { matches[episode.uuid] = it.uuid }
+        }
+        return matches
+    }
+    /**
+     * Runs every phase in order: shows, episodes, then playlists.
      */
     suspend fun apply(library: PocketCastsLibrary): ImportReport {
         val shows = applyShows(library)
@@ -291,55 +374,6 @@ class PocketCastsImporter(
         )
     }
 
-    /**
-     * Works out which Pocket Casts show is which Lohe show.
-     *
-     * The title is the signal that works across both apps: Pocket Casts
-     * knows a podcast by its name, Lohe by its feed. The feed is used when
-     * both have one, as a second opinion.
-     */
-    private suspend fun matchShows(
-        library: PocketCastsLibrary,
-        loheShows: List<PodcastEntity>,
-    ): ShowMatching {
-        val byTitle = loheShows.groupBy { it.title.trim().lowercase() }
-        val byFeed = loheShows
-            .filter { it.feedUrl.isNotBlank() }
-            .associateBy { normaliseFeed(it.feedUrl) }
-
-        val matches = mutableMapOf<String, String>()
-        val unmatched = mutableListOf<String>()
-        var fetched = 0
-
-        library.shows.forEach { show ->
-            val byTitleMatch = byTitle[show.title.trim().lowercase()]?.firstOrNull()
-            val byFeedMatch = show.feedUrl?.let { byFeed[normaliseFeed(it)] }
-            val match = byFeedMatch ?: byTitleMatch
-            if (match != null) {
-                matches[show.uuid] = match.uuid
-                return@forEach
-            }
-            if (subscribeMissingShows && !show.feedUrl.isNullOrBlank()) {
-                val imported = repository.importFeed(show.feedUrl).getOrNull()
-                if (imported != null) {
-                    matches[show.uuid] = imported.uuid
-                    fetched++
-                    return@forEach
-                }
-            }
-            unmatched += show.title
-        }
-
-        return ShowMatching(matches, fetched, unmatched)
-    }
-
-    /**
-     * The Lohe episode that is the same episode as [episode].
-     *
-     * The media URL is what identifies an episode across two apps; the title
-     * is the fallback for the feeds that serve the same file under a
-     * different name.
-     */
     private fun matchEpisode(episode: PcEpisode, rows: List<EpisodeEntity>): EpisodeEntity? {
         episode.mediaUrl?.let { media ->
             if (media.isNotBlank()) {
@@ -420,6 +454,7 @@ class PocketCastsImporter(
     private fun applyPlaylistRules(
         library: PocketCastsLibrary,
         episodeMatches: Map<String, String>,
+        showMatches: Map<String, String>,
     ): PlaylistResult {
         var applied = 0
         var episodeCount = 0
@@ -433,7 +468,7 @@ class PocketCastsImporter(
                     null
                 }
             }
-            val followed = playlist.podcastUuids.mapNotNull { PocketCastsImportSession.showMatches[it] }
+            val followed = playlist.podcastUuids.mapNotNull { showMatches[it] }
             val explicit = when (playlist.kind) {
                 "state" -> when {
                     playlist.finished -> PocketCastsImportSession.played.toList()
@@ -463,7 +498,11 @@ class PocketCastsImporter(
                     shows = if (playlist.isRule) followed else emptyList(),
                     minDurationMinutes = if (playlist.isRule) playlist.minDurationMinutes else 0,
                     maxDurationMinutes = if (playlist.isRule) playlist.maxDurationMinutes else 0,
-                    finished = playlist.finished,
+                    // Pocket Casts OR-combines finished/unplayed/starred/downloaded/etc.
+                    // showing essentially everything. Lohe can only show played OR
+                    // unplayed. unplayed=false (show unplayed) is the better default
+                    // for a music playlist.
+                    finished = if (playlist.kind == "rule" && playlist.finished && playlist.unplayed) false else playlist.finished,
                 )
             } else {
                 playlists.reorderEpisodes(existing.id, explicit)
@@ -474,7 +513,8 @@ class PocketCastsImporter(
                         playlist.minDurationMinutes,
                         playlist.maxDurationMinutes,
                     )
-                    playlists.setPlaylistFinished(existing.id, playlist.finished)
+                    // Same logic as creation: unplayed is better for music playlists.
+                    playlists.setPlaylistFinished(existing.id, if (playlist.kind == "rule" && playlist.finished && playlist.unplayed) false else playlist.finished)
                 } else {
                     // A fixed list of episodes. The rules that would show
                     // something else entirely are cleared, so the list is
