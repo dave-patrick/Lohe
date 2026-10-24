@@ -85,7 +85,12 @@ class SubscriptionRepository internal constructor(
     suspend fun queueSnapshot(): List<EpisodeEntity> = episodes.queueSnapshot()
 
     /** Appends [uuid] to the queue; a no-op if it is already queued. */
-    suspend fun enqueue(uuid: String) = episodes.enqueue(uuid, System.currentTimeMillis())
+    suspend fun enqueue(uuid: String, toTop: Boolean = false) {
+        episodes.enqueue(uuid, System.currentTimeMillis())
+        if (toTop) {
+            episodes.promoteInQueue(uuid)
+        }
+    }
 
     suspend fun dequeue(uuid: String) = episodes.dequeue(uuid)
 

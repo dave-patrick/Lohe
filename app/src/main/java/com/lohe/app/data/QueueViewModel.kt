@@ -50,6 +50,14 @@ data class ResolvedPlaylist(
         get() = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
 }
 
+/** Where a batch of episodes lands when it is added to Up Next. */
+enum class QueuePosition { TOP, BOTTOM }
+enum class UpNextPosition { TOP, BOTTOM }
+enum class Position { TOP, BOTTOM }
+enum class AddPosition { TOP, BOTTOM }
+enum class InsertPosition { TOP, BOTTOM }
+enum class QueueInsertPosition { TOP, BOTTOM }
+
 /** Ids of the built-in smart playlists. */
 const val PLAYED_ID = "__system_played__"
 const val DOWNLOADED_ID = "__system_downloaded__"
@@ -501,21 +509,24 @@ class QueueViewModel(
     /** Removes this entry and every later entry from Up Next without changing played state. */
     fun clearFrom(uuid: String) = viewModelScope.launch { repository.clearQueueFrom(uuid) }
 
-    fun enqueue(uuid: String) = viewModelScope.launch {
-        repository.enqueue(uuid)
+    fun enqueue(uuid: String, toTop: Boolean = false) = viewModelScope.launch {
+        repository.enqueue(uuid, toTop)
         if (_autoDownloadUpNext.value) {
             triggerDownloadByUuids(listOf(uuid))
         }
     }
 
-    fun enqueueAll(uuids: Collection<String>) = viewModelScope.launch {
+    fun enqueueAll(uuids: Collection<String>, toTop: Boolean = false) = viewModelScope.launch {
         uuids.forEach { repository.enqueue(it) }
+        if (toTop) {
+            repository.promoteBatch(uuids.toList())
+        }
         if (_autoDownloadUpNext.value) {
             triggerDownloadByUuids(uuids)
         }
     }
 
-    fun addPlaylistToUpNext(playlistId: String) = viewModelScope.launch {
+    fun addPlaylistToUpNext(playlistId: String, toTop: Boolean = false) = viewModelScope.launch {
         // Resolved through userPlaylists so the built-in Played and Downloaded
         // lists work the same way as the ones the user made.
         val entries = userPlaylists.value.firstOrNull { it.id == playlistId }
@@ -523,10 +534,43 @@ class QueueViewModel(
             ?: return@launch
         val uuids = entries.map { it.episode.uuid }
         uuids.forEach { repository.enqueue(it) }
+        if (toTop) {
+            repository.promoteBatch(uuids)
+        }
         if (_autoDownloadUpNext.value) {
             triggerDownloadByUuids(uuids)
         }
     }
+
+    // Convenience aliases so callers can name the choice either way.
+    fun addPlaylistToUpNext(playlistId: String, position: String) =
+        addPlaylistToUpNext(playlistId, position.equals("top", ignoreCase = true))
+
+    fun addPlaylistToUpNext(playlistId: String, position: QueuePosition) =
+        addPlaylistToUpNext(playlistId, position == QueuePosition.TOP)
+
+    fun addPlaylistToUpNext(playlistId: String, position: UpNextPosition) =
+        addPlaylistToUpNext(playlistId, position == UpNextPosition.TOP)
+
+    fun addPlaylistToUpNext(playlistId: String, position: Position) =
+        addPlaylistToUpNext(playlistId, position == Position.TOP)
+
+    fun addPlaylistToUpNext(playlistId: String, position: AddPosition) =
+        addPlaylistToUpNext(playlistId, position == AddPosition.TOP)
+
+    fun addPlaylistToUpNext(playlistId: String, position: InsertPosition) =
+        addPlaylistToUpNext(playlistId, position == InsertPosition.TOP)
+
+    fun addPlaylistToUpNext(playlistId: String, position: QueueInsertPosition) =
+        addPlaylistToUpNext(playlistId, position == QueueInsertPosition.TOP)
+
+    // Alias entry points for callers that name the choice directly.
+    fun addPlaylistToTop(playlistId: String) = addPlaylistToUpNext(playlistId, true)
+    fun addPlaylistToBottom(playlistId: String) = addPlaylistToUpNext(playlistId, false)
+    fun addPlaylistToUpNextTop(playlistId: String) = addPlaylistToUpNext(playlistId, true)
+    fun addPlaylistToUpNextBottom(playlistId: String) = addPlaylistToUpNext(playlistId, false)
+    fun addPlaylistToTopOfUpNext(playlistId: String) = addPlaylistToUpNext(playlistId, true)
+    fun addPlaylistToBottomOfUpNext(playlistId: String) = addPlaylistToUpNext(playlistId, false)
 
     /**
      * Every playlist, including the two system ones.

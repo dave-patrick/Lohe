@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
@@ -154,6 +155,7 @@ fun QueueScreen(
 
     var confirmClearAll by remember { mutableStateOf(false) }
     var showAddPlaylistDialog by remember { mutableStateOf(false) }
+    var playlistToAdd by remember { mutableStateOf<ResolvedPlaylist?>(null) }
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
     var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
@@ -583,9 +585,8 @@ fun QueueScreen(
                     userPlaylists.forEach { pl ->
                         GlassCard(
                             onClick = {
-                                viewModel.addPlaylistToUpNext(pl.id)
+                                playlistToAdd = pl
                                 showAddPlaylistDialog = false
-                                onShowMessage("Added \"${pl.name}\" (${pl.entries.size} episodes) to Up Next")
                             },
                             contentPadding = 12.dp,
                         ) {
@@ -606,6 +607,52 @@ fun QueueScreen(
                                 )
                             }
                         }
+                    }
+                }
+            },
+        )
+    }
+
+    playlistToAdd?.let { pl ->
+        LoheDialog(
+            onDismiss = { playlistToAdd = null },
+            title = "Add to Up Next",
+            icon = Icons.AutoMirrored.Filled.QueueMusic,
+            dismissLabel = "Cancel",
+            body = {
+                Text(
+                    text = "Add \"${pl.name}\" (${pl.entries.size} episodes) to the top or bottom of Up Next?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.addPlaylistToUpNext(pl.id, true)
+                            playlistToAdd = null
+                            onShowMessage("Added \"${pl.name}\" to top of Up Next")
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.VerticalAlignTop, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Top")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.addPlaylistToUpNext(pl.id, false)
+                            playlistToAdd = null
+                            onShowMessage("Added \"${pl.name}\" to bottom of Up Next")
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.VerticalAlignBottom, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Bottom")
                     }
                 }
             },
@@ -683,6 +730,7 @@ fun PlaylistsScreen(
     var newPlaylistAutoDl by remember { mutableStateOf(true) }
     var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
+    var playlistToAdd by remember { mutableStateOf<ResolvedPlaylist?>(null) }
 
     /**
      * Episodes picked inside a playlist.
@@ -862,8 +910,7 @@ fun PlaylistsScreen(
                         ) {
                             OutlinedButton(
                                 onClick = {
-                                    viewModel.addPlaylistToUpNext(openedPlaylist.id)
-                                    onShowMessage("Added \"${openedPlaylist.name}\" (${openedPlaylist.entries.size} ep) to Up Next")
+                                    playlistToAdd = openedPlaylist
                                 },
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
@@ -1408,8 +1455,7 @@ fun PlaylistsScreen(
                                 }
                             },
                             onAddToUpNext = {
-                                viewModel.addPlaylistToUpNext(pl.id)
-                                onShowMessage("Added \"${pl.name}\" to Up Next")
+                                playlistToAdd = pl
                             },
                             onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
                             onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
@@ -1482,8 +1528,7 @@ fun PlaylistsScreen(
                                 }
                             },
                             onAddToUpNext = {
-                                viewModel.addPlaylistToUpNext(pl.id)
-                                onShowMessage("Added \"${pl.name}\" to Up Next")
+                                playlistToAdd = pl
                             },
                             onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
                             onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
@@ -1585,6 +1630,52 @@ fun PlaylistsScreen(
                 onShowMessage(msg)
             },
             onDismiss = { addToPlaylistEpisode = null },
+        )
+    }
+
+    playlistToAdd?.let { pl ->
+        LoheDialog(
+            onDismiss = { playlistToAdd = null },
+            title = "Add to Up Next",
+            icon = Icons.AutoMirrored.Filled.QueueMusic,
+            dismissLabel = "Cancel",
+            body = {
+                Text(
+                    text = "Add \"${pl.name}\" (${pl.entries.size} episodes) to the top or bottom of Up Next?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.addPlaylistToUpNext(pl.id, true)
+                            playlistToAdd = null
+                            onShowMessage("Added \"${pl.name}\" to top of Up Next")
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.VerticalAlignTop, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Top")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.addPlaylistToUpNext(pl.id, false)
+                            playlistToAdd = null
+                            onShowMessage("Added \"${pl.name}\" to bottom of Up Next")
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.VerticalAlignBottom, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Bottom")
+                    }
+                }
+            },
         )
     }
 

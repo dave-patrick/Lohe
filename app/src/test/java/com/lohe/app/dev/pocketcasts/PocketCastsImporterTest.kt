@@ -218,6 +218,9 @@ class PocketCastsImporterTest {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(isArchived = archived)
         }
+        override suspend fun archivePlayedIfDue(uuid: String, cutoff: Long): Int = 0
+        override suspend fun archiveCandidates(): List<EpisodeEntity> = emptyList()
+        override suspend fun setDeletedFor(uuids: List<String>, deleted: Boolean) = Unit
 
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
