@@ -32,6 +32,7 @@ import com.lohe.app.ui.player.formatSpeedLabel
 import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.ShowPlaybackOverrides
+import com.lohe.app.ui.theme.ShowPlaybackSettings
 import kotlinx.coroutines.launch
 
 /**
@@ -61,6 +62,8 @@ fun ShowSettingsSheetFor(
         onSetSpeed = { v -> scope.launch { store.setShowPlaybackSpeed(podcastUuid, v) } },
         onSetSmartSpeed = { v -> scope.launch { store.setShowSmartSpeed(podcastUuid, v) } },
         onSetAutoTrim = { v -> scope.launch { store.setShowAutoTrim(podcastUuid, v) } },
+        onSetSkipIntro = { v -> scope.launch { store.setShowSkipIntroSeconds(podcastUuid, v) } },
+        onSetSkipOutro = { v -> scope.launch { store.setShowSkipOutroSeconds(podcastUuid, v) } },
         onReset = { scope.launch { store.clearShowPlaybackSettings(podcastUuid) } },
         onDismiss = onDismiss,
     )
@@ -85,6 +88,8 @@ fun ShowSettingsSheet(
     onSetSpeed: (Float?) -> Unit,
     onSetSmartSpeed: (Boolean?) -> Unit,
     onSetAutoTrim: (Boolean?) -> Unit,
+    onSetSkipIntro: (Int?) -> Unit,
+    onSetSkipOutro: (Int?) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -185,9 +190,32 @@ fun ShowSettingsSheet(
                 onSet = onSetAutoTrim,
             )
 
+            // --- Fixed head and tail cuts ---
+            SkipSecondsChips(
+                title = "Skip first",
+                hint = if (overrides.skipIntroSeconds != null) {
+                    "Set for this show"
+                } else {
+                    "Off — start where the audio starts"
+                },
+                selected = overrides.skipIntroSeconds,
+                onSet = onSetSkipIntro,
+            )
+            SkipSecondsChips(
+                title = "Skip last",
+                hint = if (overrides.skipOutroSeconds != null) {
+                    "Set for this show"
+                } else {
+                    "Off — play to the very end"
+                },
+                selected = overrides.skipOutroSeconds,
+                onSet = onSetSkipOutro,
+            )
+
             if (overrides.volumeBoost != null || overrides.skipSilence != null ||
                 overrides.playbackSpeed != null || overrides.smartSpeed != null ||
-                overrides.autoTrim != null
+                overrides.autoTrim != null || overrides.skipIntroSeconds != null ||
+                overrides.skipOutroSeconds != null
             ) {
                 TextButton(onClick = onReset) {
                     Icon(
@@ -280,4 +308,59 @@ private fun UseGlobalChip(
             selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
         ),
     )
+}
+
+/**
+ * A choice of seconds for the fixed head or tail cut.
+ *
+ * Unlike the other settings there is no global counterpart: cutting the first
+ * minute is a property of one show's intro, not of the listener's taste, so
+ * "Off" means the show has no cut of its own rather than "follow the global".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SkipSecondsChips(
+    title: String,
+    hint: String,
+    selected: Int?,
+    onSet: (Int?) -> Unit,
+) {
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = hint,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            FilterChip(
+                selected = selected == null,
+                onClick = { onSet(null) },
+                label = { Text("Off", maxLines = 1) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+            )
+            ShowPlaybackSettings.SKIP_SECONDS_CHOICES.forEach { seconds ->
+                FilterChip(
+                    selected = selected == seconds,
+                    onClick = { onSet(seconds) },
+                    label = { Text("${seconds}s", maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
+            }
+        }
+    }
 }

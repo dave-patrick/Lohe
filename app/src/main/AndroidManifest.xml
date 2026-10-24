@@ -1,7 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      androidx.car.app:app-automotive declares minSdk 29, because the Android
+      Automotive OS surface it provides only exists from API 29 on. Lohe keeps
+      minSdk 26 for phones: the automotive classes are only ever loaded on a
+      head unit, so the library's floor is overridden rather than raised for
+      the whole app.
+    -->
+    <uses-sdk tools:overrideLibrary="androidx.car.app.automotive" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
       Local folder playback goes through the Storage Access Framework, which
@@ -20,6 +33,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Android Automotive OS / templated media app. -->
+    <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" />
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
+    <uses-feature
+        android:name="android.software.car.templates_host.media"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -29,6 +51,20 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Lohe"
         android:usesCleartextTraffic="true">
+
+        <service
+            android:name=".data.EpisodeArchiveJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" />
+
+        <service
+            android:name=".playback.FloatingPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled draggable playback controls displayed over other apps, including while paused; dismissible through its ongoing notification." />
+        </service>
 
         <activity
             android:name=".MainActivity"
@@ -50,7 +86,80 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
+
+            <!--
+              The head unit browses this service to find the catalogue. When it
+              can render the templated surface instead, the media host starts
+              the car activity below in place of the browser UI. The value is a
+              flattened component name.
+            -->
+            <meta-data
+                android:name="androidx.car.app.media.CalMediaActivityComponent"
+                android:value="com.lohe.app/androidx.car.app.activity.CarAppActivity" />
         </service>
+
+        <!--
+          The launchable Android Automotive OS surface. It is disabled by
+          default so the phone keeps a single Lohe icon in its launcher; the
+          media host enables it when the head unit is ready to render the
+          templated surface.
+
+          Instantiatable is suppressed because lint cannot follow the class
+          hierarchy: the activity extends BaseCarAppActivity, which extends
+          androidx.fragment.app.FragmentActivity, and androidx.fragment is a
+          runtime-scoped dependency of the automotive artifact, so it is not
+          on the compile classpath lint resolves against. The class is public
+          and final with a public no-argument constructor, and it does extend
+          android.app.Activity. The library's own manifest suppresses the same
+          check for the same reason.
+        -->
+        <activity
+            android:name="androidx.car.app.activity.CarAppActivity"
+            android:configChanges="uiMode"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="androidx.car.app.media.action.SHOW_MEDIA_PLAYBACK" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+
+        <!-- Android Automotive OS car app service. -->
+        <service
+            android:name=".playback.CarPlaybackService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MEDIA" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.car.app.minCarApiLevel"
+                android:value="8" />
+        </service>
+
+        <!--
+          The head unit renders media browsing and playback through the
+          MediaLibraryService above; CarPlaybackService adds the templated
+          MediaPlaybackTemplate surface where the car host supports it.
+        -->
+
+        <!-- Android Auto (projection) declaration. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!-- Automotive OS declaration. -->
+        <meta-data
+            android:name="com.android.automotive"
+            android:resource="@xml/automotive_app_desc" />
 
     </application>
 

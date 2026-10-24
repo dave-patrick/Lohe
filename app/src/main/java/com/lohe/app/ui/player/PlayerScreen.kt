@@ -73,11 +73,13 @@ import com.lohe.app.playback.Playback
 import com.lohe.app.playback.PlaybackService
 import com.lohe.app.playback.PlayerConnection
 import com.lohe.app.playback.rememberTransportState
+import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.ui.theme.LoheTheme
+import com.lohe.app.ui.theme.SettingsStore
 import com.lohe.app.ui.theme.artworkBleed
 import com.lohe.app.ui.theme.glassPanel
 import com.lohe.app.ui.image.RemoteImage
@@ -86,6 +88,15 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private val ArtTint = Color(0xFF1E4FD8)
+
+private data class PlayerEpisodeDetails(
+    val episodeId: String,
+    val title: String,
+    val showTitle: String,
+    val artworkUrl: String?,
+    val description: String?,
+    val durationMs: Long?,
+)
 
 /**
  * Player screen.
@@ -107,6 +118,8 @@ fun PlayerScreen(
      */
     connection: PlayerConnection,
     appearance: Appearance,
+    floatingPlayerEnabled: Boolean = false,
+    settingsStore: SettingsStore? = null,
     onShrink: () -> Unit = {},
     onEnded: () -> Unit = {},
     /** Media to play. Null leaves whatever is already loaded alone. */
@@ -146,9 +159,48 @@ fun PlayerScreen(
     var sleepTimerOpen by remember { mutableStateOf(false) }
     var speedSheetOpen by remember { mutableStateOf(false) }
     var notesSheetOpen by remember { mutableStateOf(false) }
+    var activeEpisodeDetails by remember { mutableStateOf<PlayerEpisodeDetails?>(null) }
 
-    val resolvedArtworkUrl = mediaArtworkUrl?.takeIf { it.isNotBlank() }
-        ?: transport.artworkUrl.takeIf { it.isNotBlank() }
+    LaunchedEffect(transport.mediaId) {
+        val episodeId = transport.mediaId.takeIf { it.isNotBlank() }
+        if (episodeId == null) {
+            activeEpisodeDetails = null
+        } else {
+            val repository = ServiceLocator.subscriptionRepository()
+            val episode = repository.episodeOnce(episodeId)
+            val show = episode?.let { repository.getPodcast(it.podcastUuid) }
+            activeEpisodeDetails = episode?.let {
+                PlayerEpisodeDetails(
+                    episodeId = it.uuid,
+                    title = it.title,
+                    showTitle = show?.title.orEmpty(),
+                    artworkUrl = it.artworkUrl?.takeIf(String::isNotBlank)
+                        ?: show?.artworkUrl?.takeIf(String::isNotBlank),
+                    description = it.description,
+                    durationMs = it.durationSeconds?.toLong()?.times(1_000L),
+                )
+            }
+        }
+    }
+
+    val currentEpisodeDetails = activeEpisodeDetails?.takeIf { it.episodeId == transport.mediaId }
+    val metadataMatchesSelection = mediaEpisodeId.isNullOrBlank() ||
+        transport.mediaId.isBlank() || transport.mediaId == mediaEpisodeId
+
+    val resolvedArtworkUrl = if (metadataMatchesSelection) {
+        mediaArtworkUrl?.takeIf { it.isNotBlank() }
+    } else {
+        currentEpisodeDetails?.artworkUrl
+    } ?: transport.artworkUrl.takeIf { it.isNotBlank() }
+    val shownTitle = (if (metadataMatchesSelection) mediaTitle else currentEpisodeDetails?.title)
+        .orEmpty()
+        .ifBlank { transport.title }
+        .ifBlank { stringResource(R.string.player_nothing_queued) }
+    val shownShowTitle = (if (metadataMatchesSelection) mediaShowTitle else currentEpisodeDetails?.showTitle)
+        .orEmpty()
+        .ifBlank { transport.showTitle }
+    val shownDescription = if (metadataMatchesSelection) mediaDescription else currentEpisodeDetails?.description
+    val displayedKnownDurationMs = if (metadataMatchesSelection) knownDurationMs else currentEpisodeDetails?.durationMs
 
     // The timer owns its deadline; this only re-reads the remaining time often
     // enough for the sheet's countdown to move.
@@ -191,13 +243,6 @@ fun PlayerScreen(
         connection.setVolumeBoost(volumeBoostEnabled)
     }
 
-    LaunchedEffect(playbackSpeed) {
-        connection.setPlaybackSpeed(playbackSpeed)
-    }
-
-    val shownTitle = mediaTitle.ifBlank { transport.title }
-        .ifBlank { stringResource(R.string.player_nothing_queued) }
-
     // Swipe down collapses the full player back to the mini Now Playing card.
     var dragged by remember { mutableFloatStateOf(0f) }
     val dragState = rememberDraggableState { delta -> dragged += delta }
@@ -213,6 +258,7 @@ fun PlayerScreen(
                 onDragStarted = { dragged = 0f },
                 onDragStopped = {
                     if (dragged > 80f) onShrink()
+                    else if (dragged < -80f) notesSheetOpen = true
                 },
             ),
     ) {
@@ -226,6 +272,9 @@ fun PlayerScreen(
                 onShrink = onShrink,
                 onOpenSleepTimer = { sleepTimerOpen = true },
                 onOpenNotes = { notesSheetOpen = true },
+                floatingPlayerEnabled = floatingPlayerEnabled,
+                isPlaying = transport.isPlaying,
+                settingsStore = settingsStore,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 6.dp),
@@ -248,7 +297,7 @@ fun PlayerScreen(
             EpisodeTitle(
                 isLight = appearance == Appearance.LIGHT,
                 title = shownTitle,
-                showTitle = mediaShowTitle.ifBlank { transport.showTitle },
+                showTitle = shownShowTitle,
                 onClick = { notesSheetOpen = true },
             )
 
@@ -260,7 +309,7 @@ fun PlayerScreen(
                 // The player's own duration wins once it exists; the feed's
                 // length stands in until then.
                 durationMs = transport.durationMs.takeIf { it > 0L }
-                    ?: knownDurationMs
+                    ?: displayedKnownDurationMs
                     ?: 0L,
                 playbackSpeed = playbackSpeed,
                 onSeek = connection::seekToFraction,
@@ -320,7 +369,7 @@ fun PlayerScreen(
             title = shownTitle,
             showTitle = mediaShowTitle.ifBlank { transport.showTitle },
             artworkUrl = resolvedArtworkUrl,
-            description = mediaDescription,
+            description = shownDescription,
             durationSeconds = totalDurSecs.takeIf { it > 0 },
             onDismiss = { notesSheetOpen = false },
         )
@@ -331,6 +380,9 @@ private fun HeaderRow(
     onShrink: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenNotes: () -> Unit,
+    floatingPlayerEnabled: Boolean,
+    isPlaying: Boolean,
+    settingsStore: SettingsStore?,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -364,6 +416,15 @@ private fun HeaderRow(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            settingsStore?.let {
+                FloatingPlayerToggleButton(
+                    enabled = floatingPlayerEnabled,
+                    isPlaying = isPlaying,
+                    settingsStore = it,
+                    modifier = Modifier.size(40.dp),
+                )
+            }
+
             IconButton(
                 onClick = onOpenNotes,
                 modifier = Modifier.size(40.dp),

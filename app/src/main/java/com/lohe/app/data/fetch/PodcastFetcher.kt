@@ -89,6 +89,7 @@ class RssPodcastFetcher(
                     archived != null -> ep.copy(listenedSeconds = archived.listenedSeconds)
                     old != null -> ep.copy(
                         playingStatus = old.playingStatus,
+                        playedAt = old.playedAt,
                         playedUpToSeconds = old.playedUpToSeconds,
                         listenedSeconds = old.listenedSeconds,
                         starred = old.starred,
@@ -97,6 +98,10 @@ class RssPodcastFetcher(
                         localPath = old.localPath,
                         downloadState = old.downloadState,
                         isDeleted = old.isDeleted,
+                        // Archived is the listener filing an episode away.
+                        // Dropping it here un-archived the whole back catalogue
+                        // on every refresh.
+                        isArchived = old.isArchived,
                     )
                     else -> ep
                 }

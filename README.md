@@ -57,6 +57,14 @@ when the phone sleeps or moves off the network.
 
 ## Architecture
 
+The Settings gear has a shared top-right anchor across tabs. Settings opens a clickable category index: Appearance, Playback, Floating player, Archiving, Downloads, and About. Each category opens its own page with a fixed Back/title header; Back returns to the index without changing preferences.
+
+Settings → Floating player offers optional blue playback controls over other apps. Enable Display over other apps when prompted; no accessibility service is needed. Drag any button to reposition, hold play/pause to expand, and tap the chevron to collapse to play/pause only. Choose Small, Medium, Large, or Extra large controls and 0–75% transparency; both apply live and persist. Position and collapsed state persist; rewind/forward follow playback settings. The ongoing notification can hide controls without stopping audio. Battery optimization setup is optional, and the overlay is off by default. It resumes when Lohe is opened with the option enabled; it does not auto-enable at boot or restart itself after a force-stop. The onboarding wizard is tracked in `docs/TODO.md`.
+
+In Playlists grid view, choose Manual sorting and drag the grip on a card's artwork to change its saved order. Dragging near the top or bottom scrolls the grid. Folder-filtered reordering preserves the positions of other playlists. Episode-count numerals beneath grid artwork are bold electric blue.
+
+Settings → Archiving controls automatic archiving after marking played: Off, Immediately, 1 hour, 24 hours (default), or 7 days. Played episodes leave explicit playlists immediately. A dedicated completion timestamp starts the delay; repeated marks and feed refreshes do not reset it, and reopening an episode cancels its eligibility. Archiving removes the downloaded copy and cancels any in-flight download while retaining episode metadata and listening history. Cleanup retries failures and runs through a persisted Android background job; battery restrictions can delay execution beyond the selected time, never shorten it. Migration gives existing played-but-unarchived episodes a fresh delay rather than guessing their completion date.
+
 ```
 MainActivity ── appearance (DataStore) ──► LoheTheme
                                             │
@@ -76,6 +84,7 @@ data/db/       Room — podcasts, episodes. Schema v4, real migrations
 data/fetch/    FeedParser (RSS + Atom), CatalogSearcher (iTunes), OpmlCodec
 playback/      PlaybackService (MediaSession), PlayerConnection, SleepTimer
 download/      DownloadManager — resumable, per-episode
+dev/           DevApi — the debug control surface: MCP and REST over a socket
 ```
 
 `SubscriptionRepository` takes DAOs and a fetcher, never a `Context`, so the
@@ -98,13 +107,40 @@ without a network. Anything needing Android resolves through `ServiceLocator`.
   `ui/theme/Color.kt`. `res/values/colors.xml` exists only because the window
   background is read before Compose starts.
 
+## The dev surface
+
+The debug build carries a control surface so an agent can drive the app
+without tapping through the UI: it speaks the Model Context Protocol, so the
+library, the playlists, the queue and the player are all reachable as
+tools. It binds the loopback interface inside the app and is reached
+through `adb forward`.
+
+See [`docs/MCP.md`](docs/MCP.md) for the tool list, the setup and the
+OpenCode configuration.
+
+It also reads a Pocket Casts account and brings the library into line with
+it — the same episodes, in the same state, in the same playlists — through
+`tools/pocketcasts-export.py`.
+
+A debug build also wears a staging mark: the version, beside the wordmark on
+the home screen and on the About page. A release build has no mark and no
+BUG button.
+
+One-time library mirrors can use snapshot playlists. These retain their
+explicit order while excluding archived episodes and honoring the played-state
+filter. Completed episodes are archived and removed from playlists; reopening
+an episode returns it to unplayed and removes its archive flag. The optional eleventh playlist TSV column enables
+snapshot behavior; older playlist files remain supported. Room schema 10 also
+allows a show to be retained as an unsubscribed archive without deleting its
+episodes or listening history. No recurring synchronization is enabled.
+
 ## Tests
 
-199 JVM unit tests, no instrumentation. They cover the parts worth pinning:
+245 JVM unit tests, no instrumentation. They cover the parts worth pinning:
 feed parsing across RSS/Atom, entity decoding, date and duration formats,
 queue and filter ordering, artwork caching and sampling, OPML round-trips,
-download naming and path-traversal safety, sleep-timer deadlines, and the
-repository's failure isolation.
+download naming and path-traversal safety, sleep-timer deadlines, the
+MCP wire format, and the repository's failure isolation.
 
 ```cmd
 ./gradlew testDebugUnitTest

@@ -1,12 +1,14 @@
 package com.lohe.app.ui.navigation
 
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -15,8 +17,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.withFrameNanos
 import com.lohe.app.R
 
 /**
@@ -80,6 +84,27 @@ class DragReorderState internal constructor(
         draggedOffset = 0f
         onDrop()
     }
+
+    suspend fun autoScrollAtEdges(edgeSize: Float) {
+        while (isDragging) {
+            withFrameNanos { }
+            val info = listState.layoutInfo
+            val index = draggedIndex ?: break
+            val dragged = info.visibleItemsInfo.firstOrNull { it.index == index } ?: continue
+            val center = dragged.offset + draggedOffset + dragged.size / 2f
+            val distance = when {
+                center < info.viewportStartOffset + edgeSize ->
+                    -((info.viewportStartOffset + edgeSize - center) / edgeSize * 18f).coerceAtMost(18f)
+                center > info.viewportEndOffset - edgeSize ->
+                    ((center - (info.viewportEndOffset - edgeSize)) / edgeSize * 18f).coerceAtMost(18f)
+                else -> 0f
+            }
+            if (distance != 0f) {
+                listState.scrollBy(distance)
+                draggedOffset += distance
+            }
+        }
+    }
 }
 
 @Composable
@@ -87,8 +112,11 @@ internal fun rememberDragReorderState(
     listState: LazyListState,
     onMove: (from: Int, to: Int) -> Unit,
     onDrop: () -> Unit = {},
-): DragReorderState = remember(listState) {
-    DragReorderState(listState, onMove, onDrop)
+): DragReorderState {
+    val state = remember(listState) { DragReorderState(listState, onMove, onDrop) }
+    val edgeSize = with(LocalDensity.current) { 64.dp.toPx() }
+    LaunchedEffect(state.draggedIndex) { state.autoScrollAtEdges(edgeSize) }
+    return state
 }
 
 /**
@@ -120,7 +148,7 @@ internal fun DragHandle(
         },
         modifier = modifier
             .pointerInput(key) {
-                detectDragGestures(
+                detectDragGesturesAfterLongPress(
                     onDragStart = { state.onDragStart(currentIndex) },
                     onDrag = { change, amount ->
                         change.consume()

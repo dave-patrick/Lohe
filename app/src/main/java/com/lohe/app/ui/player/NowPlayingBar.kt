@@ -3,14 +3,16 @@ package com.lohe.app.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -18,13 +20,15 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -36,7 +40,6 @@ import com.lohe.app.playback.PlayerConnection
 import com.lohe.app.playback.TransportState
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
-import com.lohe.app.ui.theme.LoheAccent
 import com.lohe.app.ui.theme.artworkBleed
 
 /**
@@ -80,13 +83,27 @@ fun NowPlayingBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .shadow(
+                elevation = 20.dp,
+                shape = shape,
+                ambientColor = ElectricBlue.copy(alpha = 0.66f),
+                spotColor = ElectricBlue.copy(alpha = 0.88f),
+            )
             .clip(shape)
-            .background(LoheAccent.glassFill)
+            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(ElectricBlue.copy(alpha = 0.14f), Color.Transparent, ElectricBlue.copy(alpha = 0.05f)),
+                ),
+            )
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
-                    listOf(LoheAccent.glassBorder, Color.Transparent),
+                    listOf(
+                        ElectricBlue.copy(alpha = 0.78f),
+                        ElectricBlue.copy(alpha = 0.38f),
+                    ),
                 ),
                 shape = shape,
             )
@@ -95,6 +112,7 @@ fun NowPlayingBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 64.dp)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -109,7 +127,7 @@ fun NowPlayingBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 10.dp),
             ) {
                 Text(
                     text = shownTitle.ifBlank {
@@ -152,24 +170,39 @@ fun NowPlayingBar(
                         onPlayFallback?.invoke() ?: onOpenPlayer()
                     }
                 },
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier
+                    .size(40.dp),
             ) {
-                Icon(
-                    imageVector = if (transport.isPlaying) {
-                        Icons.Filled.Pause
-                    } else {
-                        Icons.Filled.PlayArrow
-                    },
-                    contentDescription = stringResource(R.string.player_now_playing),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                Box(
+                    modifier = Modifier
+                        .size(27.dp)
+                        .shadow(
+                            elevation = 7.dp,
+                            shape = CircleShape,
+                            ambientColor = ElectricBlue.copy(alpha = 0.58f),
+                            spotColor = ElectricBlue.copy(alpha = 0.82f),
+                        )
+                        .background(
+                            brush = Brush.verticalGradient(
+                                listOf(Color(0xFF68C9FF), ElectricBlue, Color(0xFF1742A5)),
+                            ),
+                            shape = CircleShape,
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.68f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (transport.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(R.string.player_now_playing),
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
-
-            Spacer(Modifier.width(2.dp))
 
             IconButton(
                 onClick = onOpenPlayer,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(36.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowUp,
@@ -179,16 +212,18 @@ fun NowPlayingBar(
             }
         }
 
-        // The progress line lives along the bottom edge of the bar. At the top
-        // it was clipped by the rounded corners and read as a stray blue mark
-        // in the corner rather than as a progress bar.
-        LinearProgressIndicator(
-            progress = { shownProgress.coerceIn(0f, 1f) },
-            color = ElectricBlue,
-            trackColor = Color.Transparent,
+        // The progress line lives along the bottom edge of the bar.
+        Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.dp),
-        )
+                .height(6.dp),
+        ) {
+            val barHeight = size.height
+            drawRoundRect(
+                color = ElectricBlue,
+                size = Size(size.width * shownProgress.coerceIn(0f, 1f), barHeight),
+                cornerRadius = CornerRadius(barHeight / 2f),
+            )
+        }
     }
 }

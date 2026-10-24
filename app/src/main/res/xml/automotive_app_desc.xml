@@ -1,0 +1,6 @@
+<automotiveApp>
+    <!-- Media browsing and playback, served by PlaybackService. -->
+    <uses name="media"/>
+    <!-- Templated UI (MediaPlaybackTemplate) from CarPlaybackService. -->
+    <uses name="template"/>
+</automotiveApp>

@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
@@ -20,6 +21,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.lohe.app.MainActivity
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.theme.ShowPlaybackSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -75,14 +77,24 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        // The static handle, so that anything outside the service — the
+        // debug control surface, the car app — can reach the same player
+        // rather than a second one.
+        PlaybackService.player = player
+
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(openAppIntent())
             .build()
+
+        // Expose the platform token so the Android Automotive OS car app can
+        // register media playback with its MediaPlaybackManager.
+        platformToken = session?.platformToken
 
         player.addListener(EndOfEpisodeWatcher())
         startVolumeBoostObserver()
         startSleepTimerPolling()
         startProgressReporting()
+        startOutroSkipping()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -102,6 +114,8 @@ class PlaybackService : MediaLibraryService() {
         loudnessEnhancer = null
         session?.release()
         session = null
+        platformToken = null
+        PlaybackService.player = null
         player.release()
         super.onDestroy()
     }
@@ -231,6 +245,17 @@ class PlaybackService : MediaLibraryService() {
         private var resumedForMediaId: String? = null
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            val stateName = when (playbackState) {
+                Player.STATE_IDLE -> "IDLE"
+                Player.STATE_BUFFERING -> "BUFFERING"
+                Player.STATE_READY -> "READY"
+                Player.STATE_ENDED -> "ENDED"
+                else -> "UNKNOWN($playbackState)"
+            }
+            val summary = "state=$stateName playWhenReady=${player.playWhenReady} mediaId=${player.currentMediaItem?.mediaId} pos=${player.currentPosition}ms dur=${player.duration}ms"
+            DevDiagnostics.playbackStateSummary = summary
+            DevDiagnostics.log("EXOPLAYER", summary)
+
             if (playbackState == Player.STATE_READY) {
                 applyVolumeBoost(Playback.volumeBoost.value)
             }
@@ -250,6 +275,12 @@ class PlaybackService : MediaLibraryService() {
 
             markCurrentPlayed()
             advanceQueue()
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            val summary = "ERROR code=${error.errorCodeName} mediaId=${player.currentMediaItem?.mediaId} msg=${error.message}"
+            DevDiagnostics.playbackStateSummary = summary
+            DevDiagnostics.log("EXOPLAYER_ERR", summary, error)
         }
 
         private fun markCurrentPlayed() {
@@ -298,7 +329,7 @@ class PlaybackService : MediaLibraryService() {
                         ),
                     )
                     applyShowSettings(next.podcastUuid)
-                    onEpisodeStarted(next.uuid)
+                    applyCrossfade(next.uuid)
                     player.prepare()
                     player.play()
                 }
@@ -325,18 +356,39 @@ class PlaybackService : MediaLibraryService() {
             scope.launch(Dispatchers.IO) {
                 val repository = runCatching { ServiceLocator.subscriptionRepository() }
                     .getOrNull() ?: return@launch
-                val seconds = runCatching { repository.playedPosition(mediaId) }
+                val saved = runCatching { repository.playedPosition(mediaId) }
                     .getOrDefault(0L)
-                if (seconds <= 0L) return@launch
 
                 val intoTail = durationMs > 0L &&
-                    durationMs / 1_000L - seconds < PLAYED_TAIL_SECONDS
-                if (intoTail) return@launch
+                    durationMs / 1_000L - saved < PLAYED_TAIL_SECONDS
+                val resumeSeconds = if (saved <= 0L || intoTail) 0L else saved
+
+                // Settings hang off the show, not the episode. Asking for the
+                // episode uuid found nothing, so every per-show setting — trim
+                // included — was silently falling back to the defaults.
+                val showUuid = runCatching { repository.podcastUuidFor(mediaId) }
+                    .getOrNull()
 
                 withContext(Dispatchers.Main) {
-                    player.seekTo(seconds * 1_000L)
-                    applyShowSettings(mediaId)
-                    onEpisodeStarted(mediaId)
+                    if (showUuid != null) {
+                        applyShowSettings(showUuid)
+                    } else {
+                        // No show to ask, so nothing may carry over from the
+                        // previous episode's settings.
+                        _currentAutoTrim = false
+                        _currentSkipIntroMs = 0L
+                        _currentSkipOutroMs = 0L
+                    }
+
+                    // A saved position inside this show's intro is no use: the
+                    // listener was still in the bit the show asks to skip, so
+                    // start from the top and let the head cut do its work.
+                    val insideIntro = _currentSkipIntroMs > 0L &&
+                        resumeSeconds * 1_000L < _currentSkipIntroMs
+                    if (resumeSeconds > 0L && !insideIntro) {
+                        player.seekTo(resumeSeconds * 1_000L)
+                    }
+                    onEpisodeStarted(mediaId, startingAtTheTop = resumeSeconds <= 0L || insideIntro)
                 }
             }
         }
@@ -418,6 +470,39 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Cuts the last few seconds off an episode when the show asks for it.
+     *
+     * Outros are a fixed property of a show — a credits roll, a sponsor read —
+     * so this is a plain countdown rather than a scan: when the playhead is
+     * within [_currentSkipOutroMs] of the end, the episode is finished. The
+     * end-of-episode listener then marks it played and moves the queue on, so
+     * the cut lands in exactly the same place as a natural ending.
+     *
+     * Polled at half-second resolution: checking once per progress save (five
+     * seconds) would overshoot a short outro on a fast playback speed.
+     */
+    private fun startOutroSkipping() {
+        scope.launch {
+            while (isActive) {
+                val outroMs = _currentSkipOutroMs
+                if (outroMs > 0 && player.isPlaying) {
+                    val duration = player.duration
+                    if (duration > outroMs && duration - player.currentPosition <= outroMs) {
+                        player.seekTo(duration)
+                    }
+                }
+                delay(500)
+            }
+        }
+    }
+
+    /** Currently active per-show head cut (ms), set from per-show settings. */
+    private var _currentSkipIntroMs = 0L
+
+    /** Currently active per-show tail cut (ms), set from per-show settings. */
+    private var _currentSkipOutroMs = 0L
+
     private fun persistProgress(positionMs: Long, durationMs: Long) {
         val episodeId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
         val durationSeconds = durationMs.takeIf { it > 0L }?.div(1_000L) ?: 0L
@@ -448,6 +533,14 @@ class PlaybackService : MediaLibraryService() {
          */
         const val VOLUME_BOOST_MILLIBELS = 500
         const val VOLUME_BOOST_GAIN = 1.8f
+
+        /** The ExoPlayer, exposed so the Android Automotive OS car app can drive it. */
+        var player: ExoPlayer? = null
+            private set
+
+        /** The platform token, exposed so the car app can register playback. */
+        var platformToken: android.media.session.MediaSession.Token? = null
+            private set
 
         /**
          * Builds an item for [episodeUuid].
@@ -484,6 +577,12 @@ class PlaybackService : MediaLibraryService() {
 
         /** Never auto-skip the final few seconds; treat the tail as played. */
         const val PLAYED_TAIL_SECONDS = 10L
+
+        /**
+         * Episodes shorter than this are left alone: the head scan alone would
+         * eat a noticeable share of them.
+         */
+        private const val TRIM_MIN_DURATION_MS = 60_000L
     }
 
     /**
@@ -512,6 +611,8 @@ class PlaybackService : MediaLibraryService() {
         _currentCrossfadeMs = settings.crossfadeMs
         _currentAutoTrim = settings.autoTrim
         _currentSmartSpeed = settings.smartSpeed
+        _currentSkipIntroMs = settings.skipIntroSeconds * 1_000L
+        _currentSkipOutroMs = settings.skipOutroSeconds * 1_000L
     }
 
     /** Currently active crossfade duration (ms), set from per-show settings. */
@@ -546,24 +647,60 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * Auto-trim: seeks past leading silence if configured.
-     * Called when a new episode starts playing.
+     * Auto-trim: drops the dead air at the top of an episode that starts from
+     * the beginning.
+     *
+     * The head is measured, not assumed. Trimming means skipping the silence
+     * before the talking starts, which differs from show to show and is often
+     * only a second or two; a flat thirty-second cut chopped real content
+     * whenever the cold open was short. [SilenceScanner] decodes the opening
+     * and reports where the speech begins.
+     *
+     * It only makes sense to cut the head off a fresh start. Running it on a
+     * resume threw the listener past wherever they had left off, which is why
+     * it looked like trimming "did not work at the beginning": the only path
+     * that reached it was the resume path.
      */
-    private fun applyAutoTrim(episodeUuid: String) {
-        if (!_currentAutoTrim) return
-        val duration = player.duration
-        if (duration > 60_000L) {
-            // Skip first 30 seconds if the episode is longer than 1 minute
-            player.seekTo(30_000L)
+    private fun applyAutoTrim(startingAtTheTop: Boolean) {
+        if (!startingAtTheTop) return
+        val introMs = _currentSkipIntroMs
+        val scanForSilence = _currentAutoTrim
+        if (!scanForSilence && introMs <= 0L) return
+
+        val item = player.currentMediaItem ?: return
+        val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
+        val uri = item.localConfiguration?.uri?.toString() ?: return
+        // A clip barely longer than the scan has nothing worth cutting.
+        val durationMs = player.duration
+        if (durationMs in 1..TRIM_MIN_DURATION_MS) return
+
+        scope.launch {
+            val silenceMs = if (scanForSilence) {
+                SilenceScanner.leadingSilenceMs(this@PlaybackService, mediaId, uri) ?: 0L
+            } else {
+                0L
+            }
+            // A show with a fixed intro asks for at least that much; the scan
+            // can only push the start later, never earlier.
+            val targetMs = maxOf(silenceMs, introMs)
+            if (targetMs <= 0L) return@launch
+
+            withContext(Dispatchers.Main) {
+                // The listener may have moved on, or scrubbed ahead while the
+                // scan was running. Their position wins over the trim.
+                if (player.currentMediaItem?.mediaId != mediaId) return@withContext
+                if (player.currentPosition >= targetMs) return@withContext
+                player.seekTo(targetMs)
+            }
         }
     }
 
     /**
-     * Called when a new episode starts playing. Applies crossfade and
-     * auto-trim if configured.
+     * Called when a new episode starts playing. Applies crossfade, and the
+     * auto-trim when the episode is starting from the beginning.
      */
-    private fun onEpisodeStarted(episodeUuid: String) {
+    private fun onEpisodeStarted(episodeUuid: String, startingAtTheTop: Boolean = false) {
         applyCrossfade(episodeUuid)
-        applyAutoTrim(episodeUuid)
+        applyAutoTrim(startingAtTheTop)
     }
 }

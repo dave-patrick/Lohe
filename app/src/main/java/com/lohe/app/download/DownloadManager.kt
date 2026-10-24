@@ -5,7 +5,12 @@ import com.lohe.app.LOHE_USER_AGENT
 import com.lohe.app.data.SubscriptionRepository
 import com.lohe.app.data.db.entity.DownloadState
 import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.dev.DevDiagnostics
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,9 +19,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Call
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -39,20 +46,34 @@ class DownloadManager(
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + job)
+    private val transfers = ConcurrentHashMap<String, Job>()
+    private val calls = ConcurrentHashMap<String, Call>()
 
     /** Downloaded episodes, newest first. */
     fun downloads() = repository.observeDownloads()
 
     fun start(episode: EpisodeSummary) {
-        scope.launch {
+        if (episode.isArchived) return
+        val transfer = scope.launch(start = CoroutineStart.LAZY) {
             runDownload(episode)
         }
+        if (transfers.putIfAbsent(episode.uuid, transfer) != null) {
+            transfer.cancel()
+            return
+        }
+        transfer.invokeOnCompletion { transfers.remove(episode.uuid, transfer) }
+        transfer.start()
     }
 
     /** Removes the file and forgets the episode. */
     suspend fun delete(episode: EpisodeSummary) = withContext(io) {
-        episode.localPath?.let { path ->
-            runCatching { File(path).delete() }
+        calls.remove(episode.uuid)?.cancel()
+        transfers[episode.uuid]?.cancelAndJoin()
+        val current = repository.episodeOnce(episode.uuid)
+        val target = File(episodeDir(), fileNameFor(episode))
+        val files = listOfNotNull(episode.localPath?.let(::File), current?.localPath?.let(::File), target, File(target.absolutePath + PART_SUFFIX))
+        files.distinctBy { it.absolutePath }.forEach { file ->
+            if (file.exists() && !file.delete()) throw IOException("Could not delete downloaded copy: ${file.name}")
         }
         repository.clearDownload(episode.uuid)
     }
@@ -99,7 +120,9 @@ class DownloadManager(
 
     private suspend fun runDownload(episode: EpisodeSummary) {
         if (episode.isDownloaded || episode.isDownloading) return
+        if (repository.episodeOnce(episode.uuid)?.isArchived != false) return
 
+        DevDiagnostics.log("DOWNLOAD", "Start uuid=${episode.uuid} title=${episode.title} url=${episode.audioUrl}")
         repository.setDownloadState(episode.uuid, DownloadState.RUNNING, null)
         val target = File(episodeDir(), fileNameFor(episode))
         val partial = File(target.absolutePath + PART_SUFFIX)
@@ -113,7 +136,11 @@ class DownloadManager(
                     .header("User-Agent", LOHE_USER_AGENT)
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                val call = client.newCall(request)
+                calls[episode.uuid] = call
+                coroutineContext.ensureActive()
+                call.execute().use { response ->
+                    DevDiagnostics.log("DOWNLOAD", "HTTP ${response.code} for uuid=${episode.uuid} contentLength=${response.body?.contentLength()}")
                     if (!response.isSuccessful) {
                         throw IOException("HTTP ${response.code}")
                     }
@@ -142,14 +169,25 @@ class DownloadManager(
                 if (!partial.renameTo(target)) throw IOException("could not finalise download")
             }
 
+            DevDiagnostics.log("DOWNLOAD", "Done uuid=${episode.uuid} bytes=${target.length()} path=${target.absolutePath}")
+            if (repository.episodeOnce(episode.uuid)?.isArchived != false) {
+                withContext(io) { if (target.exists() && !target.delete()) throw IOException("Could not remove archived download") }
+                repository.clearDownload(episode.uuid)
+                return
+            }
             repository.setDownloadState(
                 episode.uuid,
                 DownloadState.DONE,
                 target.absolutePath,
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
+            DevDiagnostics.log("DOWNLOAD_ERR", "Failed uuid=${episode.uuid} url=${episode.audioUrl}: ${e.message}", e)
             withContext(io) { runCatching { partial.delete() } }
             repository.setDownloadState(episode.uuid, DownloadState.FAILED, null)
+        } finally {
+            calls.remove(episode.uuid)
         }
     }
 

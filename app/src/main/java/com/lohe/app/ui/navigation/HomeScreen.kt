@@ -32,11 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DownloadDone
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -64,8 +62,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,14 +127,16 @@ fun HomeScreen(
                 .fillMaxWidth()
                 // The band around the wordmark and the settings control. The
                 // padding below them is what centres them in the header
-                // instead of leaving them sitting on its bottom edge.
-                .padding(top = 20.dp, bottom = 20.dp),
+                // instead of leaving them sitting on its bottom edge. It is
+                // tighter than it was so the mark, not the empty band, is the
+                // header's weight.
+                .padding(top = 14.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isLight) {
                 Text(
                     text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             } else {
@@ -142,8 +146,8 @@ fun HomeScreen(
                 // same centreline as the settings control beside it.
                 Box(
                     modifier = Modifier
-                        .height(24.dp)
-                        .width(140.dp),
+                        .height(37.5.dp)
+                        .width(218.75.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
@@ -152,14 +156,24 @@ fun HomeScreen(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxSize()
-                            .offset(y = (-3.4).dp),
+                            .offset(y = (-5.3125).dp),
                     )
                 }
+            }
+            // The staging mark: which build this is, right beside the word it
+            // belongs to. Null in a release build, which says nothing.
+            rememberStagingMark()?.let { mark ->
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = mark,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.weight(1f))
             // The same control, the same size and the same place as on every
             // other screen.
-            HeaderSettingsButton(onClick = onOpenSettings)
+            HeaderSettingsSpacer()
         }
 
         if (!stats.isLoaded) {
@@ -188,8 +202,6 @@ fun HomeScreen(
             item {
                 KaniHero(
                     stats = stats,
-                    onOpenDiscover = onOpenDiscover,
-                    onOpenLibrary = onOpenLibrary,
                 )
             }
             item {
@@ -1114,8 +1126,6 @@ private fun ContinueCard(
 @Composable
 private fun KaniHero(
     stats: HomeDashboardStats,
-    onOpenDiscover: () -> Unit,
-    onOpenLibrary: () -> Unit,
 ) {
     // Kani, integrated rather than standing alone.
     //
@@ -1123,17 +1133,19 @@ private fun KaniHero(
     // the dashboard off the fold. Here the mascot is small and sits beside a
     // live line about the library, so it reads as the character reporting in
     // rather than a picture parked above the content.
-    val statusLine = when {
-        stats.totalEpisodes == 0 -> stringResource(R.string.home_kani_body)
-        stats.inProgressCount > 0 -> stringResource(
-            R.string.home_kani_in_progress,
+    val statusLine: AnnotatedString = when {
+        stats.totalEpisodes == 0 -> buildAnnotatedString {
+            append(stringResource(R.string.home_kani_body).toString())
+        }
+        stats.inProgressCount > 0 -> episodeCountStatus(
+            stringResource(R.string.home_kani_in_progress, stats.inProgressCount).toString(),
             stats.inProgressCount,
         )
-        stats.playedEpisodesCount > 0 -> stringResource(
-            R.string.home_kani_played,
+        stats.playedEpisodesCount > 0 -> episodeCountStatus(
+            stringResource(R.string.home_kani_played, stats.playedEpisodesCount).toString(),
             stats.playedEpisodesCount,
         )
-        else -> stringResource(R.string.home_kani_body)
+        else -> buildAnnotatedString { append(stringResource(R.string.home_kani_body).toString()) }
     }
 
     GlassCard(contentPadding = 12.dp) {
@@ -1151,20 +1163,14 @@ private fun KaniHero(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // The meter leads the line: an on-air indicator belongs in
-                    // front of the name, not floating off on its own.
-                    SignalBars()
-                    Spacer(Modifier.width(9.dp))
-                    Text(
-                        text = stringResource(R.string.home_kani_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.home_kani_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     text = statusLine,
                     style = MaterialTheme.typography.bodySmall,
@@ -1174,31 +1180,21 @@ private fun KaniHero(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(
-                    onClick = onOpenDiscover,
-                    modifier = Modifier.size(34.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.RssFeed,
-                        contentDescription = stringResource(R.string.home_cta_discover),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(
-                    onClick = onOpenLibrary,
-                    modifier = Modifier.size(34.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.FolderOpen,
-                        contentDescription = stringResource(R.string.home_cta_import),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
+            SignalBars(height = 36.dp, barWidth = 6.dp, spacing = 4.dp)
         }
+    }
+}
+
+@Composable
+private fun episodeCountStatus(status: String, count: Int) = buildAnnotatedString {
+    val countText = count.toString()
+    val countStart = status.indexOf(countText)
+    if (countStart < 0) {
+        append(status)
+    } else {
+        append(status.substring(0, countStart))
+        withStyle(SpanStyle(color = ElectricBlue)) { append(countText) }
+        append(status.substring(countStart + countText.length))
     }
 }
 

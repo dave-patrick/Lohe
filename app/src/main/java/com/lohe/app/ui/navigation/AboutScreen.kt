@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -96,48 +97,53 @@ fun AboutScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        if (isLight) {
+        // Keep the wordmark centered, with the installed version directly below.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isLight) {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(id = R.drawable.wordmark),
+                        contentDescription = stringResource(R.string.about_wordmark_description),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.height(42.5.dp),
+                    )
+                }
+            }
+
             Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                text = if (version != null) {
+                    stringResource(R.string.about_version, version)
+                } else {
+                    stringResource(R.string.about_version_unknown)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.wordmark),
-                contentDescription = stringResource(R.string.about_wordmark_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp),
+
+            Spacer(Modifier.height(6.dp))
+
+            Text(
+                text = stringResource(R.string.about_tagline),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
             )
         }
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = stringResource(R.string.about_tagline),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = if (version != null) {
-                stringResource(R.string.about_version, version)
-            } else {
-                stringResource(R.string.about_version_unknown)
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
 
         Spacer(Modifier.height(8.dp))
         HorizontalDivider()

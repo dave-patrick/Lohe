@@ -2,10 +2,13 @@ package com.lohe.app.ui.navigation
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -31,9 +34,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,9 +55,11 @@ import com.lohe.app.data.EpisodesViewModel
 import com.lohe.app.data.EpisodesViewModelFactory
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.QueueViewModelFactory
+import com.lohe.app.data.RefreshState
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
 import com.lohe.app.data.SubscriptionsViewModelFactory
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.playback.Playback
 import com.lohe.app.playback.rememberPlayerConnection
 import com.lohe.app.playback.rememberTransportState
@@ -82,7 +91,9 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
 private object Routes {
     const val EPISODES = "podcast/{uuid}/episodes"
     const val ABOUT = "about"
+    const val SETTINGS_CATEGORY = "settings/{category}"
     fun episodes(uuid: String) = "podcast/$uuid/episodes"
+    fun settings(category: SettingsCategory) = "settings/${category.route}"
 }
 
 /** What the player should be showing right now. */
@@ -128,6 +139,26 @@ fun LoheNavHost(
     // separately because those screens have no tab of their own, and without
     // it the bar shows nothing selected and a tap on Home looks inert.
     var selectedTab by rememberSaveable { mutableStateOf(Dest.HOME.route) }
+    var tabHistory by rememberSaveable { mutableStateOf(listOf(Dest.HOME.route)) }
+
+    BackHandler(
+        enabled = currentRoute == activeTabRoute && tabHistory.size > 1,
+    ) {
+        val previousTab = tabHistory[tabHistory.lastIndex - 1]
+        tabHistory = tabHistory.dropLast(1)
+        selectedTab = previousTab
+        navController.navigate(previousTab) {
+            popUpTo(navController.graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    LaunchedEffect(backStack) {
+        val route = backStack?.destination?.route ?: "unknown"
+        val uuidArg = backStack?.arguments?.getString("uuid").orEmpty()
+        DevDiagnostics.recordRoute(route, if (uuidArg.isNotBlank()) "uuid=$uuidArg" else "")
+    }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -142,6 +173,16 @@ fun LoheNavHost(
     var pendingExport by remember { mutableStateOf<String?>(null) }
     var importMessage by remember { mutableStateOf<String?>(null) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
+
+    LaunchedEffect(nowPlaying?.episodeId, nowPlaying?.description) {
+        val current = nowPlaying ?: return@LaunchedEffect
+        if (current.description != null) return@LaunchedEffect
+        val description = ServiceLocator.subscriptionRepository()
+            .episodeOnce(current.episodeId)?.description
+        if (description != null && nowPlaying?.episodeId == current.episodeId) {
+            nowPlaying = current.copy(description = description)
+        }
+    }
 
     // One snackbar for the whole nav host. This used to be rendered inside
     // PodcastsScreen alone, so a message raised from any other screen was
@@ -176,6 +217,14 @@ fun LoheNavHost(
     val playerConnection = rememberPlayerConnection()
     val transport = rememberTransportState(playerConnection)
 
+    LaunchedEffect(transport.value.mediaId) {
+        transport.value.mediaId.takeIf { it.isNotBlank() }?.let { activeId ->
+            queueViewModel.dequeue(activeId).join()
+        }
+    }
+    val density = LocalDensity.current
+    var bottomBarHeight by remember { mutableStateOf(0.dp) }
+
     // One settings stream for the whole nav host so the player and the settings
     // screen cannot disagree about a preference.
     val settingsStore = remember { SettingsStore(context.applicationContext) }
@@ -188,9 +237,16 @@ fun LoheNavHost(
             )
     }.collectAsState()
 
-    LaunchedEffect(playbackSettings.defaultPlaybackSpeed, playbackSettings.skipSilenceByDefault) {
-        Playback.setPlaybackSpeed(playbackSettings.defaultPlaybackSpeed)
-        Playback.setSkipSilence(playbackSettings.skipSilenceByDefault)
+    LaunchedEffect(
+        playbackSettings.defaultPlaybackSpeed,
+        playbackSettings.skipSilenceByDefault,
+        transport.value.connected,
+        transport.value.hasMedia,
+    ) {
+        if (transport.value.connected && !transport.value.hasMedia) {
+            Playback.setPlaybackSpeed(playbackSettings.defaultPlaybackSpeed)
+            Playback.setSkipSilence(playbackSettings.skipSilenceByDefault)
+        }
     }
 
     val folderPicker = rememberLauncherForActivityResult(
@@ -280,8 +336,14 @@ fun LoheNavHost(
         ).importFolder(name, files)
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         bottomBar = {
+            Box(
+                modifier = Modifier.fillMaxWidth().onSizeChanged { size ->
+                    bottomBarHeight = with(density) { size.height.toDp() }
+                },
+            ) {
             Column {
                 val fallbackEntry = inProgress.firstOrNull()
                 // The episode that plays once the current one finishes: the
@@ -362,6 +424,10 @@ fun LoheNavHost(
                     },
                     currentRoute = activeTabRoute ?: selectedTab,
                     onSelect = { route ->
+                        val currentTab = activeTabRoute ?: selectedTab
+                        if (route != currentTab) {
+                            tabHistory = (tabHistory.filterNot { it == route } + route)
+                        }
                         selectedTab = route
                         // Unwind any push-only screen stacked above the tab
                         // layer (Settings, Storage, the player) so a tab tap
@@ -376,10 +442,12 @@ fun LoheNavHost(
                     },
                 )
             }
+            }
         },
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
         NavHost(
             navController = navController,
             startDestination = Dest.HOME.route,
@@ -387,8 +455,7 @@ fun LoheNavHost(
             // Without it every screen draws underneath the status bar and the
             // header titles clip.
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+                .fillMaxSize(),
         ) {
             composable(Dest.HOME.route) {
                 HomeScreen(
@@ -503,9 +570,12 @@ fun LoheNavHost(
             }
 
             composable(Dest.PLAYLISTS.route) {
+                val refreshState by podcastsViewModel.refresh.collectAsState()
                 PlaylistsScreen(
                     viewModel = queueViewModel,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
+                    refreshing = refreshState is RefreshState.Running,
+                    onRefresh = { podcastsViewModel.refreshFeeds() },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)
@@ -526,8 +596,19 @@ fun LoheNavHost(
             }
 
             composable(Dest.QUEUE.route) {
+                val currentQueueEpisodeId = transport.value.mediaId.takeIf {
+                    transport.value.hasMedia && it.isNotBlank()
+                }
+                val selectedCurrent = nowPlaying?.takeIf { it.episodeId == currentQueueEpisodeId }
                 QueueScreen(
                     viewModel = queueViewModel,
+                    currentEpisodeId = currentQueueEpisodeId,
+                    currentEpisodeTitle = selectedCurrent?.title ?: transport.value.title,
+                    currentShowTitle = selectedCurrent?.showTitle ?: transport.value.showTitle,
+                    currentArtworkUrl = selectedCurrent?.artworkUrl ?: transport.value.artworkUrl,
+                    currentProgress = transport.value.progress,
+                    currentIsPlaying = transport.value.isPlaying,
+                    onTogglePlayback = { playerConnection.togglePlayPause() },
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
@@ -552,6 +633,8 @@ fun LoheNavHost(
                 PlayerScreen(
                     connection = playerConnection,
                     appearance = appearance,
+                    floatingPlayerEnabled = playbackSettings.floatingPlayerEnabled,
+                    settingsStore = settingsStore,
                     onShrink = { navController.popBackStack() },
                     mediaUri = nowPlaying?.uri,
                     mediaEpisodeId = nowPlaying?.episodeId,
@@ -586,6 +669,19 @@ fun LoheNavHost(
                     onBack = { navController.popBackStack() },
                     onOpenAbout = { navController.navigate(Routes.ABOUT) },
                     settingsStore = settingsStore,
+                    onOpenCategory = { navController.navigate(Routes.settings(it)) },
+                )
+            }
+
+            composable(Routes.SETTINGS_CATEGORY, arguments = listOf(navArgument("category") { type = NavType.StringType })) { entry ->
+                SettingsScreen(
+                    appearance = appearance,
+                    onToggleAppearance = onToggleAppearance,
+                    onBack = { navController.popBackStack() },
+                    onOpenAbout = { navController.navigate(Routes.ABOUT) },
+                    settingsStore = settingsStore,
+                    category = SettingsCategory.fromRoute(entry.arguments?.getString("category")),
+                    onOpenCategory = { navController.navigate(Routes.settings(it)) },
                 )
             }
 
@@ -593,5 +689,16 @@ fun LoheNavHost(
                 AboutScreen(onBack = { navController.popBackStack() })
             }
         }
+        if (BAR_DESTINATIONS.any { it.route == currentRoute } || currentRoute == Routes.EPISODES) {
+            HeaderSettingsButton(
+                onClick = { navController.navigate(Dest.SETTINGS.route) },
+                modifier = Modifier.align(Alignment.TopEnd).padding(
+                    top = if (currentRoute == Dest.PLAYLISTS.route) 8.dp else 16.dp,
+                    end = 16.dp,
+                ),
+            )
+        }
+        }
+    }
     }
 }

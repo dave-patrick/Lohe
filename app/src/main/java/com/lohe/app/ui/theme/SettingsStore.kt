@@ -39,6 +39,10 @@ data class PlaybackSettings(
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
     val markPlayedAtEnd: Boolean = true,
+    val autoArchiveHours: Int = 24,
+    val floatingPlayerEnabled: Boolean = false,
+    val floatingPlayerSizeDp: Int = 56,
+    val floatingPlayerOpacity: Float = 1f,
     /**
      * Whether episodes put in Up Next are downloaded as they are added.
      *
@@ -57,6 +61,12 @@ data class PlaybackSettings(
     val podcastSort: com.lohe.app.data.PodcastSort = com.lohe.app.data.PodcastSort.TITLE,
     /** How the playlists are ordered. */
     val playlistSort: com.lohe.app.data.PlaylistSort = com.lohe.app.data.PlaylistSort.MANUAL,
+    val showPlayedSmartPlaylist: Boolean = true,
+    val showInProgressSmartPlaylist: Boolean = true,
+    val showUnplayedSmartPlaylist: Boolean = true,
+    val showNotDownloadedSmartPlaylist: Boolean = true,
+    val showDownloadedSmartPlaylist: Boolean = true,
+    val showNewReleasesSmartPlaylist: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -82,9 +92,19 @@ data class ShowPlaybackSettings(
     val crossfadeMs: Int = 0,
     /** Auto-trim leading/trailing silence and detected ads. */
     val autoTrim: Boolean = false,
+    /**
+     * Seconds to skip at the start of every episode of this show, on top of
+     * whatever auto-trim finds. Zero means "start where the audio starts".
+     */
+    val skipIntroSeconds: Int = 0,
+    /** Seconds to cut off the end of every episode of this show. */
+    val skipOutroSeconds: Int = 0,
 ) {
     companion object {
         val EMPTY = ShowPlaybackSettings()
+
+        /** Offered for the intro and outro cuts. */
+        val SKIP_SECONDS_CHOICES = listOf(5, 10, 15, 20, 30, 45, 60, 90, 120)
     }
 }
 
@@ -102,6 +122,8 @@ data class ShowPlaybackOverrides(
     val smartSpeed: Boolean? = null,
     val crossfadeMs: Int? = null,
     val autoTrim: Boolean? = null,
+    val skipIntroSeconds: Int? = null,
+    val skipOutroSeconds: Int? = null,
 )
 
 /**
@@ -123,10 +145,20 @@ class SettingsStore(private val context: Context) {
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
         val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
+        val autoArchiveHours = intPreferencesKey("auto_archive_hours")
+        val floatingPlayerEnabled = booleanPreferencesKey("floating_player_enabled")
+        val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
+        val floatingPlayerOpacity = floatPreferencesKey("floating_player_opacity")
         val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
         val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
+        val showPlayedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_played")
+        val showInProgressSmartPlaylist = booleanPreferencesKey("show_smart_playlist_in_progress")
+        val showUnplayedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_unplayed")
+        val showNotDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_not_downloaded")
+        val showDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_downloaded")
+        val showNewReleasesSmartPlaylist = booleanPreferencesKey("show_smart_playlist_new_releases")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -137,6 +169,9 @@ class SettingsStore(private val context: Context) {
 
     private fun showCrossfadeKey(podcastUuid: String) =
         intPreferencesKey("show_playback_crossfade_ms_$podcastUuid")
+
+    private fun showSecondsKey(podcastUuid: String, suffix: String) =
+        intPreferencesKey("show_playback_${suffix}_seconds_$podcastUuid")
 
     val settings: Flow<PlaybackSettings> = context.settingsStore.data.map { prefs ->
         PlaybackSettings(
@@ -156,6 +191,10 @@ class SettingsStore(private val context: Context) {
             skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
                 .coerceIn(5, 120),
             markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
+            autoArchiveHours = (prefs[Keys.autoArchiveHours] ?: 24).takeIf { it in listOf(-1, 0, 1, 24, 168) } ?: 24,
+            floatingPlayerEnabled = prefs[Keys.floatingPlayerEnabled] ?: false,
+            floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
+            floatingPlayerOpacity = com.lohe.app.playback.safeFloatingPlayerOpacity(prefs[Keys.floatingPlayerOpacity] ?: 1f),
             autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
             sleepTimerMinutes = (prefs[Keys.sleepTimerMinutes] ?: 30)
                 .coerceIn(1, 24 * 60),
@@ -169,6 +208,12 @@ class SettingsStore(private val context: Context) {
                     com.lohe.app.data.PlaylistSort.entries.firstOrNull { it.name == name }
                 }
                 ?: com.lohe.app.data.PlaylistSort.MANUAL,
+            showPlayedSmartPlaylist = prefs[Keys.showPlayedSmartPlaylist] ?: true,
+            showInProgressSmartPlaylist = prefs[Keys.showInProgressSmartPlaylist] ?: true,
+            showUnplayedSmartPlaylist = prefs[Keys.showUnplayedSmartPlaylist] ?: true,
+            showNotDownloadedSmartPlaylist = prefs[Keys.showNotDownloadedSmartPlaylist] ?: true,
+            showDownloadedSmartPlaylist = prefs[Keys.showDownloadedSmartPlaylist] ?: true,
+            showNewReleasesSmartPlaylist = prefs[Keys.showNewReleasesSmartPlaylist] ?: true,
         )
     }
 
@@ -205,6 +250,22 @@ class SettingsStore(private val context: Context) {
     suspend fun setMarkPlayedAtEnd(value: Boolean) =
         edit { it[Keys.markPlayedAtEnd] = value }
 
+    suspend fun setAutoArchiveHours(value: Int) {
+        require(value in listOf(-1, 0, 1, 24, 168))
+        edit { it[Keys.autoArchiveHours] = value }
+    }
+
+    suspend fun setFloatingPlayerEnabled(value: Boolean) =
+        edit { it[Keys.floatingPlayerEnabled] = value }
+
+    suspend fun setFloatingPlayerSizeDp(value: Int) {
+        require(value in listOf(48, 56, 72, 88))
+        edit { it[Keys.floatingPlayerSize] = value }
+    }
+
+    suspend fun setFloatingPlayerOpacity(value: Float) =
+        edit { it[Keys.floatingPlayerOpacity] = com.lohe.app.playback.safeFloatingPlayerOpacity(value) }
+
     suspend fun setAutoDownloadQueue(value: Boolean) =
         edit { it[Keys.autoDownloadQueue] = value }
 
@@ -216,6 +277,19 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
+
+    suspend fun setSmartPlaylistVisibility(id: String, visible: Boolean) = edit {
+        val key = when (id) {
+            "__system_played__" -> Keys.showPlayedSmartPlaylist
+            "__system_in_progress__" -> Keys.showInProgressSmartPlaylist
+            "__system_unplayed__" -> Keys.showUnplayedSmartPlaylist
+            "__system_not_downloaded__" -> Keys.showNotDownloadedSmartPlaylist
+            "__system_downloaded__" -> Keys.showDownloadedSmartPlaylist
+            "__system_new_releases__" -> Keys.showNewReleasesSmartPlaylist
+            else -> return@edit
+        }
+        it[key] = visible
+    }
 
     /**
      * The playback settings for one show.
@@ -243,6 +317,10 @@ class SettingsStore(private val context: Context) {
                     ).coerceIn(0, 30_000),
                 autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")]
                     ?: global.autoTrimByDefault,
+                skipIntroSeconds = (prefs[showSecondsKey(podcastUuid, "skip_intro")] ?: 0)
+                    .coerceIn(0, 30 * 60),
+                skipOutroSeconds = (prefs[showSecondsKey(podcastUuid, "skip_outro")] ?: 0)
+                    .coerceIn(0, 30 * 60),
             )
         }
 
@@ -262,6 +340,8 @@ class SettingsStore(private val context: Context) {
                 smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")],
                 crossfadeMs = prefs[showCrossfadeKey(podcastUuid)],
                 autoTrim = prefs[showBoolKey(podcastUuid, "auto_trim")],
+                skipIntroSeconds = prefs[showSecondsKey(podcastUuid, "skip_intro")],
+                skipOutroSeconds = prefs[showSecondsKey(podcastUuid, "skip_outro")],
             )
         }
 
@@ -273,6 +353,8 @@ class SettingsStore(private val context: Context) {
             it[showBoolKey(podcastUuid, "smart_speed")] = settings.smartSpeed
             it[showCrossfadeKey(podcastUuid)] = settings.crossfadeMs
             it[showBoolKey(podcastUuid, "auto_trim")] = settings.autoTrim
+            it[showSecondsKey(podcastUuid, "skip_intro")] = settings.skipIntroSeconds
+            it[showSecondsKey(podcastUuid, "skip_outro")] = settings.skipOutroSeconds
         }
 
     /**
@@ -301,6 +383,18 @@ class SettingsStore(private val context: Context) {
         if (value == null) it.remove(key) else it[key] = value
     }
 
+    /** Seconds to skip at the head of every episode, or null for none. */
+    suspend fun setShowSkipIntroSeconds(podcastUuid: String, value: Int?) = edit {
+        val key = showSecondsKey(podcastUuid, "skip_intro")
+        if (value == null || value <= 0) it.remove(key) else it[key] = value.coerceIn(0, 30 * 60)
+    }
+
+    /** Seconds to cut off the end of every episode, or null for none. */
+    suspend fun setShowSkipOutroSeconds(podcastUuid: String, value: Int?) = edit {
+        val key = showSecondsKey(podcastUuid, "skip_outro")
+        if (value == null || value <= 0) it.remove(key) else it[key] = value.coerceIn(0, 30 * 60)
+    }
+
     suspend fun setShowPlaybackSpeed(podcastUuid: String, value: Float?) = edit {
         val key = showSpeedKey(podcastUuid)
         if (value == null) it.remove(key) else it[key] = value.coerceIn(0.5f, 3.0f)
@@ -314,6 +408,8 @@ class SettingsStore(private val context: Context) {
         it.remove(showBoolKey(podcastUuid, "auto_trim"))
         it.remove(showSpeedKey(podcastUuid))
         it.remove(showCrossfadeKey(podcastUuid))
+        it.remove(showSecondsKey(podcastUuid, "skip_intro"))
+        it.remove(showSecondsKey(podcastUuid, "skip_outro"))
     }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {

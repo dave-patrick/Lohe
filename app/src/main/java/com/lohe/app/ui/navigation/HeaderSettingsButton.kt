@@ -1,6 +1,7 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -27,7 +28,7 @@ fun HeaderSettingsButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, modifier = modifier.size(40.dp)) {
+    IconButton(onClick = onClick, modifier = modifier.size(48.dp)) {
         Icon(
             imageVector = Icons.Filled.Settings,
             contentDescription = stringResource(R.string.settings_title),
@@ -35,4 +36,9 @@ fun HeaderSettingsButton(
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+@Composable
+internal fun HeaderSettingsSpacer() {
+    Spacer(Modifier.size(48.dp))
 }

@@ -141,6 +141,8 @@ class SubscriptionRepositoryTest {
         override suspend fun byPodcastOnce(podcastUuid: String) =
             rows.filter { it.podcastUuid == podcastUuid }
 
+        override suspend fun allOnce() = rows.sortedByDescending { it.published }
+
         override fun observeLatest(limit: Int) = kotlinx.coroutines.flow.flowOf(rows.take(limit))
         override suspend fun queueSnapshot() =
             rows.filter { it.isQueued }.sortedBy { it.queuePosition }
@@ -172,6 +174,8 @@ class SubscriptionRepositoryTest {
 
         override suspend fun updateProgress(uuid: String, position: Long) = Unit
         override suspend fun saveProgress(uuid: String, position: Long, duration: Long) = Unit
+        override suspend fun applyProgress(uuid: String, position: Long, duration: Long) = Unit
+        override suspend fun applyUnplayed(uuid: String) = Unit
         override suspend fun markPlayedAndClearProgress(uuid: String) = Unit
         override suspend fun reopenEpisode(uuid: String) = Unit
         override suspend fun playedPosition(uuid: String) = 0L

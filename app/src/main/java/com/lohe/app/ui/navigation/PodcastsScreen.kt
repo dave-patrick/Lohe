@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -85,12 +88,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
@@ -112,9 +119,16 @@ import com.lohe.app.ui.theme.LoheDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-private const val ALL_FOLDERS = "__ALL__"
+private const val ALL_PODCASTS = "__ALL_PODCASTS__"
 
-@OptIn(ExperimentalLayoutApi::class)
+/** What a show's cards need to say without being opened. */
+private data class ShowStats(
+    val total: Int,
+    val unplayed: Int,
+    val latest: Long,
+)
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PodcastsScreen(
     viewModel: SubscriptionsViewModel,
@@ -135,6 +149,7 @@ fun PodcastsScreen(
     val totalPodcastCount by viewModel.totalPodcastCount.collectAsState()
     val allEpisodes by viewModel.allEpisodes.collectAsState()
     val podcastFolders by queueViewModel.podcastFolders.collectAsState()
+    val userPlaylists by queueViewModel.userPlaylists.collectAsState()
     val query by viewModel.searchQueryState.collectAsState()
     val import by viewModel.feedImport.collectAsState()
     val opml by viewModel.opmlImport.collectAsState()
@@ -145,11 +160,14 @@ fun PodcastsScreen(
     var showAddFeed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var playlistMenuOpen by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
     val podcastSort by queueViewModel.podcastSort.collectAsState()
 
     var isGridView by rememberSaveable { mutableStateOf(false) }
-    var selectedFolder by rememberSaveable { mutableStateOf(ALL_FOLDERS) }
+    var selectedPlaylistId by rememberSaveable { mutableStateOf(ALL_PODCASTS) }
     var folderDialogPodcast by remember { mutableStateOf<PodcastEntity?>(null) }
+    var folderDialogForSelection by remember { mutableStateOf(false) }
     var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
     var showOpmlFailures by remember { mutableStateOf(false) }
     var showLocalFolderDialog by remember { mutableStateOf(false) }
@@ -188,31 +206,40 @@ fun PodcastsScreen(
     val availableFolders = remember(podcastFolders) {
         podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
     }
-    if (selectedFolder != ALL_FOLDERS && selectedFolder !in availableFolders) {
-        selectedFolder = ALL_FOLDERS
+    if (selectedPlaylistId != ALL_PODCASTS && userPlaylists.none { it.id == selectedPlaylistId }) {
+        selectedPlaylistId = ALL_PODCASTS
     }
 
-    // Counts and freshness per show, for the two orders that need them.
+    // Counts and freshness per show. The counts are on every card, not only
+    // in the two orders that sort by them: how much of a show is still waiting
+    // is the first thing a library of this size has to answer.
     val showStats = remember(allEpisodes) {
         allEpisodes.groupBy { it.podcastUuid }
             .mapValues { (_, episodes) ->
-                episodes.size to episodes.maxOf { it.published }
+                val live = episodes.filter { !it.isDeleted }
+                ShowStats(
+                    total = live.size,
+                    unplayed = live.count { !it.isPlayed && !it.isArchived },
+                    latest = episodes.maxOf { it.published },
+                )
             }
     }
 
-    val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder, podcastSort, showStats) {
-        val filtered = if (selectedFolder == ALL_FOLDERS) {
+    val visiblePodcasts = remember(podcasts, userPlaylists, selectedPlaylistId, podcastSort, showStats) {
+        val playlistPodcastUuids = userPlaylists.firstOrNull { it.id == selectedPlaylistId }
+            ?.entries?.mapTo(mutableSetOf()) { it.episode.podcastUuid }
+        val filtered = if (playlistPodcastUuids == null) {
             podcasts
         } else {
-            podcasts.filter { podcastFolders[it.uuid] == selectedFolder }
+            podcasts.filter { it.uuid in playlistPodcastUuids }
         }
         when (podcastSort) {
             PodcastSort.TITLE -> filtered.sortedBy { it.title.lowercase() }
             PodcastSort.MOST_EPISODES -> filtered.sortedByDescending {
-                showStats[it.uuid]?.first ?: 0
+                showStats[it.uuid]?.total ?: 0
             }
             PodcastSort.RECENT -> filtered.sortedByDescending {
-                showStats[it.uuid]?.second ?: 0L
+                showStats[it.uuid]?.latest ?: 0L
             }
         }
     }
@@ -303,6 +330,31 @@ fun PodcastsScreen(
             onDismiss = {
                 showAddFeed = false
                 viewModel.consumeFeedImport()
+            },
+        )
+    }
+
+    if (showSearchDialog) {
+        AlertDialog(
+            onDismissRequest = { showSearchDialog = false },
+            title = { Text(stringResource(R.string.podcasts_search_label)) },
+            text = {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.podcasts_search_label)) },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showSearchDialog = false }) { Text("Done") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.onSearchQueryChanged("")
+                    showSearchDialog = false
+                }) { Text("Clear") }
             },
         )
     }
@@ -429,6 +481,22 @@ fun PodcastsScreen(
                                 label = { Text("Add to Playlist") },
                             )
 
+                            // Filing shows away belongs with the other bulk
+                            // actions now that the card no longer carries a
+                            // folder button of its own.
+                            FilterChip(
+                                selected = false,
+                                onClick = { folderDialogForSelection = true },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = { Text("Folder") },
+                            )
+
                             FilterChip(
                                 selected = false,
                                 onClick = {
@@ -487,12 +555,19 @@ fun PodcastsScreen(
                     Spacer(Modifier.width(10.dp))
                     // How much the library holds, not how many rows the
                     // search box happens to have left on screen.
-                    Text(
-                        text = totalPodcastCount.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 11.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            text = totalPodcastCount.toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
 
                     IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(40.dp)) {
@@ -604,7 +679,7 @@ fun PodcastsScreen(
 
                     // The settings control is the last thing in the header on
                     // every screen, so it is always in the same place.
-                    HeaderSettingsButton(onClick = onOpenSettings)
+                    HeaderSettingsSpacer()
                 }
             }
 
@@ -638,31 +713,23 @@ fun PodcastsScreen(
                 }
             }
 
-            // The search box, with the add-feed button beside it. The header
-            // above has enough to carry.
+            // Search and add-feed actions remain compact beneath the header.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = viewModel::onSearchQueryChanged,
-                    label = { Text(stringResource(R.string.podcasts_search_label)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { showSearchDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = stringResource(R.string.podcasts_search_label),
+                    )
+                }
                 IconButton(onClick = { showAddFeed = true }) {
                     Icon(
-                        imageVector = Icons.Filled.RssFeed,
+                        imageVector = Icons.Filled.Add,
                         contentDescription = stringResource(R.string.podcasts_add_feed),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp),
@@ -670,41 +737,40 @@ fun PodcastsScreen(
                 }
             }
 
-            // The folder filters, with the sort and the view toggle on the
-            // same line and pinned to the right. The filters scroll under
-            // them; the two on the right stay where they are.
+            // A single playlist selector replaces the scrolling filter chips.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (availableFolders.isNotEmpty()) {
-                        FilterChip(
-                            selected = selectedFolder == ALL_FOLDERS,
-                            onClick = { selectedFolder = ALL_FOLDERS },
-                            label = { Text("All (${podcasts.size})", maxLines = 1) },
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { playlistMenuOpen = true }) {
+                        Text(
+                            userPlaylists.firstOrNull { it.id == selectedPlaylistId }?.name
+                                ?: "All podcasts",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        availableFolders.forEach { folder ->
-                            val count = podcasts.count { podcastFolders[it.uuid] == folder }
-                            FilterChip(
-                                selected = selectedFolder == folder,
-                                onClick = { selectedFolder = folder },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
+                    }
+                    DropdownMenu(
+                        expanded = playlistMenuOpen,
+                        onDismissRequest = { playlistMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All podcasts (${podcasts.size})") },
+                            onClick = {
+                                selectedPlaylistId = ALL_PODCASTS
+                                playlistMenuOpen = false
+                            },
+                        )
+                        userPlaylists.forEach { playlist ->
+                            DropdownMenuItem(
+                                text = { Text("${playlist.name} (${playlist.entries.size})") },
+                                onClick = {
+                                    selectedPlaylistId = playlist.id
+                                    playlistMenuOpen = false
                                 },
-                                label = { Text("$folder ($count)", maxLines = 1) },
                             )
                         }
                     }
@@ -769,6 +835,13 @@ fun PodcastsScreen(
                 }
             }
 
+            // Pulling the library down re-checks every feed: the gesture
+            // people reach for before they go looking for a menu item.
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = { viewModel.refreshFeeds() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             if (visiblePodcasts.isEmpty()) {
                 EmptyPodcastsState(
                     onAddFeed = { showAddFeed = true },
@@ -831,6 +904,7 @@ fun PodcastsScreen(
                             PodcastGridCard(
                                 podcast = podcast,
                                 folderName = podcastFolders[podcast.uuid].orEmpty(),
+                                unplayedCount = showStats[podcast.uuid]?.unplayed ?: 0,
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
                                 onClick = { onOpen() },
@@ -841,9 +915,6 @@ fun PodcastsScreen(
                                         selectedPodcastUuids + podcast.uuid
                                     }
                                 },
-                                onAssignFolder = { folderDialogPodcast = podcast },
-                                onUnsubscribe = { confirmUnsubscribe = podcast },
-                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
@@ -901,6 +972,8 @@ fun PodcastsScreen(
                             PodcastCard(
                                 podcast = podcast,
                                 folderName = podcastFolders[podcast.uuid].orEmpty(),
+                                totalEpisodes = showStats[podcast.uuid]?.total ?: 0,
+                                unplayedCount = showStats[podcast.uuid]?.unplayed ?: 0,
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
                                 onClick = { onOpen() },
@@ -911,13 +984,12 @@ fun PodcastsScreen(
                                         selectedPodcastUuids + podcast.uuid
                                     }
                                 },
-                                onAssignFolder = { folderDialogPodcast = podcast },
                                 onUnsubscribe = { confirmUnsubscribe = podcast },
-                                onShowSettings = { showSettingsFor = podcast },
                             )
                         }
                     }
                 }
+            }
             }
         }
 
@@ -937,6 +1009,30 @@ fun PodcastsScreen(
                 folderDialogPodcast = null
             },
             onDismiss = { folderDialogPodcast = null },
+        )
+    }
+
+    if (folderDialogForSelection) {
+        val count = selectedPodcastUuids.size
+        FolderAssignDialog(
+            title = if (count == 1) "Folder for 1 show" else "Folder for $count shows",
+            currentFolder = "",
+            existingFolders = availableFolders,
+            onSave = { folder ->
+                selectedPodcastUuids.forEach { queueViewModel.setPodcastFolder(it, folder) }
+                folderDialogForSelection = false
+                selectedPodcastUuids = emptySet()
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (folder.isBlank()) {
+                            "Removed ${count} show${if (count == 1) "" else "s"} from folders"
+                        } else {
+                            "Moved $count show${if (count == 1) "" else "s"} to $folder"
+                        },
+                    )
+                }
+            },
+            onDismiss = { folderDialogForSelection = false },
         )
     }
 
@@ -1275,6 +1371,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Up Next",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         IconButton(
                             onClick = onAddToPlaylist,
                             modifier = Modifier.size(36.dp),
@@ -1286,6 +1387,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Playlist",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         IconButton(
                             onClick = onTogglePlayed,
                             modifier = Modifier.size(36.dp),
@@ -1297,6 +1403,11 @@ private fun SwipeablePodcastCard(
                                 modifier = Modifier.size(18.dp),
                             )
                         }
+                        Text(
+                            text = "Listened",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 } else if (dir == SwipeToDismissBoxValue.EndToStart) {
                     Row(
@@ -1387,13 +1498,13 @@ private fun EmptyPodcastsState(
 private fun PodcastCard(
     podcast: PodcastEntity,
     folderName: String,
+    totalEpisodes: Int,
+    unplayedCount: Int,
     inSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onAssignFolder: () -> Unit,
     onUnsubscribe: () -> Unit,
-    onShowSettings: () -> Unit,
 ) {
     GlassRow(
         accent = if (isSelected) ElectricBlue else null,
@@ -1446,36 +1557,37 @@ private fun PodcastCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // The author and the folder sit on one line, so every tile is two
+            // The count and the folder sit on one line, so every tile is two
             // lines tall whatever else it carries. A folder on a line of its
             // own made the rows ragged.
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                podcast.author?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                }
+                ShowCountsText(
+                    unplayed = unplayedCount,
+                    total = totalEpisodes,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 if (folderName.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(11.dp),
+                        )
                         Text(
-                            text = "📁 $folderName",
+                            text = folderName,
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
+                            lineHeight = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1488,30 +1600,6 @@ private fun PodcastCard(
                     )
                 }
             }
-        }
-
-        IconButton(onClick = onAssignFolder, modifier = Modifier.size(34.dp)) {
-            Icon(
-                imageVector = Icons.Filled.Folder,
-                contentDescription = "Assign folder",
-                tint = if (folderName.isNotBlank()) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        // The show's own playback settings, reachable from the library so
-        // they do not have to be found on the show's page.
-        IconButton(onClick = onShowSettings, modifier = Modifier.size(34.dp)) {
-            Icon(
-                imageVector = Icons.Filled.GraphicEq,
-                contentDescription = "Show settings",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
         }
 
         IconButton(onClick = onUnsubscribe, modifier = Modifier.size(34.dp)) {
@@ -1529,13 +1617,11 @@ private fun PodcastCard(
 private fun PodcastGridCard(
     podcast: PodcastEntity,
     folderName: String,
+    unplayedCount: Int,
     inSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onAssignFolder: () -> Unit,
-    onUnsubscribe: () -> Unit,
-    onShowSettings: () -> Unit,
 ) {
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -1555,18 +1641,6 @@ private fun PodcastGridCard(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )
-
-                IconButton(
-                    onClick = onShowSettings,
-                    modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.GraphicEq,
-                        contentDescription = "Show settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
 
                 if (inSelectionMode) {
                     Icon(
@@ -1588,58 +1662,34 @@ private fun PodcastGridCard(
                     )
                 }
 
-                // The folder and unsubscribe actions live on the artwork rather
-                // than on a line of their own: at three columns there is no
-                // room for a third row of buttons under the title.
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        // A scrim behind them: white icons vanish against
-                        // white artwork.
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .padding(horizontal = 2.dp, vertical = 1.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.Folder,
-                            contentDescription = "Assign folder",
-                            tint = if (folderName.isNotBlank()) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                Color.White
-                            },
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
-                    IconButton(onClick = onUnsubscribe, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteOutline,
-                            contentDescription = "Unsubscribe",
-                            tint = Color.White,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
-                }
-
-                if (folderName.isNotBlank()) {
+                if (!inSelectionMode && unplayedCount > 0) {
+                    // The count is the badge, not a caption: at three columns
+                    // there is only room for the number, and the number is the
+                    // whole point.
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
+                            .align(Alignment.TopStart)
                             .padding(4.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(Color.Black.copy(alpha = 0.72f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.9f),
+                                shape = RoundedCornerShape(50),
+                            )
+                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "📁 $folderName",
+                            text = unplayedCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = Color.White,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -1648,19 +1698,71 @@ private fun PodcastGridCard(
             Text(
                 text = podcast.title,
                 style = MaterialTheme.typography.labelLarge,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Text(
-                text = podcast.author.orEmpty(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // The folder reads as part of the caption now instead of sitting on
+            // the cover, where it fought the count for the same corner.
+            if (folderName.isNotBlank()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = folderName,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
+}
+
+/**
+ * "12 unplayed · 240" for the list rows, where there is width for the words.
+ * The grid carries the bare number on the artwork instead.
+ */
+@Composable
+private fun ShowCountsText(
+    unplayed: Int,
+    total: Int,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        text = buildAnnotatedString {
+            withStyle(
+                SpanStyle(
+                    color = if (unplayed > 0) accent else muted,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            ) {
+                append(if (unplayed > 0) "$unplayed unplayed" else "All listened")
+            }
+            withStyle(SpanStyle(color = muted)) {
+                append(" · $total")
+            }
+        },
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
 }

@@ -87,7 +87,7 @@ class FeedParser(
                         "author", "creator", "managingEditor" ->
                             author = author ?: parser.nextTextOrNull()
                         "description", "summary", "subtitle" ->
-                            summary = summary ?: parser.nextTextOrNull()
+                            summary = summary ?: parser.nextMarkupTextOrNull()
 
                         "image" -> if (parser.depth == rootDepth + 1) {
                             artwork = artwork ?: channelImageUrl(parser)
@@ -235,7 +235,7 @@ class FeedParser(
                             durationSeconds = parseDuration(parser.nextTextOrNull()) ?: durationSeconds
                         "author", "creator" -> author = author ?: parser.nextTextOrNull()
                         "description", "summary", "subtitle", "encoded", "content" ->
-                            itemDescription = itemDescription ?: parser.nextTextOrNull()
+                            itemDescription = itemDescription ?: parser.nextMarkupTextOrNull()
 
                         "image", "thumbnail" -> {
                             itemArtwork = parser.getAttributeValue(null, "href")
@@ -451,3 +451,20 @@ private val XmlPullParser.localName: String
  * rather than throwing so one malformed element cannot abort the whole feed.
  */
 internal fun XmlPullParser.nextTextOrNull(): String? = runCatching { nextText() }.getOrNull()
+
+internal fun XmlPullParser.nextMarkupTextOrNull(): String? = runCatching {
+    val startDepth = depth
+    val content = StringBuilder()
+    var event = next()
+    while (event != XmlPullParser.END_DOCUMENT &&
+        !(event == XmlPullParser.END_TAG && depth == startDepth)
+    ) {
+        when (event) {
+            XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF ->
+                content.append(this.text ?: this.name.orEmpty())
+            XmlPullParser.START_TAG, XmlPullParser.END_TAG -> content.append(' ')
+        }
+        event = next()
+    }
+    content.toString()
+}.getOrNull()

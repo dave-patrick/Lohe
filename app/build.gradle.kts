@@ -14,8 +14,8 @@ android {
         applicationId = "com.lohe.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 10
+        versionName = "0.9.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -50,6 +50,9 @@ android {
 
     buildFeatures {
         compose = true
+        // The debug control surface checks BuildConfig.DEBUG to decide
+        // whether it may run at all.
+        buildConfig = true
     }
 }
 
@@ -87,6 +90,12 @@ implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.session)
+
+    // Android Automotive OS embedded app surface (CarAppService).
+    implementation(libs.androidx.car.app)
+    // The in-vehicle CarAppActivity the head unit launches for templated apps.
+    implementation(libs.androidx.car.app.automotive)
+    implementation(libs.androidx.media)
 
     // SAF tree traversal for local folder playback
     implementation(libs.androidx.documentfile)

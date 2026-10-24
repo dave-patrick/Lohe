@@ -1,5 +1,6 @@
 package com.lohe.app.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -28,4 +29,5 @@ data class PodcastEntity(
      * metered connection and stream the rest.
      */
     val autoDownload: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val isSubscribed: Boolean = true,
 )

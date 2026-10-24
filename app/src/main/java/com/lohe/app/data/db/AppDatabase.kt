@@ -26,7 +26,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
         EpisodeEntity::class,
         ListeningHistoryEntity::class,
     ],
-    version = 9,
+    version = 11,
     exportSchema = false,
 )
 @TypeConverters()
@@ -161,6 +161,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN isSubscribed INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE episodes ADD COLUMN playedAt INTEGER DEFAULT NULL")
+                db.execSQL("UPDATE episodes SET playedAt = CAST(strftime('%s', 'now') AS INTEGER) * 1000 WHERE playingStatus = 2 AND isArchived = 0")
+            }
+        }
+
         /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
@@ -201,6 +214,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
+                        MIGRATION_9_10,
+                        MIGRATION_10_11,
                     )
                     .build()
                     .also { instance = it }

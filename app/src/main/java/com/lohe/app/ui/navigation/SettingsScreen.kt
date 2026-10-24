@@ -7,10 +7,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.playback.Playback
 import com.lohe.app.ui.player.formatSpeedLabel
+import com.lohe.app.ui.player.FloatingPlayerSettings
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
@@ -60,6 +59,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenAbout: () -> Unit,
     settingsStore: SettingsStore,
+    category: SettingsCategory? = null,
+    onOpenCategory: (SettingsCategory) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
 
@@ -71,7 +72,6 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,7 +82,7 @@ fun SettingsScreen(
                 )
             }
             Text(
-                text = stringResource(R.string.settings_title),
+                text = category?.title ?: stringResource(R.string.settings_title),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -90,20 +90,28 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(16.dp))
 
-        SettingsSection(stringResource(R.string.settings_appearance)) {
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+        if (category == null) {
+            SettingsCategory.entries.forEach { section ->
+                SettingsMenuRow(section.title, section.summary) { onOpenCategory(section) }
+            }
+            SettingsMenuRow("About", "Version and app information", onOpenAbout)
+        }
+
+        if (category == SettingsCategory.APPEARANCE) {
             ChoiceRowItem(
                 label = stringResource(R.string.settings_dark),
                 selected = appearance == Appearance.DARK,
-                onClick = onToggleAppearance,
+                onClick = { if (appearance != Appearance.DARK) onToggleAppearance() },
             )
             ChoiceRowItem(
                 label = stringResource(R.string.settings_light),
                 selected = appearance == Appearance.LIGHT,
-                onClick = onToggleAppearance,
+                onClick = { if (appearance != Appearance.LIGHT) onToggleAppearance() },
             )
         }
 
-        SettingsSection(stringResource(R.string.settings_playback)) {
+        if (category == SettingsCategory.PLAYBACK) {
             ChoiceRow(
                 label = stringResource(R.string.settings_skip_back),
                 choices = PlaybackSettings.SKIP_CHOICES,
@@ -171,7 +179,40 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(8.dp))
 
-        SettingsSection("Downloads") {
+        if (category == SettingsCategory.FLOATING_PLAYER) {
+            FloatingPlayerSettings(enabled = settings.floatingPlayerEnabled, sizeDp = settings.floatingPlayerSizeDp,
+                opacity = settings.floatingPlayerOpacity, settingsStore = settingsStore)
+        }
+
+        Spacer(Modifier.size(8.dp))
+
+        if (category == SettingsCategory.ARCHIVING) {
+            ChoiceRow(
+                label = "Auto-archive after marking played",
+                choices = listOf(-1, 0, 1, 24, 168),
+                selected = settings.autoArchiveHours,
+                format = {
+                    when (it) {
+                        -1 -> "Off"
+                        0 -> "Immediately"
+                        1 -> "1 hour"
+                        24 -> "24 hours"
+                        else -> "7 days"
+                    }
+                },
+                onSelect = { scope.launch { settingsStore.setAutoArchiveHours(it) } },
+            )
+            Text(
+                "Played episodes leave playlists immediately. Archiving deletes their downloaded copy, not their listening history. Android may delay background cleanup after the selected time.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        }
+
+        Spacer(Modifier.size(8.dp))
+
+        if (category == SettingsCategory.DOWNLOADS) {
             ToggleRow(
                 label = "Auto-download Up Next",
                 hint = "Download episodes as they are added to your queue, so they are ready offline.",
@@ -182,42 +223,25 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(8.dp))
 
-        SettingsSection(stringResource(R.string.about_title)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenAbout)
-                    .padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.about_open),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
         Spacer(Modifier.size(32.dp))
+        }
     }
 }
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
-    )
-    content()
-    HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
+private fun SettingsMenuRow(title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp))
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+    }
+    HorizontalDivider()
 }
 
 /**

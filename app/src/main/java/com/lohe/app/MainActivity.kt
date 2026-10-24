@@ -10,21 +10,42 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.dev.BugReportOverlay
+import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.SplashScreen
 import com.lohe.app.ui.navigation.LoheNavHost
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.LoheTheme
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.lohe.app.playback.FloatingPlaybackService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        DevDiagnostics.init(this)
         ServiceLocator.init(this)
+        com.lohe.app.dev.DevApi.start(this)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                ServiceLocator.settingsStore().settings.map { it.floatingPlayerEnabled }.distinctUntilChanged().collect {
+                    if (it && !android.provider.Settings.canDrawOverlays(this@MainActivity)) {
+                        ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
+                    }
+                    FloatingPlaybackService.sync(this@MainActivity, it)
+                }
+            }
+        }
 
         setContent {
             val context = LocalContext.current
@@ -39,7 +60,9 @@ class MainActivity : ComponentActivity() {
             val persisted by settings.appearance.collectAsState(initial = Appearance.DARK)
 
             // Show the branded splash screen briefly before the main app.
-            var showSplash by remember { mutableStateOf(true) }
+            // rememberSaveable (not remember) so the "already shown" flag
+            // survives a rotation instead of resetting and replaying it.
+            var showSplash by rememberSaveable { mutableStateOf(true) }
 
             LaunchedEffect(persisted) {
                 appearance = persisted
@@ -54,22 +77,28 @@ class MainActivity : ComponentActivity() {
             }
 
             LoheTheme(appearance = appearance) {
-                if (showSplash) {
-                    SplashScreen(onFinished = { showSplash = false })
-                } else {
-                    LoheNavHost(
-                        appearance = appearance,
-                        onToggleAppearance = {
-                            val next = when (appearance) {
-                                Appearance.DARK -> Appearance.LIGHT
-                                Appearance.LIGHT -> Appearance.DARK
-                            }
-                            // Update in memory first so the toggle feels instant,
-                            // then persist; a failed write must not block the change.
-                            appearance = next
-                            scope.launch { settings.setAppearance(next) }
-                        },
-                    )
+                BugReportOverlay {
+                    if (showSplash) {
+                        SplashScreen(onFinished = {
+                            DevDiagnostics.log("UI", "SplashScreen finished")
+                            showSplash = false
+                        })
+                    } else {
+                        LoheNavHost(
+                            appearance = appearance,
+                            onToggleAppearance = {
+                                val next = when (appearance) {
+                                    Appearance.DARK -> Appearance.LIGHT
+                                    Appearance.LIGHT -> Appearance.DARK
+                                }
+                                DevDiagnostics.recordAction("Toggle appearance -> $next")
+                                // Update in memory first so the toggle feels instant,
+                                // then persist; a failed write must not block the change.
+                                appearance = next
+                                scope.launch { settings.setAppearance(next) }
+                            },
+                        )
+                    }
                 }
             }
         }
