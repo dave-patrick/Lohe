@@ -205,6 +205,14 @@ private val _previews = MutableStateFlow<Map<String, String>>(emptyMap())
     fun setAutoDownload(podcastUuid: String, enabled: Boolean) {
         viewModelScope.launch { repository.setAutoDownload(podcastUuid, enabled) }
     }
+
+    fun setAutoAddNewEpisodesToUpNext(podcastUuid: String, enabled: Boolean) {
+        viewModelScope.launch { repository.setAutoAddNewEpisodesToUpNext(podcastUuid, enabled) }
+    }
+
+    fun setAutoAddNewEpisodesAtTop(podcastUuid: String, atTop: Boolean) {
+        viewModelScope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, atTop) }
+    }
 }
 
 /** What happened when the listener asked for something from the catalog. */

@@ -252,6 +252,20 @@ class SubscriptionRepository internal constructor(
     suspend fun setAutoDownload(uuid: String, enabled: Boolean) =
         podcasts.setAutoDownload(uuid, enabled)
 
+    /** Per-podcast setting: append episodes discovered by the next feed refresh to Up Next. */
+    suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean) {
+        podcasts.get(uuid)?.let {
+            podcasts.update(it.copy(autoAddNewEpisodesToUpNext = enabled))
+        }
+    }
+
+    /** Per-podcast placement for episodes discovered by a feed refresh. */
+    suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean) {
+        podcasts.get(uuid)?.let {
+            podcasts.update(it.copy(autoAddNewEpisodesAtTop = atTop))
+        }
+    }
+
     /** Convenience: fresh UUID for callers that mint one. */
     fun newUuid(): String = UUID.randomUUID().toString()
 
@@ -342,12 +356,11 @@ class SubscriptionRepository internal constructor(
      * fifty subscriptions would otherwise open fifty sockets at once and get
      * rate-limited.
      *
-     * Shows with auto-download enabled get each *newly seen* episode handed to
-     * [autoDownload]. "Newly seen" means absent before this refresh and present
-     * after — a refresh must never re-download a back catalogue. The first
-     * fetch of a show is deliberately exempt: a new subscription arrives with
-     * its whole history attached, and pulling all of it unbidden is not what
-     * "save new episodes" asks for.
+     * Shows with auto-download or auto-queue enabled only act on *newly seen*
+     * episodes: ones absent before this refresh and present after. A refresh
+     * must never redownload or queue a back catalogue. The first fetch of a
+     * show is deliberately exempt because a new subscription arrives with its
+     * whole history attached.
      */
     suspend fun refreshAllFeeds(): FeedRefreshSummary {
         val targets = podcasts.allOnce().filter { it.feedUrl.isNotBlank() }
@@ -357,7 +370,7 @@ class SubscriptionRepository internal constructor(
 
         targets.forEach { podcast ->
             // Captured before the fetch so the diff is against pre-refresh state.
-            val known = if (podcast.autoDownload) {
+            val known = if (podcast.autoDownload || podcast.autoAddNewEpisodesToUpNext) {
                 episodes.byPodcastOnce(podcast.uuid).mapTo(mutableSetOf()) { it.uuid }
             } else {
                 null
@@ -367,7 +380,12 @@ class SubscriptionRepository internal constructor(
                 .onSuccess {
                     refreshed++
                     if (known != null && known.isNotEmpty()) {
-                        autoDownloadNewEpisodes(podcast.uuid, known)
+                        val newlySeen = episodes.byPodcastOnce(podcast.uuid)
+                            .filter { it.uuid !in known && !it.isPlayed && !it.isDeleted && !it.isArchived }
+                        if (podcast.autoDownload) newlySeen.forEach(autoDownload)
+                        if (podcast.autoAddNewEpisodesToUpNext) {
+                            enqueueNewEpisodes(podcast, newlySeen)
+                        }
                     }
                 }
                 .onFailure { failures += podcast.title }
@@ -381,19 +399,16 @@ class SubscriptionRepository internal constructor(
         )
     }
 
-    /**
-     * Hands every episode of [podcastUuid] absent from [known] to [autoDownload].
-     *
-     * Finished episodes are skipped: they cost bandwidth and will never be
-     * played again.
-     */
-    private suspend fun autoDownloadNewEpisodes(
-        podcastUuid: String,
-        known: Set<String>,
+    /** Adds newly fetched episodes once, preserving the feed's newest-first order. */
+    private suspend fun enqueueNewEpisodes(
+        podcast: PodcastEntity,
+        newlySeen: List<EpisodeEntity>,
     ) {
-        episodes.byPodcastOnce(podcastUuid)
-            .filter { it.uuid !in known && !it.isPlayed }
-            .forEach(autoDownload)
+        if (newlySeen.isEmpty()) return
+        newlySeen.forEach { episodes.enqueue(it.uuid, System.currentTimeMillis()) }
+        if (podcast.autoAddNewEpisodesAtTop) {
+            episodes.promoteBatchInQueue(newlySeen.map { it.uuid })
+        }
     }
 }
 

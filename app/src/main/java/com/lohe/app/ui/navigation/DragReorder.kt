@@ -1,6 +1,8 @@
 package com.lohe.app.ui.navigation
 
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
@@ -16,7 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -85,23 +89,32 @@ class DragReorderState internal constructor(
         onDrop()
     }
 
-    suspend fun autoScrollAtEdges(edgeSize: Float) {
+    suspend fun autoScrollAtEdges(edgeSize: Float, maxSpeed: Float) {
+        var previousFrame = withFrameNanos { it }
         while (isDragging) {
-            withFrameNanos { }
+            val frame = withFrameNanos { it }
+            val seconds = ((frame - previousFrame) / 1_000_000_000f).coerceAtMost(0.05f)
+            previousFrame = frame
             val info = listState.layoutInfo
             val index = draggedIndex ?: break
             val dragged = info.visibleItemsInfo.firstOrNull { it.index == index } ?: continue
             val center = dragged.offset + draggedOffset + dragged.size / 2f
+            val topProximity =
+                ((info.viewportStartOffset + edgeSize - center) / edgeSize).coerceIn(0f, 1f)
+            val bottomProximity =
+                ((center - (info.viewportEndOffset - edgeSize)) / edgeSize).coerceIn(0f, 1f)
             val distance = when {
-                center < info.viewportStartOffset + edgeSize ->
-                    -((info.viewportStartOffset + edgeSize - center) / edgeSize * 18f).coerceAtMost(18f)
-                center > info.viewportEndOffset - edgeSize ->
-                    ((center - (info.viewportEndOffset - edgeSize)) / edgeSize * 18f).coerceAtMost(18f)
+                topProximity > 0f -> -maxSpeed * topProximity * seconds
+                bottomProximity > 0f -> maxSpeed * bottomProximity * seconds
                 else -> 0f
             }
             if (distance != 0f) {
-                listState.scrollBy(distance)
-                draggedOffset += distance
+                // LazyListState can consume less than requested at the ends
+                // of the list. Keep the dragged row aligned only with the
+                // distance the list actually scrolled, or it will drift off
+                // screen and drop at index zero or the last index.
+                val consumed = listState.scrollBy(distance)
+                draggedOffset += consumed
             }
         }
     }
@@ -115,7 +128,10 @@ internal fun rememberDragReorderState(
 ): DragReorderState {
     val state = remember(listState) { DragReorderState(listState, onMove, onDrop) }
     val edgeSize = with(LocalDensity.current) { 64.dp.toPx() }
-    LaunchedEffect(state.draggedIndex) { state.autoScrollAtEdges(edgeSize) }
+    val maxSpeed = with(LocalDensity.current) { 600.dp.toPx() }
+    LaunchedEffect(state.isDragging) {
+        if (state.isDragging) state.autoScrollAtEdges(edgeSize, maxSpeed)
+    }
     return state
 }
 
@@ -148,15 +164,34 @@ internal fun DragHandle(
         },
         modifier = modifier
             .pointerInput(key) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { state.onDragStart(currentIndex) },
-                    onDrag = { change, amount ->
-                        change.consume()
-                        state.onDrag(amount.y)
-                    },
-                    onDragEnd = { state.onDragEnd() },
-                    onDragCancel = { state.onDragEnd() },
-                )
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Claim the grip's press so the parent row's combined
+                    // click handler cannot turn this same long press into its
+                    // action menu.
+                    down.consume()
+
+                    val longPress = awaitLongPressOrCancellation(down.id)
+                        ?: return@awaitEachGesture
+                    state.onDragStart(currentIndex)
+                    try {
+                        var finished = false
+                        while (!finished) {
+                            val event = awaitPointerEvent()
+                            val change: PointerInputChange =
+                                event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                finished = true
+                            } else {
+                                val delta = change.positionChange()
+                                if (delta.y != 0f) state.onDrag(delta.y)
+                                if (delta.x != 0f || delta.y != 0f) change.consume()
+                            }
+                        }
+                    } finally {
+                        state.onDragEnd()
+                    }
+                }
             },
     )
 }

@@ -146,6 +146,16 @@ fun SettingsScreen(
             )
 
             ToggleRow(
+                label = "Enhance voices",
+                hint = "Boost speech frequencies so spoken words cut through.",
+                checked = settings.voiceEnhancementByDefault,
+                onChange = {
+                    Playback.setVoiceEnhancement(it)
+                    scope.launch { settingsStore.setVoiceEnhancementDefault(it) }
+                },
+            )
+
+            ToggleRow(
                 label = "Skip silence",
                 hint = "Automatically trim dead air and long pauses during playback.",
                 checked = settings.skipSilenceByDefault,

@@ -142,6 +142,13 @@ class PlayerConnection internal constructor(
         controller?.volume = 1f
     }
 
+    fun setVoiceEnhancement(enabled: Boolean) {
+        Playback.setVoiceEnhancement(enabled)
+    }
+
+    fun setEnhanceVoices(enabled: Boolean) = setVoiceEnhancement(enabled)
+    fun setVoiceBoost(enabled: Boolean) = setVoiceEnhancement(enabled)
+
     fun setPlaybackSpeed(speed: Float) {
         val clamped = speed.coerceIn(0.5f, 3.0f)
         Playback.setPlaybackSpeed(clamped)

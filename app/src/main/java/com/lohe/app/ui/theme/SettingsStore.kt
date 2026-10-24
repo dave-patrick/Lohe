@@ -51,6 +51,10 @@ data class PlaybackSettings(
      */
     val autoDownloadQueue: Boolean = true,
     /**
+     * Whether voice enhancement (mid-frequency boost) is on by default.
+     */
+    val voiceEnhancementByDefault: Boolean = false,
+    /**
      * The sleep-timer length the listener last chose, in minutes.
      *
      * Remembered so the sheet opens on the choice they keep making instead of
@@ -82,6 +86,8 @@ data class PlaybackSettings(
 data class ShowPlaybackSettings(
     /** Whether loudness boost above 0 dB is enabled for this show. */
     val volumeBoost: Boolean = false,
+    /** Whether voice enhancement is enabled for this show. */
+    val voiceEnhancement: Boolean = false,
     /** Whether ExoPlayer silence trimming is enabled for this show. */
     val skipSilence: Boolean = false,
     /** Playback speed multiplier (0.5x .. 3.0x) for this show. */
@@ -117,6 +123,7 @@ data class ShowPlaybackSettings(
  */
 data class ShowPlaybackOverrides(
     val volumeBoost: Boolean? = null,
+    val voiceEnhancement: Boolean? = null,
     val skipSilence: Boolean? = null,
     val playbackSpeed: Float? = null,
     val smartSpeed: Boolean? = null,
@@ -150,6 +157,7 @@ class SettingsStore(private val context: Context) {
         val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
         val floatingPlayerOpacity = floatPreferencesKey("floating_player_opacity")
         val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
+    val voiceEnhancement = booleanPreferencesKey("voice_enhancement")
         val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
@@ -196,6 +204,7 @@ class SettingsStore(private val context: Context) {
             floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
             floatingPlayerOpacity = com.lohe.app.playback.safeFloatingPlayerOpacity(prefs[Keys.floatingPlayerOpacity] ?: 1f),
             autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
+            voiceEnhancementByDefault = prefs[Keys.voiceEnhancement] ?: false,
             sleepTimerMinutes = (prefs[Keys.sleepTimerMinutes] ?: 30)
                 .coerceIn(1, 24 * 60),
             podcastSort = prefs[Keys.podcastSort]
@@ -269,6 +278,9 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoDownloadQueue(value: Boolean) =
         edit { it[Keys.autoDownloadQueue] = value }
 
+    suspend fun setVoiceEnhancementDefault(value: Boolean) =
+        edit { it[Keys.voiceEnhancement] = value }
+
     suspend fun setSleepTimerMinutes(value: Int) =
         edit { it[Keys.sleepTimerMinutes] = value.coerceIn(1, 24 * 60) }
 
@@ -304,6 +316,8 @@ class SettingsStore(private val context: Context) {
             ShowPlaybackSettings(
                 volumeBoost = prefs[showBoolKey(podcastUuid, "volume_boost")]
                     ?: global.volumeBoostByDefault,
+            voiceEnhancement = prefs[showBoolKey(podcastUuid, "voice_enhancement")]
+                    ?: global.voiceEnhancementByDefault,
                 skipSilence = prefs[showBoolKey(podcastUuid, "skip_silence")]
                     ?: global.skipSilenceByDefault,
                 playbackSpeed = (
@@ -335,6 +349,7 @@ class SettingsStore(private val context: Context) {
         context.settingsStore.data.map { prefs ->
             ShowPlaybackOverrides(
                 volumeBoost = prefs[showBoolKey(podcastUuid, "volume_boost")],
+                voiceEnhancement = prefs[showBoolKey(podcastUuid, "voice_enhancement")],
                 skipSilence = prefs[showBoolKey(podcastUuid, "skip_silence")],
                 playbackSpeed = prefs[showSpeedKey(podcastUuid)],
                 smartSpeed = prefs[showBoolKey(podcastUuid, "smart_speed")],
@@ -348,6 +363,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setShowPlaybackSettings(podcastUuid: String, settings: ShowPlaybackSettings) =
         edit {
             it[showBoolKey(podcastUuid, "volume_boost")] = settings.volumeBoost
+            it[showBoolKey(podcastUuid, "voice_enhancement")] = settings.voiceEnhancement
             it[showBoolKey(podcastUuid, "skip_silence")] = settings.skipSilence
             it[showSpeedKey(podcastUuid)] = settings.playbackSpeed
             it[showBoolKey(podcastUuid, "smart_speed")] = settings.smartSpeed
@@ -365,6 +381,11 @@ class SettingsStore(private val context: Context) {
      */
     suspend fun setShowVolumeBoost(podcastUuid: String, value: Boolean?) = edit {
         val key = showBoolKey(podcastUuid, "volume_boost")
+        if (value == null) it.remove(key) else it[key] = value
+    }
+
+    suspend fun setShowVoiceEnhancement(podcastUuid: String, value: Boolean?) = edit {
+        val key = showBoolKey(podcastUuid, "voice_enhancement")
         if (value == null) it.remove(key) else it[key] = value
     }
 
@@ -403,6 +424,7 @@ class SettingsStore(private val context: Context) {
     /** Puts every setting for a show back on the global value. */
     suspend fun clearShowPlaybackSettings(podcastUuid: String) = edit {
         it.remove(showBoolKey(podcastUuid, "volume_boost"))
+        it.remove(showBoolKey(podcastUuid, "voice_enhancement"))
         it.remove(showBoolKey(podcastUuid, "skip_silence"))
         it.remove(showBoolKey(podcastUuid, "smart_speed"))
         it.remove(showBoolKey(podcastUuid, "auto_trim"))

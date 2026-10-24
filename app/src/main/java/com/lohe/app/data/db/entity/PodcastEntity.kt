@@ -29,5 +29,9 @@ data class PodcastEntity(
      * metered connection and stream the rest.
      */
     val autoDownload: Boolean = false,
+    /** Whether newly discovered episodes should be queued automatically. */
+    @ColumnInfo(defaultValue = "0") val autoAddNewEpisodesToUpNext: Boolean = false,
+    /** Whether those new episodes go to the head instead of the tail. */
+    @ColumnInfo(defaultValue = "0") val autoAddNewEpisodesAtTop: Boolean = false,
     @ColumnInfo(defaultValue = "1") val isSubscribed: Boolean = true,
 )

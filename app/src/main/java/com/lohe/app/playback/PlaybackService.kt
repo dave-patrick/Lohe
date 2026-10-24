@@ -2,6 +2,7 @@ package com.lohe.app.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import androidx.media3.common.AudioAttributes
@@ -55,6 +56,8 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var loudnessSessionId: Int = C.AUDIO_SESSION_ID_UNSET
+    private var voiceEqualizer: Equalizer? = null
+    private var voiceSessionId: Int = C.AUDIO_SESSION_ID_UNSET
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
@@ -92,6 +95,7 @@ class PlaybackService : MediaLibraryService() {
 
         player.addListener(EndOfEpisodeWatcher())
         startVolumeBoostObserver()
+        startVoiceEnhancementObserver()
         startSleepTimerPolling()
         startProgressReporting()
         startOutroSkipping()
@@ -112,6 +116,8 @@ class PlaybackService : MediaLibraryService() {
         player.removeListener(EndOfEpisodeWatcher())
         runCatching { loudnessEnhancer?.release() }
         loudnessEnhancer = null
+        runCatching { voiceEqualizer?.release() }
+        voiceEqualizer = null
         session?.release()
         session = null
         platformToken = null
@@ -243,6 +249,25 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class EndOfEpisodeWatcher : Player.Listener {
         private var resumedForMediaId: String? = null
+        private var observedMediaId: String? = null
+        private var completingMediaId: String? = null
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val nextId = mediaItem?.mediaId?.takeIf { it.isNotBlank() }
+            val previousId = observedMediaId
+            observedMediaId = nextId
+            if (nextId != previousId) completingMediaId = null
+
+            // A multi-item MediaSession queue transitions directly between
+            // episodes without reporting STATE_ENDED for each one.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+            ) {
+                previousId?.takeIf { it != nextId }?.let {
+                    markPlayed(it, "media-item-transition", removeFromQueue = true)
+                }
+            }
+        }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             val stateName = when (playbackState) {
@@ -268,13 +293,11 @@ class PlaybackService : MediaLibraryService() {
             // so finishing the episode is the end of playback, not a transition.
             if (sleepTimer.state.value.stopsAtEpisodeEnd) {
                 sleepTimer.cancel()
-                markCurrentPlayed()
-                player.pause()
+                completeEpisode(stopAfterCompletion = true)
                 return
             }
 
-            markCurrentPlayed()
-            advanceQueue()
+            completeEpisode(stopAfterCompletion = false)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -283,12 +306,29 @@ class PlaybackService : MediaLibraryService() {
             DevDiagnostics.log("EXOPLAYER_ERR", summary, error)
         }
 
-        private fun markCurrentPlayed() {
-            val id = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
+        private fun completeEpisode(stopAfterCompletion: Boolean) {
+            val finishedId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
+            if (finishedId != null && completingMediaId == finishedId) return
+            completingMediaId = finishedId
             scope.launch(Dispatchers.IO) {
-                runCatching { ServiceLocator.subscriptionRepository() }
+                val repository = runCatching { ServiceLocator.subscriptionRepository() }
+                    .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Could not open the episode repository", it) }
                     .getOrNull()
-                    ?.markPlayed(id)
+
+                if (repository != null && finishedId != null) {
+                    runCatching { repository.markPlayed(finishedId) }
+                        .onSuccess { DevDiagnostics.log("PLAYBACK_COMPLETE", "Marked $finishedId played at episode end") }
+                        .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Failed to mark $finishedId played", it) }
+                    runCatching { repository.dequeue(finishedId) }
+                        .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Failed to remove $finishedId from Up Next", it) }
+                }
+
+                if (stopAfterCompletion) {
+                    withContext(Dispatchers.Main) { player.pause() }
+                    return@launch
+                }
+
+                if (repository != null) advanceQueue(repository)
             }
         }
 
@@ -298,41 +338,47 @@ class PlaybackService : MediaLibraryService() {
          * The finished episode is dequeued first, so failing to load the next
          * one cannot leave it stuck at the head and wedge the queue.
          */
-        private fun advanceQueue() {
-            val finishedId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
+        private suspend fun advanceQueue(repository: com.lohe.app.data.SubscriptionRepository) {
+            val next = repository.queueSnapshot().firstOrNull()
+            if (next == null) {
+                withContext(Dispatchers.Main) { player.stop() }
+                return
+            }
+
+            val show = runCatching {
+                repository.getPodcast(next.podcastUuid)
+            }.getOrNull()
+            val showTitle = show?.title
+            val artworkUrl = next.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
+
+            withContext(Dispatchers.Main) {
+                player.setMediaItem(
+                    mediaItemFor(
+                        episodeUuid = next.uuid,
+                        uri = next.playbackUri,
+                        title = next.title,
+                        showTitle = showTitle,
+                        artworkUrl = artworkUrl,
+                    ),
+                )
+                applyShowSettings(next.podcastUuid)
+                applyCrossfade(next.uuid)
+                player.prepare()
+                player.play()
+            }
+        }
+
+        private fun markPlayed(id: String, source: String, removeFromQueue: Boolean = false) {
             scope.launch(Dispatchers.IO) {
                 val repository = runCatching { ServiceLocator.subscriptionRepository() }
+                    .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Could not open repository for $id ($source)", it) }
                     .getOrNull() ?: return@launch
-
-                finishedId?.let { repository.dequeue(it) }
-
-                val next = repository.queueSnapshot().firstOrNull()
-                if (next == null) {
-                    withContext(Dispatchers.Main) { player.stop() }
-                    return@launch
+                runCatching {
+                    repository.markPlayed(id)
+                    if (removeFromQueue) repository.dequeue(id)
                 }
-
-                val show = runCatching {
-                    repository.getPodcast(next.podcastUuid)
-                }.getOrNull()
-                val showTitle = show?.title
-                val artworkUrl = next.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
-
-                withContext(Dispatchers.Main) {
-                    player.setMediaItem(
-                        mediaItemFor(
-                            episodeUuid = next.uuid,
-                            uri = next.playbackUri,
-                            title = next.title,
-                            showTitle = showTitle,
-                            artworkUrl = artworkUrl,
-                        ),
-                    )
-                    applyShowSettings(next.podcastUuid)
-                    applyCrossfade(next.uuid)
-                    player.prepare()
-                    player.play()
-                }
+                    .onSuccess { DevDiagnostics.log("PLAYBACK_COMPLETE", "Marked $id played ($source)") }
+                    .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Failed to mark $id played ($source)", it) }
             }
         }
 
@@ -346,6 +392,7 @@ class PlaybackService : MediaLibraryService() {
         private fun resumeOnce() {
             val item = player.currentMediaItem ?: return
             val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
+            observedMediaId = mediaId
             if (resumedForMediaId == mediaId) return
             resumedForMediaId = mediaId
 
@@ -425,6 +472,45 @@ class PlaybackService : MediaLibraryService() {
             loudnessEnhancer?.apply {
                 setTargetGain(if (enabled) VOLUME_BOOST_MILLIBELS else 0)
                 setEnabled(enabled)
+            }
+        }
+    }
+
+    private fun startVoiceEnhancementObserver() {
+        scope.launch {
+            Playback.voiceEnhancement.collect { enabled ->
+                applyVoiceEnhancement(enabled)
+            }
+        }
+    }
+
+    private fun applyVoiceEnhancement(enabled: Boolean) {
+        val sessionId = player.audioSessionId
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId <= 0) return
+
+        runCatching {
+            if (voiceEqualizer == null || voiceSessionId != sessionId) {
+                voiceEqualizer?.release()
+                voiceEqualizer = Equalizer(0, sessionId)
+                voiceSessionId = sessionId
+            }
+            val eq = voiceEqualizer ?: return@runCatching
+            if (enabled) {
+                val boostMillibels = 400
+                for (i in 0 until eq.numberOfBands) {
+                    val center = eq.getCenterFreq(i.toShort()) / 1000
+                    if (center in 1000..4000) {
+                        eq.setBandLevel(i.toShort(), boostMillibels.toShort())
+                    } else {
+                        eq.setBandLevel(i.toShort(), 0.toShort())
+                    }
+                }
+                eq.enabled = true
+            } else {
+                for (i in 0 until eq.numberOfBands) {
+                    eq.setBandLevel(i.toShort(), 0.toShort())
+                }
+                eq.enabled = false
             }
         }
     }
@@ -606,6 +692,9 @@ class PlaybackService : MediaLibraryService() {
 
         // Apply volume boost
         applyVolumeBoost(settings.volumeBoost)
+
+        // Apply voice enhancement
+        applyVoiceEnhancement(settings.voiceEnhancement)
 
         // Store crossfade and auto-trim for use on track transitions
         _currentCrossfadeMs = settings.crossfadeMs

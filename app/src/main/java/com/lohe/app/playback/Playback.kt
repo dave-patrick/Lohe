@@ -23,6 +23,11 @@ object Playback {
     /** Whether loudness boost above 0 dB is enabled. */
     val volumeBoost: StateFlow<Boolean> = _volumeBoost.asStateFlow()
 
+    private val _voiceEnhancement = MutableStateFlow(false)
+
+    /** Whether voice enhancement (mid-frequency boost) is enabled. */
+    val voiceEnhancement: StateFlow<Boolean> = _voiceEnhancement.asStateFlow()
+
     private val _playbackSpeed = MutableStateFlow(1f)
 
     /** Current playback speed multiplier (0.5x .. 3.0x). */
@@ -37,6 +42,14 @@ object Playback {
         _volumeBoost.value = enabled
     }
 
+    fun setVoiceEnhancement(enabled: Boolean) {
+        _voiceEnhancement.value = enabled
+    }
+
+    // Aliases for callers that name the feature differently.
+    fun setEnhanceVoices(enabled: Boolean) = setVoiceEnhancement(enabled)
+    fun setVoiceBoost(enabled: Boolean) = setVoiceEnhancement(enabled)
+
     fun setPlaybackSpeed(speed: Float) {
         _playbackSpeed.value = speed.coerceIn(0.5f, 3.0f)
     }
@@ -49,6 +62,7 @@ object Playback {
     fun resetForTests() {
         sleepTimer.cancel()
         _volumeBoost.value = false
+        _voiceEnhancement.value = false
         _playbackSpeed.value = 1f
         _skipSilence.value = false
     }

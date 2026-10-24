@@ -28,9 +28,9 @@ interface PodcastDao {
     /**
      * Refreshes the columns that come from the feed.
      *
-     * Deliberately narrow. Auto-download, when the show was subscribed and
-     * the unread count belong to the listener, not to the feed — a refresh
-     * must never reset them.
+     * Deliberately narrow. Auto-download, auto-queue placement, subscription
+     * state and unread count belong to the listener, not to the feed — a
+     * refresh must never reset them.
      */
     @Query(
         """

@@ -18,6 +18,7 @@ object DevSettingsBridge {
     val WRITABLE = listOf(
         "appearance" to "light or dark",
         "volumeBoostDefault" to "true or false",
+        "voiceEnhancementDefault" to "true or false",
         "skipSilenceDefault" to "true or false",
         "smartSpeedDefault" to "true or false",
         "autoTrimDefault" to "true or false",
@@ -45,6 +46,7 @@ object DevSettingsBridge {
                 if (value.equals("light", ignoreCase = true)) Appearance.LIGHT else Appearance.DARK,
             )
             "volumeBoostDefault" -> settings.setVolumeBoostDefault(value.toBooleanStrict())
+            "voiceEnhancementDefault" -> settings.setVoiceEnhancementDefault(value.toBooleanStrict())
             "skipSilenceDefault" -> settings.setSkipSilenceDefault(value.toBooleanStrict())
             "smartSpeedDefault" -> settings.setSmartSpeedDefault(value.toBooleanStrict())
             "autoTrimDefault" -> settings.setAutoTrimDefault(value.toBooleanStrict())

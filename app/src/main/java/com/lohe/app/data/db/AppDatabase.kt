@@ -26,7 +26,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
         EpisodeEntity::class,
         ListeningHistoryEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 @TypeConverters()
@@ -174,6 +174,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Per-podcast auto-queue behavior for episodes discovered on refresh. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN autoAddNewEpisodesToUpNext INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN autoAddNewEpisodesAtTop INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
@@ -216,6 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
+                        MIGRATION_11_12,
                     )
                     .build()
                     .also { instance = it }

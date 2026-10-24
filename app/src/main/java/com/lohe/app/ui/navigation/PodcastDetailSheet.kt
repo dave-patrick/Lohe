@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -62,9 +63,13 @@ fun PodcastDetailSheet(
     description: String?,
     subscribed: PodcastEntity?,
     autoDownload: Boolean,
+    autoAddNewEpisodesToUpNext: Boolean,
+    autoAddNewEpisodesAtTop: Boolean,
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
     onAutoDownloadChange: (Boolean) -> Unit,
+    onAutoAddNewEpisodesToUpNextChange: (Boolean) -> Unit,
+    onAutoAddNewEpisodesAtTopChange: (Boolean) -> Unit,
     onOpenShow: (() -> Unit)?,
     onDownloadEpisode: ((String) -> Unit)? = null,
     episodes: List<EpisodeEntity> = emptyList(),
@@ -185,6 +190,38 @@ fun PodcastDetailSheet(
                     checked = autoDownload,
                     onCheckedChange = onAutoDownloadChange,
                 )
+
+                SettingToggle(
+                    title = "Add new episodes to Up Next",
+                    summary = "Queue new episodes when this podcast is refreshed.",
+                    checked = autoAddNewEpisodesToUpNext,
+                    onCheckedChange = onAutoAddNewEpisodesToUpNextChange,
+                )
+
+                if (autoAddNewEpisodesToUpNext) {
+                    Text(
+                        text = "Add new episodes to",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = autoAddNewEpisodesAtTop,
+                            onClick = { onAutoAddNewEpisodesAtTopChange(true) },
+                        )
+                        Text("Beginning")
+                        Spacer(Modifier.size(12.dp))
+                        RadioButton(
+                            selected = !autoAddNewEpisodesAtTop,
+                            onClick = { onAutoAddNewEpisodesAtTopChange(false) },
+                        )
+                        Text("End")
+                    }
+                }
             }
 
             // Preview episodes: lets a listener download individual episodes

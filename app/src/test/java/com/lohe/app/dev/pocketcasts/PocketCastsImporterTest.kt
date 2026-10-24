@@ -305,6 +305,7 @@ class PocketCastsImporterTest {
         status = status,
         playedUpToSeconds = playedUpTo,
         starred = starred,
+        archived = deleted,
         deleted = deleted,
     )
 
@@ -576,7 +577,7 @@ class PocketCastsImporterTest {
     }
 
     @Test
-    fun `an episode deleted in Pocket Casts leaves the lists here`() = runTest {
+    fun `an archived Pocket Casts episode is archived here and not deleted`() = runTest {
         val (repository, playlists, dao) = harness(
             shows = listOf(show("lohe-show", "The Show", "https://feed.example/show.xml")),
             episodes = listOf(episode("e1", "lohe-show", "One", "https://cdn.example/1.mp3")),
@@ -592,7 +593,8 @@ class PocketCastsImporterTest {
             ),
         )
 
-        assertTrue(dao.rows.first().isDeleted)
+        assertTrue(dao.rows.first().isArchived)
+        assertFalse(dao.rows.first().isDeleted)
     }
 
     @Test

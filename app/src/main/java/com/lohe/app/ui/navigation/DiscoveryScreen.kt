@@ -206,10 +206,18 @@ fun DiscoveryScreen(
             description = blurb,
             subscribed = existing,
             autoDownload = existing?.autoDownload ?: false,
+            autoAddNewEpisodesToUpNext = existing?.autoAddNewEpisodesToUpNext ?: false,
+            autoAddNewEpisodesAtTop = existing?.autoAddNewEpisodesAtTop ?: false,
             onFollow = { viewModel.subscribe(podcast) },
             onUnfollow = { existing?.let { viewModel.unsubscribe(it.uuid) } },
             onAutoDownloadChange = { enabled ->
                 existing?.let { viewModel.setAutoDownload(it.uuid, enabled) }
+            },
+            onAutoAddNewEpisodesToUpNextChange = { enabled ->
+                existing?.let { viewModel.setAutoAddNewEpisodesToUpNext(it.uuid, enabled) }
+            },
+            onAutoAddNewEpisodesAtTopChange = { atTop ->
+                existing?.let { viewModel.setAutoAddNewEpisodesAtTop(it.uuid, atTop) }
             },
             onOpenShow = existing?.let { { onOpenSubscribed(it.uuid) } },
             onDownloadEpisode = { episodeUuid ->
