@@ -61,6 +61,54 @@ class PodcastUpsertCascadeTest {
     )
 
     @Test
+    fun completedEpisodesWaitForArchiveDelayAndCanBeReopened() = runBlocking {
+        db.podcastDao().upsert(podcast())
+        val episodes = db.episodeDao()
+        episodes.upsertAll(listOf(episode().copy(
+            playingStatus = EpisodeEntity.IN_PROGRESS,
+            playedUpToSeconds = 90,
+            listenedSeconds = 60,
+            starred = true,
+        )))
+        episodes.markPlayedAndClearProgress("episode-1")
+        val completed = episodes.get("episode-1")!!
+        assertEquals(EpisodeEntity.PLAYED, completed.playingStatus)
+        assertTrue(!completed.isArchived)
+        assertTrue(completed.playedAt != null)
+        val completedAt = completed.playedAt!!
+        episodes.markPlayedAndClearProgress("episode-1")
+        assertEquals(completedAt, episodes.get("episode-1")!!.playedAt)
+        assertEquals(0, episodes.archivePlayedIfDue("episode-1", completedAt - 1))
+        assertEquals(1, episodes.archivePlayedIfDue("episode-1", completedAt))
+        assertTrue(episodes.get("episode-1")!!.isArchived)
+        assertEquals(0L, completed.playedUpToSeconds)
+        assertEquals(60L, completed.listenedSeconds)
+        assertTrue(completed.starred)
+        episodes.reopenEpisode("episode-1")
+        val reopened = episodes.get("episode-1")!!
+        assertEquals(EpisodeEntity.UNPLAYED, reopened.playingStatus)
+        assertTrue(!reopened.isArchived)
+        assertEquals(null, reopened.playedAt)
+        assertEquals(0, episodes.archivePlayedIfDue("episode-1", Long.MAX_VALUE))
+        assertTrue(reopened.starred)
+    }
+
+    @Test
+    fun retainedUnsubscribedShowsKeepTheirEpisodesAndCanBeFollowedAgain() = runBlocking {
+        val podcasts = db.podcastDao()
+        val episodes = db.episodeDao()
+        podcasts.upsert(podcast())
+        episodes.upsertAll(listOf(episode()))
+        podcasts.update(podcasts.get("podcast-1")!!.copy(isSubscribed = false))
+        assertTrue(podcasts.allOnce().isEmpty())
+        assertEquals(0, podcasts.count())
+        assertEquals(1, episodes.byPodcastOnce("podcast-1").size)
+        podcasts.upsert(podcast())
+        assertEquals(1, podcasts.count())
+        assertEquals(1, episodes.byPodcastOnce("podcast-1").size)
+    }
+
+    @Test
     fun refreshingAPodcastKeepsItsEpisodesAndTheirState() = runBlocking {
         val dao = db.podcastDao()
         val episodes = db.episodeDao()

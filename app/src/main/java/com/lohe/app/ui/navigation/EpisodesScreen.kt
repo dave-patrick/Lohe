@@ -1,6 +1,7 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +66,8 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -330,7 +333,7 @@ fun EpisodesScreen(
                 }
                 // The same control, the same size and the same place as on
                 // every other screen.
-                HeaderSettingsButton(onClick = onOpenSettings)
+                HeaderSettingsSpacer()
             }
         }
 
@@ -675,10 +678,36 @@ private fun EpisodeRow(
     onToggleArchived: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    var upwardDistance by remember(episode.uuid) { mutableStateOf(0f) }
+    var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
+    var notesOpenedBySwipe by remember(episode.uuid) { mutableStateOf(false) }
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onPlay,
         onLongClick = onLongPress,
+        modifier = Modifier.pointerInput(episode.uuid, swipeThreshold) {
+            detectDragGestures(
+                onDragStart = {
+                    upwardDistance = 0f
+                    horizontalDistance = 0f
+                    notesOpenedBySwipe = false
+                },
+                onDrag = { change, dragAmount ->
+                    horizontalDistance += dragAmount.x
+                    upwardDistance += dragAmount.y
+                    if (!notesOpenedBySwipe &&
+                        upwardDistance <= -swipeThreshold &&
+                        kotlin.math.abs(horizontalDistance) < swipeThreshold
+                    ) {
+                        notesOpenedBySwipe = true
+                        change.consume()
+                        onOpenNotes()
+                    }
+                    if (notesOpenedBySwipe) change.consume()
+                },
+            )
+        },
         contentPadding = 14.dp,
     ) {
         // Played episodes read as dimmed so unplayed items stand out.

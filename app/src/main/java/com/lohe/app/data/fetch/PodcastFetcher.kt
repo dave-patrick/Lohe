@@ -89,6 +89,7 @@ class RssPodcastFetcher(
                     archived != null -> ep.copy(listenedSeconds = archived.listenedSeconds)
                     old != null -> ep.copy(
                         playingStatus = old.playingStatus,
+                        playedAt = old.playedAt,
                         playedUpToSeconds = old.playedUpToSeconds,
                         listenedSeconds = old.listenedSeconds,
                         starred = old.starred,

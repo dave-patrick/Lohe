@@ -107,13 +107,23 @@ interface EpisodeDao {
         rewriteQueue(listOf(target) + queued.filterNot { it.uuid == uuid })
     }
 
+    /** Moves the selected queued episodes to the front without changing their queue order. */
+    @Transaction
+    suspend fun promoteBatchInQueue(uuids: List<String>) {
+        val queued = queueSnapshot()
+        val selected = uuids.toSet()
+        val reordered = queued.filter { it.uuid in selected } + queued.filterNot { it.uuid in selected }
+        reordered.forEachIndexed { index, episode -> renumber(episode.uuid, index) }
+    }
+
     /** Drops [uuid] and everything behind it. */
     @Transaction
     suspend fun clearQueueFrom(uuid: String) {
         val queued = queueSnapshot()
         val index = queued.indexOfFirst { it.uuid == uuid }
-        if (index <= 0) return
+        if (index < 0) return
         rewriteQueue(queued.subList(0, index))
+        queued.drop(index).forEach { dequeue(it.uuid) }
     }
 
     @Query("SELECT * FROM episodes WHERE queuePosition IS NOT NULL ORDER BY queuePosition ASC")
@@ -219,7 +229,7 @@ interface EpisodeDao {
      * `listenedSeconds` is deliberately left alone: it records what was
      * actually heard, which is not the same as where to resume from.
      */
-    @Query("UPDATE episodes SET playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
+    @Query("UPDATE episodes SET playedAt = CASE WHEN playingStatus != 2 OR playedAt IS NULL THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 ELSE playedAt END, playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
     suspend fun markPlayedAndClearProgress(uuid: String)
 
     /**
@@ -232,7 +242,7 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET playingStatus = 0, playedUpToSeconds = 0, listenedSeconds = 0
+        SET playingStatus = 0, playedUpToSeconds = 0, listenedSeconds = 0, isArchived = 0, playedAt = NULL
         WHERE uuid = :uuid AND playingStatus = 2
         """
     )
@@ -269,7 +279,7 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET playingStatus = 0, playedUpToSeconds = 0
+        SET playingStatus = 0, playedUpToSeconds = 0, playedAt = NULL
         WHERE uuid = :uuid
         """
     )
@@ -278,7 +288,7 @@ interface EpisodeDao {
     @Query("SELECT playedUpToSeconds FROM episodes WHERE uuid = :uuid")
     suspend fun playedPosition(uuid: String): Long
 
-    @Query("UPDATE episodes SET playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
+    @Query("UPDATE episodes SET playedAt = CASE WHEN playingStatus != 2 OR playedAt IS NULL THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 ELSE playedAt END, playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
     suspend fun markPlayed(uuid: String)
 
     @Query("UPDATE episodes SET starred = :starred WHERE uuid = :uuid")
@@ -292,6 +302,12 @@ interface EpisodeDao {
      */
     @Query("UPDATE episodes SET isArchived = :archived WHERE uuid = :uuid")
     suspend fun setArchived(uuid: String, archived: Boolean)
+
+    @Query("UPDATE episodes SET isArchived = 1 WHERE uuid = :uuid AND playingStatus = 2 AND isArchived = 0 AND playedAt IS NOT NULL AND playedAt <= :cutoff")
+    suspend fun archivePlayedIfDue(uuid: String, cutoff: Long): Int
+
+    @Query("SELECT * FROM episodes WHERE (playingStatus = 2 AND isArchived = 0 AND playedAt IS NOT NULL) OR (isArchived = 1 AND (localPath IS NOT NULL OR downloadState != 0))")
+    suspend fun archiveCandidates(): List<EpisodeEntity>
 
     /**
      * Files several episodes away, or brings them back, in one statement.

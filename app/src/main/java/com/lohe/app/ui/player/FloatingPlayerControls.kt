@@ -36,8 +36,8 @@ import com.lohe.app.ui.theme.LoheAccent
 /**
  * A floating playback control that stays on top of every screen.
  *
- * Collapsed it is a single red play/pause button at the bottom right. Tapping
- * it expands a red row — skip back · play/pause · skip forward — centred above
+ * Collapsed it is a single accent play/pause button at the bottom right. Tapping
+ * it expands an accent row — skip back · play/pause · skip forward — centred above
  * it, with a collapse chevron, so the most-used transport actions are always
  * one tap away without opening the full player.
  */
@@ -53,14 +53,14 @@ fun FloatingPlayerControls(
     var expanded by remember { mutableStateOf(false) }
     val isPlaying = transport.isPlaying
 
-    val controlRed = MaterialTheme.colorScheme.error
+    val controlAccent = MaterialTheme.colorScheme.primary
     val collapsedSize = 56.dp
     val buttonSize = 44.dp
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 104.dp, end = 20.dp),
+            .padding(bottom = 16.dp, end = 20.dp),
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -84,7 +84,7 @@ fun FloatingPlayerControls(
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
                             contentDescription = "Skip back 15 seconds",
-                            tint = controlRed,
+                            tint = controlAccent,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -95,7 +95,7 @@ fun FloatingPlayerControls(
                         Icon(
                             imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = controlRed,
+                            tint = controlAccent,
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -106,7 +106,7 @@ fun FloatingPlayerControls(
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
                             contentDescription = "Skip forward 30 seconds",
-                            tint = controlRed,
+                            tint = controlAccent,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -128,20 +128,22 @@ fun FloatingPlayerControls(
         // Collapsed: a single floating play/pause button at the bottom right.
         if (!expanded) {
             Surface(
-                color = controlRed,
+                color = controlAccent,
                 shape = CircleShape,
                 modifier = Modifier
-                    .size(collapsedSize)
                     .align(Alignment.End)
                     .padding(bottom = 14.dp, end = 4.dp)
+                    .size(collapsedSize)
                     .clickable(onClick = { expanded = true }),
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause playback" else "Start playback",
-                    tint = Color.White,
-                    modifier = Modifier.size(26.dp),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = "Expand playback controls",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
             }
         }
     }

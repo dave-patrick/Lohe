@@ -14,8 +14,8 @@ android {
         applicationId = "com.lohe.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 10
+        versionName = "0.9.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

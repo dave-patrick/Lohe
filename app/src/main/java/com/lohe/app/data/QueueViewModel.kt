@@ -13,12 +13,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /** One queue entry, paired with its show so the row can name the source. */
@@ -35,23 +38,25 @@ data class ResolvedPlaylist(
     val folder: String = "",
     val autoDownload: Boolean = true,
     /**
-     * True for the built-in Played and Downloaded lists.
+     * True for built-in playlists derived from episode state.
      *
      * They are derived from the library rather than stored, so they cannot be
      * renamed, reordered, deleted, or filed into a folder.
      */
     val system: Boolean = false,
+    val pinned: Boolean = false,
 ) {
     val totalSeconds: Long
         get() = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
 }
 
-/** Ids of the two built-in playlists. */
+/** Ids of the built-in smart playlists. */
 const val PLAYED_ID = "__system_played__"
 const val DOWNLOADED_ID = "__system_downloaded__"
-
-/** How many playlists the Playlists tab shows beyond the listener's own. */
-private const val BUILT_IN_PLAYLIST_COUNT = 2
+const val IN_PROGRESS_ID = "__system_in_progress__"
+const val UNPLAYED_ID = "__system_unplayed__"
+const val NOT_DOWNLOADED_ID = "__system_not_downloaded__"
+const val NEW_RELEASES_ID = "__system_new_releases__"
 
 /** How many days the Home activity chart covers. */
 private const val ACTIVITY_DAYS = 14
@@ -235,7 +240,8 @@ class QueueViewModel(
         repository.observeAllEpisodes(),
         repository.observeListeningHistory(),
         playlistRepository.playlists,
-    ) { shows, allEpisodes, history, playlists ->
+        settingsStore?.settings ?: flowOf(com.lohe.app.ui.theme.PlaybackSettings()),
+    ) { shows, allEpisodes, history, playlists, settings ->
         // Archived episodes are filed away: they are not part of the library
         // the dashboard describes.
         val activeEpisodes = allEpisodes.filter { !it.isDeleted && !it.isArchived }
@@ -299,9 +305,16 @@ class QueueViewModel(
         HomeDashboardStats(
             isLoaded = true,
             subscriptionCount = shows.size,
-            // The Playlists tab shows the two built-in lists as well, so the
+            // The Playlists tab shows the built-in smart lists as well, so the
             // dashboard count has to match what the listener will find there.
-            playlistCount = playlists.size + BUILT_IN_PLAYLIST_COUNT,
+            playlistCount = playlists.count { !it.name.isLegacySmartPlaylistName() } + listOf(
+                "Played" to settings.showPlayedSmartPlaylist,
+                "In Progress" to settings.showInProgressSmartPlaylist,
+                "Unplayed" to settings.showUnplayedSmartPlaylist,
+                "Not Downloaded" to settings.showNotDownloadedSmartPlaylist,
+                "Downloaded" to settings.showDownloadedSmartPlaylist,
+                "New Releases" to settings.showNewReleasesSmartPlaylist,
+            ).count { it.second },
             totalEpisodes = activeEpisodes.size,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
@@ -472,6 +485,8 @@ class QueueViewModel(
 
     fun promote(uuid: String) = viewModelScope.launch { repository.promote(uuid) }
 
+    fun promoteBatch(uuids: List<String>) = viewModelScope.launch { repository.promoteBatch(uuids) }
+
     fun moveInQueue(uuid: String, delta: Int) = viewModelScope.launch {
         repository.moveInQueue(uuid, delta)
     }
@@ -483,7 +498,7 @@ class QueueViewModel(
 
     fun clearAllQueue() = viewModelScope.launch { repository.clearAllQueue() }
 
-    /** "Played up to here": drops this entry and everything after it. */
+    /** Removes this entry and every later entry from Up Next without changing played state. */
     fun clearFrom(uuid: String) = viewModelScope.launch { repository.clearQueueFrom(uuid) }
 
     fun enqueue(uuid: String) = viewModelScope.launch {
@@ -516,7 +531,7 @@ class QueueViewModel(
     /**
      * Every playlist, including the two system ones.
      *
-     * [PLAYED_ID] and [DOWNLOADED_ID] are computed rather than stored: they
+     * Built-in smart playlists are computed rather than stored: they
      * are defined by the state of the library, so they cannot drift out of
      * date the way a stored list would.
      */
@@ -539,7 +554,9 @@ class QueueViewModel(
             return QueueEntry(withArt, show?.title.orEmpty())
         }
 
-        val custom = rawPlaylists.map { pl ->
+        val custom = rawPlaylists
+            .filterNot { it.name.isLegacySmartPlaylistName() }
+            .map { pl ->
             // A playlist can follow a set of shows, a whole folder, a length
             // rule, or a fixed list of episodes. Archived episodes are filed
             // away, so like everywhere else in the library they stay out of
@@ -559,7 +576,9 @@ class QueueViewModel(
 
             val finishedFilter = if (pl.finished) { ep: com.lohe.app.data.db.entity.EpisodeSummary -> ep.isPlayed } else { ep: com.lohe.app.data.db.entity.EpisodeSummary -> !ep.isPlayed }
 
-            val resolvedEntries = if (followed.isNotEmpty()) {
+            val resolvedEntries = if (pl.snapshot) {
+                pl.resolveExplicitEpisodes(epMap).map(::resolve)
+            } else if (followed.isNotEmpty()) {
                 // Following shows: they add their new episodes on their own,
                 // without the playlist being touched. A length rule, if the
                 // playlist has one, narrows what they bring.
@@ -592,12 +611,7 @@ class QueueViewModel(
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else {
-                pl.episodeUuids.mapNotNull { epId ->
-                    val ep = epMap[epId] ?: return@mapNotNull null
-                    // Archived episodes leave the playlist and show up in
-                    // Played instead; finished controls played vs unplayed.
-                    if (ep.isArchived) null else if (finishedFilter(ep)) resolve(ep) else null
-                }
+                pl.resolveExplicitEpisodes(epMap).map(::resolve)
             }
             ResolvedPlaylist(
                 id = pl.id,
@@ -605,32 +619,32 @@ class QueueViewModel(
                 entries = resolvedEntries,
                 folder = pl.folder,
                 autoDownload = pl.autoDownload,
+                pinned = pl.pinned,
             )
         }
 
-        val live = allEpisodes.filter { !it.isDeleted }
-        val played = live.filter { it.isPlayed }.map(::resolve)
-        val downloaded = live.filter { it.isDownloaded }.map(::resolve)
-
-        custom + listOf(
-            ResolvedPlaylist(
-                id = PLAYED_ID,
-                name = "Played",
-                entries = played,
-                folder = "",
-                autoDownload = false,
-                system = true,
-            ),
-            ResolvedPlaylist(
-                id = DOWNLOADED_ID,
-                name = "Downloaded",
-                entries = downloaded,
-                folder = "",
-                autoDownload = false,
-                system = true,
-            ),
+        val active = allEpisodes.filter { !it.isDeleted && !it.isArchived }
+        val newReleaseCutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+        val smartPlaylists = listOf(
+            PLAYED_ID to ("Played" to active.filter { it.isPlayed }),
+            IN_PROGRESS_ID to ("In Progress" to active.filter { it.isInProgress }),
+            UNPLAYED_ID to ("Unplayed" to active.filter { !it.isPlayed && !it.isInProgress }),
+            NOT_DOWNLOADED_ID to ("Not Downloaded" to active.filter { !it.isDownloaded }),
+            DOWNLOADED_ID to ("Downloaded" to active.filter { it.isDownloaded }),
+            NEW_RELEASES_ID to ("New Releases" to active.filter { it.published >= newReleaseCutoff && !it.isPlayed }),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        custom + smartPlaylists.mapNotNull { (id, definition) ->
+            val (name, episodes) = definition
+            ResolvedPlaylist(
+                id = id,
+                name = name,
+                entries = episodes.sortedByDescending { it.published }.map(::resolve),
+                autoDownload = false,
+                system = true,
+            )
+        }
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Drops [uuid] from every user playlist — it has been listened to. */
     fun onEpisodePlayed(uuid: String) {
@@ -685,6 +699,9 @@ class QueueViewModel(
             viewModelScope.launch { triggerDownloadByUuids(pl.episodeUuids) }
         }
     }
+
+    fun setPlaylistPinned(playlistId: String, pinned: Boolean) =
+        playlistRepository.setPlaylistPinned(playlistId, pinned)
 
     fun addEpisodesToPlaylist(playlistId: String, episodeUuids: Collection<String>) {
         playlistRepository.addEpisodes(playlistId, episodeUuids)

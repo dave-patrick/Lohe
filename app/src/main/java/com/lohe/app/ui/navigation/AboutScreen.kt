@@ -97,20 +97,14 @@ fun AboutScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // The wordmark, with the staging mark beside it. The mark is null in a
-        // release build, which leaves the wordmark alone. The version sits
-        // under the wordmark — larger than the staging mark, and white — so
-        // the brand and the build number read together.
-        val stagingMark = rememberStagingMark()
-
+        // Keep the wordmark centered, with the installed version directly below.
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
+            Box(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+                contentAlignment = Alignment.Center,
             ) {
                 if (isLight) {
                     Text(
@@ -126,31 +120,19 @@ fun AboutScreen(
                         modifier = Modifier.height(42.5.dp),
                     )
                 }
-                stagingMark?.let { mark ->
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = mark,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
 
-            // The version under the wordmark, unless the staging mark beside
-            // it has already said it.
-            if (stagingMark == null) {
-                Text(
-                    text = if (version != null) {
-                        stringResource(R.string.about_version, version)
-                    } else {
-                        stringResource(R.string.about_version_unknown)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Text(
+                text = if (version != null) {
+                    stringResource(R.string.about_version, version)
+                } else {
+                    stringResource(R.string.about_version_unknown)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
 
             Spacer(Modifier.height(6.dp))
 

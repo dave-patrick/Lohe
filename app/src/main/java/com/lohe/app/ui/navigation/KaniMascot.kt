@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricBlueMid
+import com.lohe.app.ui.theme.ElectricCyan
 
 /**
  * Kani, in motion.
@@ -161,24 +162,28 @@ fun KaniMascot(
 @Composable
 fun SignalBars(
     modifier: Modifier = Modifier,
-    bars: Int = 4,
+    bars: Int = 7,
+    height: Dp = 16.dp,
+    barWidth: Dp = 3.dp,
+    spacing: Dp = 3.dp,
 ) {
     val transition = rememberInfiniteTransition(label = "signal-bars")
 
     Row(
-        modifier = modifier.height(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = modifier.height(height),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
         verticalAlignment = Alignment.Bottom,
     ) {
         repeat(bars) { index ->
             // Each bar starts from a different level and runs on a different
             // clock, so the group never looks like it is pulsing in unison.
             val level by transition.animateFloat(
-                initialValue = 0.18f + index * 0.11f,
-                targetValue = 1f,
+                initialValue = 0.16f + (index * 37 % 5) * 0.07f,
+                targetValue = 0.45f + (index * 29 % 6) * 0.09f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(
-                        durationMillis = 560 + index * 150,
+                        durationMillis = 410 + index * 93,
+                        delayMillis = index * 47,
                         easing = FastOutSlowInEasing,
                     ),
                     repeatMode = RepeatMode.Reverse,
@@ -187,11 +192,11 @@ fun SignalBars(
             )
             Box(
                 modifier = Modifier
-                    .width(3.dp)
-                    .height((15f * level).dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .width(barWidth)
+                    .height(height * level)
+                    .clip(RoundedCornerShape(barWidth / 2))
                     .background(
-                        Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue)),
+                        Brush.verticalGradient(listOf(ElectricCyan, ElectricBlue)),
                     ),
             )
         }

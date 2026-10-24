@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PodcastDao {
 
-    @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 ORDER BY title COLLATE NOCASE")
     fun observeAll(): Flow<List<PodcastEntity>>
 
-    @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 ORDER BY title COLLATE NOCASE")
     suspend fun allOnce(): List<PodcastEntity>
 
     @Query("SELECT * FROM podcasts WHERE uuid = :uuid")
@@ -81,6 +81,10 @@ interface PodcastDao {
                 feedUrl = podcast.feedUrl,
                 lastEpisodePublished = podcast.lastEpisodePublished,
             )
+            val stored = get(podcast.uuid)
+            if (stored != null && stored.isSubscribed != podcast.isSubscribed) {
+                update(stored.copy(isSubscribed = podcast.isSubscribed))
+            }
         }
     }
 
@@ -93,10 +97,10 @@ interface PodcastDao {
     @Query("DELETE FROM podcasts WHERE uuid = :uuid")
     suspend fun deleteByUuid(uuid: String)
 
-    @Query("SELECT COUNT(*) FROM podcasts")
+    @Query("SELECT COUNT(*) FROM podcasts WHERE isSubscribed = 1")
     suspend fun count(): Int
 
-    @Query("SELECT * FROM podcasts WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 AND (title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%') ORDER BY title COLLATE NOCASE")
     fun observeSearchResults(query: String): Flow<List<PodcastEntity>>
 
     @Query("SELECT * FROM podcasts WHERE feedUrl = :feedUrl LIMIT 1")

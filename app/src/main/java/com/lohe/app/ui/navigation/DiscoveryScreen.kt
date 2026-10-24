@@ -116,7 +116,7 @@ fun DiscoveryScreen(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),
             )
-            HeaderSettingsButton(onClick = onOpenSettings)
+            HeaderSettingsSpacer()
         }
 
         OutlinedTextField(

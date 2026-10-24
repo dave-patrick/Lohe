@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
@@ -118,7 +119,7 @@ import com.lohe.app.ui.theme.LoheDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-private const val ALL_FOLDERS = "__ALL__"
+private const val ALL_PODCASTS = "__ALL_PODCASTS__"
 
 /** What a show's cards need to say without being opened. */
 private data class ShowStats(
@@ -148,6 +149,7 @@ fun PodcastsScreen(
     val totalPodcastCount by viewModel.totalPodcastCount.collectAsState()
     val allEpisodes by viewModel.allEpisodes.collectAsState()
     val podcastFolders by queueViewModel.podcastFolders.collectAsState()
+    val userPlaylists by queueViewModel.userPlaylists.collectAsState()
     val query by viewModel.searchQueryState.collectAsState()
     val import by viewModel.feedImport.collectAsState()
     val opml by viewModel.opmlImport.collectAsState()
@@ -158,10 +160,12 @@ fun PodcastsScreen(
     var showAddFeed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var playlistMenuOpen by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
     val podcastSort by queueViewModel.podcastSort.collectAsState()
 
     var isGridView by rememberSaveable { mutableStateOf(false) }
-    var selectedFolder by rememberSaveable { mutableStateOf(ALL_FOLDERS) }
+    var selectedPlaylistId by rememberSaveable { mutableStateOf(ALL_PODCASTS) }
     var folderDialogPodcast by remember { mutableStateOf<PodcastEntity?>(null) }
     var folderDialogForSelection by remember { mutableStateOf(false) }
     var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
@@ -202,8 +206,8 @@ fun PodcastsScreen(
     val availableFolders = remember(podcastFolders) {
         podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
     }
-    if (selectedFolder != ALL_FOLDERS && selectedFolder !in availableFolders) {
-        selectedFolder = ALL_FOLDERS
+    if (selectedPlaylistId != ALL_PODCASTS && userPlaylists.none { it.id == selectedPlaylistId }) {
+        selectedPlaylistId = ALL_PODCASTS
     }
 
     // Counts and freshness per show. The counts are on every card, not only
@@ -221,11 +225,13 @@ fun PodcastsScreen(
             }
     }
 
-    val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder, podcastSort, showStats) {
-        val filtered = if (selectedFolder == ALL_FOLDERS) {
+    val visiblePodcasts = remember(podcasts, userPlaylists, selectedPlaylistId, podcastSort, showStats) {
+        val playlistPodcastUuids = userPlaylists.firstOrNull { it.id == selectedPlaylistId }
+            ?.entries?.mapTo(mutableSetOf()) { it.episode.podcastUuid }
+        val filtered = if (playlistPodcastUuids == null) {
             podcasts
         } else {
-            podcasts.filter { podcastFolders[it.uuid] == selectedFolder }
+            podcasts.filter { it.uuid in playlistPodcastUuids }
         }
         when (podcastSort) {
             PodcastSort.TITLE -> filtered.sortedBy { it.title.lowercase() }
@@ -324,6 +330,31 @@ fun PodcastsScreen(
             onDismiss = {
                 showAddFeed = false
                 viewModel.consumeFeedImport()
+            },
+        )
+    }
+
+    if (showSearchDialog) {
+        AlertDialog(
+            onDismissRequest = { showSearchDialog = false },
+            title = { Text(stringResource(R.string.podcasts_search_label)) },
+            text = {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.podcasts_search_label)) },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showSearchDialog = false }) { Text("Done") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.onSearchQueryChanged("")
+                    showSearchDialog = false
+                }) { Text("Clear") }
             },
         )
     }
@@ -524,12 +555,19 @@ fun PodcastsScreen(
                     Spacer(Modifier.width(10.dp))
                     // How much the library holds, not how many rows the
                     // search box happens to have left on screen.
-                    Text(
-                        text = totalPodcastCount.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 11.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            text = totalPodcastCount.toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
 
                     IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(40.dp)) {
@@ -641,7 +679,7 @@ fun PodcastsScreen(
 
                     // The settings control is the last thing in the header on
                     // every screen, so it is always in the same place.
-                    HeaderSettingsButton(onClick = onOpenSettings)
+                    HeaderSettingsSpacer()
                 }
             }
 
@@ -675,31 +713,23 @@ fun PodcastsScreen(
                 }
             }
 
-            // The search box, with the add-feed button beside it. The header
-            // above has enough to carry.
+            // Search and add-feed actions remain compact beneath the header.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = viewModel::onSearchQueryChanged,
-                    label = { Text(stringResource(R.string.podcasts_search_label)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { showSearchDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = stringResource(R.string.podcasts_search_label),
+                    )
+                }
                 IconButton(onClick = { showAddFeed = true }) {
                     Icon(
-                        imageVector = Icons.Filled.RssFeed,
+                        imageVector = Icons.Filled.Add,
                         contentDescription = stringResource(R.string.podcasts_add_feed),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp),
@@ -707,41 +737,40 @@ fun PodcastsScreen(
                 }
             }
 
-            // The folder filters, with the sort and the view toggle on the
-            // same line and pinned to the right. The filters scroll under
-            // them; the two on the right stay where they are.
+            // A single playlist selector replaces the scrolling filter chips.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (availableFolders.isNotEmpty()) {
-                        FilterChip(
-                            selected = selectedFolder == ALL_FOLDERS,
-                            onClick = { selectedFolder = ALL_FOLDERS },
-                            label = { Text("All (${podcasts.size})", maxLines = 1) },
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { playlistMenuOpen = true }) {
+                        Text(
+                            userPlaylists.firstOrNull { it.id == selectedPlaylistId }?.name
+                                ?: "All podcasts",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        availableFolders.forEach { folder ->
-                            val count = podcasts.count { podcastFolders[it.uuid] == folder }
-                            FilterChip(
-                                selected = selectedFolder == folder,
-                                onClick = { selectedFolder = folder },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
+                    }
+                    DropdownMenu(
+                        expanded = playlistMenuOpen,
+                        onDismissRequest = { playlistMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All podcasts (${podcasts.size})") },
+                            onClick = {
+                                selectedPlaylistId = ALL_PODCASTS
+                                playlistMenuOpen = false
+                            },
+                        )
+                        userPlaylists.forEach { playlist ->
+                            DropdownMenuItem(
+                                text = { Text("${playlist.name} (${playlist.entries.size})") },
+                                onClick = {
+                                    selectedPlaylistId = playlist.id
+                                    playlistMenuOpen = false
                                 },
-                                label = { Text("$folder ($count)", maxLines = 1) },
                             )
                         }
                     }

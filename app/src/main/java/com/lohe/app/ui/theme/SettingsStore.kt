@@ -39,6 +39,10 @@ data class PlaybackSettings(
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
     val markPlayedAtEnd: Boolean = true,
+    val autoArchiveHours: Int = 24,
+    val floatingPlayerEnabled: Boolean = false,
+    val floatingPlayerSizeDp: Int = 56,
+    val floatingPlayerOpacity: Float = 1f,
     /**
      * Whether episodes put in Up Next are downloaded as they are added.
      *
@@ -57,6 +61,12 @@ data class PlaybackSettings(
     val podcastSort: com.lohe.app.data.PodcastSort = com.lohe.app.data.PodcastSort.TITLE,
     /** How the playlists are ordered. */
     val playlistSort: com.lohe.app.data.PlaylistSort = com.lohe.app.data.PlaylistSort.MANUAL,
+    val showPlayedSmartPlaylist: Boolean = true,
+    val showInProgressSmartPlaylist: Boolean = true,
+    val showUnplayedSmartPlaylist: Boolean = true,
+    val showNotDownloadedSmartPlaylist: Boolean = true,
+    val showDownloadedSmartPlaylist: Boolean = true,
+    val showNewReleasesSmartPlaylist: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -135,10 +145,20 @@ class SettingsStore(private val context: Context) {
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
         val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
+        val autoArchiveHours = intPreferencesKey("auto_archive_hours")
+        val floatingPlayerEnabled = booleanPreferencesKey("floating_player_enabled")
+        val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
+        val floatingPlayerOpacity = floatPreferencesKey("floating_player_opacity")
         val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
         val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
+        val showPlayedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_played")
+        val showInProgressSmartPlaylist = booleanPreferencesKey("show_smart_playlist_in_progress")
+        val showUnplayedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_unplayed")
+        val showNotDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_not_downloaded")
+        val showDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_downloaded")
+        val showNewReleasesSmartPlaylist = booleanPreferencesKey("show_smart_playlist_new_releases")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -171,6 +191,10 @@ class SettingsStore(private val context: Context) {
             skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
                 .coerceIn(5, 120),
             markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
+            autoArchiveHours = (prefs[Keys.autoArchiveHours] ?: 24).takeIf { it in listOf(-1, 0, 1, 24, 168) } ?: 24,
+            floatingPlayerEnabled = prefs[Keys.floatingPlayerEnabled] ?: false,
+            floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
+            floatingPlayerOpacity = com.lohe.app.playback.safeFloatingPlayerOpacity(prefs[Keys.floatingPlayerOpacity] ?: 1f),
             autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
             sleepTimerMinutes = (prefs[Keys.sleepTimerMinutes] ?: 30)
                 .coerceIn(1, 24 * 60),
@@ -184,6 +208,12 @@ class SettingsStore(private val context: Context) {
                     com.lohe.app.data.PlaylistSort.entries.firstOrNull { it.name == name }
                 }
                 ?: com.lohe.app.data.PlaylistSort.MANUAL,
+            showPlayedSmartPlaylist = prefs[Keys.showPlayedSmartPlaylist] ?: true,
+            showInProgressSmartPlaylist = prefs[Keys.showInProgressSmartPlaylist] ?: true,
+            showUnplayedSmartPlaylist = prefs[Keys.showUnplayedSmartPlaylist] ?: true,
+            showNotDownloadedSmartPlaylist = prefs[Keys.showNotDownloadedSmartPlaylist] ?: true,
+            showDownloadedSmartPlaylist = prefs[Keys.showDownloadedSmartPlaylist] ?: true,
+            showNewReleasesSmartPlaylist = prefs[Keys.showNewReleasesSmartPlaylist] ?: true,
         )
     }
 
@@ -220,6 +250,22 @@ class SettingsStore(private val context: Context) {
     suspend fun setMarkPlayedAtEnd(value: Boolean) =
         edit { it[Keys.markPlayedAtEnd] = value }
 
+    suspend fun setAutoArchiveHours(value: Int) {
+        require(value in listOf(-1, 0, 1, 24, 168))
+        edit { it[Keys.autoArchiveHours] = value }
+    }
+
+    suspend fun setFloatingPlayerEnabled(value: Boolean) =
+        edit { it[Keys.floatingPlayerEnabled] = value }
+
+    suspend fun setFloatingPlayerSizeDp(value: Int) {
+        require(value in listOf(48, 56, 72, 88))
+        edit { it[Keys.floatingPlayerSize] = value }
+    }
+
+    suspend fun setFloatingPlayerOpacity(value: Float) =
+        edit { it[Keys.floatingPlayerOpacity] = com.lohe.app.playback.safeFloatingPlayerOpacity(value) }
+
     suspend fun setAutoDownloadQueue(value: Boolean) =
         edit { it[Keys.autoDownloadQueue] = value }
 
@@ -231,6 +277,19 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
+
+    suspend fun setSmartPlaylistVisibility(id: String, visible: Boolean) = edit {
+        val key = when (id) {
+            "__system_played__" -> Keys.showPlayedSmartPlaylist
+            "__system_in_progress__" -> Keys.showInProgressSmartPlaylist
+            "__system_unplayed__" -> Keys.showUnplayedSmartPlaylist
+            "__system_not_downloaded__" -> Keys.showNotDownloadedSmartPlaylist
+            "__system_downloaded__" -> Keys.showDownloadedSmartPlaylist
+            "__system_new_releases__" -> Keys.showNewReleasesSmartPlaylist
+            else -> return@edit
+        }
+        it[key] = visible
+    }
 
     /**
      * The playback settings for one show.

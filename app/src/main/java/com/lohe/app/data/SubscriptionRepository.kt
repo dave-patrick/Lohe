@@ -14,6 +14,7 @@ import com.lohe.app.data.fetch.RssPodcastFetcher
 import com.lohe.app.download.DownloadManager
 import com.lohe.app.ui.image.ArtworkLoader
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.OkHttpClient
 import java.util.UUID
@@ -43,6 +44,8 @@ class SubscriptionRepository internal constructor(
     private val history: com.lohe.app.data.db.dao.ListeningHistoryDao,
     private val fetcher: PodcastFetcher,
     private val autoDownload: (EpisodeEntity) -> Unit = {},
+    private val onPlayed: suspend (String) -> Unit = {},
+    private val onArchived: suspend (EpisodeEntity) -> Unit = {},
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
@@ -96,6 +99,9 @@ class SubscriptionRepository internal constructor(
     /** Moves a queued episode to the front of the queue. */
     suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
 
+    /** Moves a selected group to the front while preserving its current queue order. */
+    suspend fun promoteBatch(uuids: List<String>) = episodes.promoteBatchInQueue(uuids)
+
     /** Shifts [uuid] up (`delta < 0`) or down (`delta > 0`) in the queue. */
     suspend fun moveInQueue(uuid: String, delta: Int) {
         val current = episodes.queueSnapshot().toMutableList()
@@ -132,8 +138,16 @@ class SubscriptionRepository internal constructor(
      * Archived episodes stay in the library but are left out of the episode
      * lists and stop counting towards the listening figures.
      */
-    suspend fun setArchived(uuid: String, archived: Boolean) =
+    suspend fun setArchived(uuid: String, archived: Boolean) {
         episodes.setArchived(uuid, archived)
+        if (archived) episodes.get(uuid)?.let { onArchived(it) }
+    }
+
+    suspend fun archivePlayedIfDue(uuid: String, cutoff: Long) {
+        if (episodes.archivePlayedIfDue(uuid, cutoff) == 1) {
+            episodes.get(uuid)?.let { onArchived(it) }
+        }
+    }
 
     /** Persist a resume point, recording the duration when it was unknown before. */
     suspend fun saveProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) {
@@ -141,7 +155,10 @@ class SubscriptionRepository internal constructor(
     }
 
     /** Mark finished and drop the resume point so it never restarts. */
-    suspend fun markPlayed(uuid: String) = episodes.markPlayedAndClearProgress(uuid)
+    suspend fun markPlayed(uuid: String) {
+        episodes.markPlayedAndClearProgress(uuid)
+        onPlayed(uuid)
+    }
 
     /**
      * Sets a resume point without counting it as time listened.
@@ -224,7 +241,7 @@ class SubscriptionRepository internal constructor(
 
     /** Finds an existing subscription by feed URL — how a catalog result is matched. */
     suspend fun subscriptionForFeed(feedUrl: String): PodcastEntity? =
-        podcasts.byFeedUrl(feedUrl)
+        podcasts.byFeedUrl(feedUrl)?.takeIf { it.isSubscribed }
 
     /** Per-show setting: download new episodes as soon as a refresh finds them. */
     suspend fun setAutoDownload(uuid: String, enabled: Boolean) =
@@ -404,6 +421,7 @@ object ServiceLocator {
 
     fun init(context: Context) {
         this.context = context.applicationContext
+        EpisodeMaintenance.start(context.applicationContext)
     }
 
     fun database(): AppDatabase =
@@ -422,6 +440,22 @@ object ServiceLocator {
             // Calling downloadManager() here instead would recurse: it builds a
             // DownloadManager that takes a repository, which would come back here.
             autoDownload = { episode -> downloadManager().start(episode.toSummary()) },
+            onPlayed = { uuid ->
+                playlistRepository().removeEpisodeFromAll(uuid)
+                if (settingsStore().settings.first().autoArchiveHours == 0) {
+                    subscriptionRepository().setArchived(uuid, true)
+                }
+            },
+            onArchived = { episode ->
+                playlistRepository().removeEpisodeFromAll(episode.uuid)
+                try {
+                    downloadManager().delete(episode.toSummary())
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    android.util.Log.e("EpisodeArchive", "Download cleanup will retry for ${episode.uuid}", failure)
+                }
+            },
         )
 
     fun podcastFetcher(): PodcastFetcher =

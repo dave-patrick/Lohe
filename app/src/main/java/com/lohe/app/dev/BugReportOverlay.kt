@@ -94,7 +94,7 @@ fun BugReportOverlay(
                     // and a pill parked there would cover both. Low enough to
                     // clear the settings control, which lives in the corner.
                     .align(Alignment.TopEnd)
-                    .padding(top = 80.dp, end = 8.dp)
+                    .padding(top = 120.dp, end = 8.dp)
                     .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->

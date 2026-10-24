@@ -5,6 +5,21 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
+## Onboarding wizard — planned
+
+- [ ] Add a skippable first-run wizard, with a way to replay setup from Settings.
+- [ ] Explain library import/subscriptions, playlists, Up Next, and offline downloads without changing existing library state.
+- [ ] Offer the optional cross-app floating player, then explain and request Display over other apps only if enabled. Do not request accessibility-service access for playback controls.
+- [ ] Request notification permission in context; explain the ongoing floating-player notification and its Hide controls action.
+- [ ] Offer optional battery optimization setup with an honest battery-use tradeoff, detect current status, and allow Not now without blocking playback.
+- [ ] Introduce drag-to-place, hold-to-expand, collapse-to-play/pause, size and transparency controls, and configured rewind/forward intervals.
+- [ ] Let listeners choose played-episode archive delay, including the 24-hour option and downloaded-file deletion on archive.
+- [ ] Persist completion and declined optional steps; make permission denial, revocation, and interrupted setup safe and resumable.
+
+The wizard itself is not implemented. Floating-player and battery setup are currently available in Settings.
+
+---
+
 ## 0b. The in-car app is built but has never run on a head unit
 
 **Severity: medium. It compiles, installs and leaves the phone app untouched,

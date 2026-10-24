@@ -22,6 +22,12 @@ import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.LoheTheme
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.lohe.app.playback.FloatingPlaybackService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,6 +36,16 @@ class MainActivity : ComponentActivity() {
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
         com.lohe.app.dev.DevApi.start(this)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                ServiceLocator.settingsStore().settings.map { it.floatingPlayerEnabled }.distinctUntilChanged().collect {
+                    if (it && !android.provider.Settings.canDrawOverlays(this@MainActivity)) {
+                        ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
+                    }
+                    FloatingPlaybackService.sync(this@MainActivity, it)
+                }
+            }
+        }
 
         setContent {
             val context = LocalContext.current

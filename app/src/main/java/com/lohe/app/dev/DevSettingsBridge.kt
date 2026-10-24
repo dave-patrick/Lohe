@@ -25,6 +25,7 @@ object DevSettingsBridge {
         "skipBackSeconds" to "a number between 5 and 60",
         "skipForwardSeconds" to "a number between 5 and 120",
         "markPlayedAtEnd" to "true or false",
+        "autoArchiveHours" to "-1 (off), 0, 1, 24, or 168",
         "autoDownloadQueue" to "true or false",
         "sleepTimerMinutes" to "a number between 1 and 1440",
         "podcastSort" to PodcastSort.entries.joinToString(", ") { it.name },
@@ -51,6 +52,7 @@ object DevSettingsBridge {
             "skipBackSeconds" -> settings.setSkipBackSeconds(value.toIntStrict())
             "skipForwardSeconds" -> settings.setSkipForwardSeconds(value.toIntStrict())
             "markPlayedAtEnd" -> settings.setMarkPlayedAtEnd(value.toBooleanStrict())
+            "autoArchiveHours" -> settings.setAutoArchiveHours(value.toIntStrict())
             "autoDownloadQueue" -> settings.setAutoDownloadQueue(value.toBooleanStrict())
             "sleepTimerMinutes" -> settings.setSleepTimerMinutes(value.toIntStrict())
             "podcastSort" -> settings.setPodcastSort(

@@ -44,6 +44,7 @@ data class EpisodeEntity(
     val description: String? = null,
     /** 0 = unplayed, 1 = in progress, 2 = played. */
     val playingStatus: Int = 0,
+    val playedAt: Long? = null,
     val playedUpToSeconds: Long = 0,
     /**
      * Actual time spent listening, accumulated across sessions.

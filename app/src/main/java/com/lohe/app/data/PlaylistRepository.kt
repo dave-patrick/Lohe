@@ -1,11 +1,21 @@
 package com.lohe.app.data
 
+import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.Base64
 import java.util.UUID
+
+internal fun String.isLegacySmartPlaylistName(): Boolean = trim().lowercase() in setOf(
+    "played",
+    "in progress",
+    "unplayed",
+    "not downloaded",
+    "downloaded",
+    "new releases",
+)
 
 /**
  * A user-created named playlist storing an ordered list of episode UUIDs,
@@ -31,7 +41,15 @@ data class UserPlaylist(
     val maxDurationMinutes: Int = 0,
     val finished: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-)
+    val snapshot: Boolean = false,
+    val pinned: Boolean = false,
+) {
+    fun resolveExplicitEpisodes(episodes: Map<String, EpisodeSummary>): List<EpisodeSummary> =
+        episodeUuids.mapNotNull { episodeUuid ->
+            val episode = episodes[episodeUuid] ?: return@mapNotNull null
+            episode.takeIf { !it.isArchived && it.isPlayed == finished }
+        }
+}
 
 /**
  * Durable store for custom user playlists and podcast folder assignments,
@@ -56,6 +74,7 @@ class PlaylistRepository(
         minDurationMinutes: Int = 0,
         maxDurationMinutes: Int = 0,
         finished: Boolean = false,
+        snapshot: Boolean = false,
     ): UserPlaylist {
         val cleanName = name.trim().ifBlank { "Untitled Playlist" }
         val created = UserPlaylist(
@@ -68,6 +87,7 @@ class PlaylistRepository(
             minDurationMinutes = minDurationMinutes.coerceAtLeast(0),
             maxDurationMinutes = maxDurationMinutes.coerceAtLeast(0),
             finished = finished,
+            snapshot = snapshot,
         )
         synchronized(lock) {
             val next = _playlists.value + created
@@ -141,6 +161,16 @@ class PlaylistRepository(
         synchronized(lock) {
             val next = _playlists.value.map { pl ->
                 if (pl.id == playlistId) pl.copy(autoDownload = enabled) else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    fun setPlaylistPinned(playlistId: String, pinned: Boolean) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) pl.copy(pinned = pinned) else pl
             }
             _playlists.value = next
             saveToDisk(next)
@@ -315,7 +345,7 @@ class PlaylistRepository(
         if (!target.exists()) return emptyList()
         return runCatching {
             val decoder = Base64.getDecoder()
-            target.readLines()
+            val loaded = target.readLines()
                 .mapNotNull { line ->
                     val parts = line.split('\t')
                     if (parts.size < 3) return@mapNotNull null
@@ -344,7 +374,9 @@ class PlaylistRepository(
                     }
                     val minMinutes = parts.getOrNull(7)?.toIntOrNull() ?: 0
                     val maxMinutes = parts.getOrNull(8)?.toIntOrNull() ?: 0
-                    val finished = parts.getOrNull(9)?.toBoolean() ?: false
+                    val finished = parts.getOrNull(9).let { it == "1" || it == "true" }
+                    val snapshot = parts.getOrNull(10) == "1"
+                    val pinned = parts.getOrNull(11) == "1"
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -356,8 +388,15 @@ class PlaylistRepository(
                         maxDurationMinutes = maxMinutes,
                         finished = finished,
                         createdAt = createdAt,
+                        snapshot = snapshot,
+                        pinned = pinned,
                     )
                 }
+            val cleaned = loaded.filterNot { playlist ->
+                playlist.name.isLegacySmartPlaylistName()
+            }
+            if (cleaned.size != loaded.size) saveToDisk(cleaned)
+            cleaned
         }.getOrDefault(emptyList())
     }
 
@@ -373,7 +412,9 @@ class PlaylistRepository(
                 val autoDl = if (pl.autoDownload) "1" else "0"
                 val shows = pl.shows.joinToString(",")
                 val finished = if (pl.finished) "1" else "0"
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished"
+                val snapshot = if (pl.snapshot) "1" else "0"
+                val pinned = if (pl.pinned) "1" else "0"
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished\t$snapshot\t$pinned"
             }
             target.writeText(text)
         }
