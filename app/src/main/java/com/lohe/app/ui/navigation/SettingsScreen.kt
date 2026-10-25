@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
+import com.lohe.app.BuildConfig
 import com.lohe.app.playback.Playback
 import com.lohe.app.ui.player.formatSpeedLabel
 import com.lohe.app.ui.player.FloatingPlayerSettings
@@ -96,7 +97,9 @@ fun SettingsScreen(
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
         if (category == null) {
             SettingsCategory.entries.forEach { section ->
+                if (section != SettingsCategory.DEBUG || BuildConfig.DEBUG) {
                 SettingsMenuRow(section.title, section.summary) { onOpenCategory(section) }
+                }
             }
             SettingsMenuRow("About", "Version and app information", onOpenAbout)
         }
@@ -111,6 +114,15 @@ fun SettingsScreen(
                 label = stringResource(R.string.settings_light),
                 selected = appearance == Appearance.LIGHT,
                 onClick = { if (appearance != Appearance.LIGHT) onToggleAppearance() },
+            )
+        }
+
+        if (category == SettingsCategory.DEBUG && BuildConfig.DEBUG) {
+            ToggleRow(
+                label = "Debug button",
+                hint = "Show or hide the floating BUG report button.",
+                checked = settings.debugButtonEnabled,
+                onChange = { scope.launch { settingsStore.setDebugButtonEnabled(it) } },
             )
         }
 

@@ -63,9 +63,10 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun BugReportOverlay(
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    if (!com.lohe.app.BuildConfig.DEBUG) {
+    if (!com.lohe.app.BuildConfig.DEBUG || !enabled) {
         content()
         return
     }

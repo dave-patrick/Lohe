@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
             // rather than only rotation.
             var appearance by remember { mutableStateOf(Appearance.DARK) }
             val persisted by settings.appearance.collectAsState(initial = Appearance.DARK)
+            val playbackSettings by settings.settings.collectAsState(initial = com.lohe.app.ui.theme.PlaybackSettings())
 
             // Show the branded splash screen briefly before the main app.
             // rememberSaveable (not remember) so the "already shown" flag
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
             }
 
             LoheTheme(appearance = appearance) {
-                BugReportOverlay {
+                BugReportOverlay(enabled = playbackSettings.debugButtonEnabled) {
                     if (showSplash) {
                         SplashScreen(onFinished = {
                             DevDiagnostics.log("UI", "SplashScreen finished")

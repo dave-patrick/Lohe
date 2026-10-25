@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,7 +103,8 @@ fun AboutScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        // Keep the wordmark centered, with the installed version directly below.
+        // Keep the wordmark and installed version centered with enough space
+        // between the brand and its build metadata.
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -127,6 +129,8 @@ fun AboutScreen(
                 }
             }
 
+            Spacer(Modifier.height(18.dp))
+
             Text(
                 text = if (version != null) {
                     stringResource(R.string.about_version, version, BuildConfig.BUILD_ID)
@@ -145,9 +149,13 @@ fun AboutScreen(
             Text(
                 text = stringResource(R.string.about_tagline),
                 style = MaterialTheme.typography.bodyMedium,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
             )
         }
 

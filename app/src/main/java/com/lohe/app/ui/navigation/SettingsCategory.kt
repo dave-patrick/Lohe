@@ -5,7 +5,8 @@ enum class SettingsCategory(val route: String, val title: String, val summary: S
     PLAYBACK("playback", "Playback", "Speed, skip buttons, silence, and finishing episodes"),
     FLOATING_PLAYER("floating-player", "Floating player", "Cross-app controls, size, transparency, and battery setup"),
     ARCHIVING("archiving", "Archiving", "Archive delay and downloaded-copy cleanup"),
-    DOWNLOADS("downloads", "Downloads", "Automatic downloads for Up Next");
+    DOWNLOADS("downloads", "Downloads", "Automatic downloads for Up Next"),
+    DEBUG("debug", "Debug", "Debug tools and controls");
 
     companion object {
         fun fromRoute(route: String?): SettingsCategory? = entries.firstOrNull { it.route == route }

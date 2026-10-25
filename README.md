@@ -1,54 +1,66 @@
 # Lohe
 
-**Ua lohe ʻoe? — Have you heard?**
+<p align="center"><img src="docs/assets/kani.png" alt="Kani, Lohe's blue dragonfly mascot" width="270"></p>
 
-Lohe is an Android podcast player for listening on your own terms. Find the stories, conversations, news, and curious detours you want to hear. Keep your shows and playlists together, shape Up Next, and pick up where you left off.
+**ua lohe ʻoe? - Have you heard?**
 
-**[Visit the Lohe landing page](https://dave-patrick.github.io/Lohe/)** · **[Download the latest preview](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.1)** · **[Read the getting started guide](docs/guide.md)**
+Lohe is a podcast player for listening on your own terms. Find the stories, conversations, news, and curious detours you want to hear. Keep your shows and playlists together, shape Up Next, and pick up where you left off.
 
-The current public build is **0.10.1 (build 2026.25.10.15)**. It is a debug prerelease for testing, not a production-signed Play Store release.
+**[Open the Lohe landing page](https://dave-patrick.github.io/Lohe/)** · **[Download the latest signed release](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.1)** · **[Getting started](docs/guide.md)**
 
-## What Lohe does
+The current release is **0.10.1 (build 2026.25.10.17)**. The APK is built with the Android `release` variant and is not debuggable.
 
-- Discover and subscribe to podcasts, then download episodes for offline listening.
-- Build and reorder Up Next; configure individual shows to automatically add new episodes at the beginning or end.
-- Create playlists and browse smart lists for played, in-progress, unplayed, downloaded, and new episodes.
-- Resume playback, set skip intervals and playback speed, adjust volume boost and voice enhancement, and use silence controls and a sleep timer.
-- Mark episodes played when they finish. Completed episodes leave explicit playlists and Up Next, remain in the Played smart playlist, and follow the configured archive delay for downloaded audio.
-- Use Android Auto for media browsing and playback. Android Automotive OS dashboard support still needs head-unit verification.
-- Optionally show floating playback controls over other apps.
+## See Lohe
 
-See the [getting started guide](docs/guide.md) for listening, organization, playback settings, and installation details. Read [docs/MCP.md](docs/MCP.md) for the debug control surface.
+| Kani on the home screen | Settings categories |
+| --- | --- |
+| ![Kani and listening signal on the Lohe home screen](docs/assets/screenshot-home.png) | ![Lohe settings for appearance, playback, floating player, archiving, and downloads](docs/assets/screenshot-settings.png) |
+
+## Made for the way you listen
+
+- **Discover podcasts** and organize subscribed shows in your library.
+- **Shape Up Next.** Reorder episodes, choose where new episodes go, and configure shows to add new releases automatically.
+- **Pick up where you left off.** Playback continues in the background, with Android media controls and Android Auto media browsing.
+- **Set your playback.** Choose skip intervals and speed, adjust volume boost and voice enhancement, control silence, and set a sleep timer.
+- **Build playlists.** Make your own playlists or use smart lists for played, in-progress, unplayed, downloaded, and new episodes.
+- **Listen offline.** Download episodes and bring subscriptions in or out with OPML.
+- **Keep your history.** Episodes are marked played when finished and leave explicit playlists and Up Next. The Played smart playlist keeps them; downloaded audio follows your archive delay.
+- **Use a floating player** over other apps when you want quick playback controls.
+
+Android Auto exposes media browsing and playback through Android's media browser. Android Automotive OS is a separate integration and still needs verification on a head unit.
+
+## Install the release
+
+Download `app-release.apk` from the [latest GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.1), open it on your Android device, and allow app installs from your browser or file manager if Android asks. Lohe currently distributes its signed Android APK through GitHub; it is not listed on Google Play.
 
 ## Build from source
 
-Requires JDK 17 and an Android SDK with platform 37. Create `local.properties` in the repository root and set the path to your Android SDK:
+Requires JDK 17 and Android SDK platform 37. Create `local.properties` in the repository root with your SDK path:
 
 ```properties
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 ```
 
-Then build the debug APK:
+Build the app:
 
 ```cmd
-gradlew.bat assembleDebug          # Windows
-./gradlew assembleDebug            # macOS / Linux
+gradlew.bat assembleRelease         # Windows release APK
+./gradlew assembleRelease           # macOS / Linux release APK
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. To run the JVM unit tests:
+The release APK is written to `app/build/outputs/apk/release/app-release.apk`. Debug APKs are separate and are not the public release. To run JVM unit tests:
 
 ```cmd
 ./gradlew testDebugUnitTest
 ```
 
-Gradle 9.6.0 is provided by the wrapper. The app uses Jetpack Compose, Room, and AndroidX Media3.
+Gradle 9.6.0 comes from the wrapper. The app uses Kotlin, Jetpack Compose, Room, and AndroidX Media3.
 
-## Project structure
+## Project docs
 
-- `app/src/main` — Android app, UI, storage, playback, and debug tooling
-- `docs/guide.md` — user guide
-- `docs/MCP.md` — debug API and MCP setup
-- `docs/TODO.md` — known gaps and planned work
-- `tools/` — project utilities
+- [Getting started](docs/guide.md)
+- [Debug control surface (MCP)](docs/MCP.md)
+- [Known gaps and planned work](docs/TODO.md)
+- [Lohe landing page](https://dave-patrick.github.io/Lohe/)
 
-Lohe means “to hear, to listen, to take something to heart.” Kani, the dragonfly in the app, keeps an eye on your library so your next listen is ready when you are.
+Lohe means “to hear, to listen, to take something to heart.” Kani keeps an eye on your library so your next listen is ready when you are.

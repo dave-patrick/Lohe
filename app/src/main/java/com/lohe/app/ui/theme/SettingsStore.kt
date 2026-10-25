@@ -70,6 +70,7 @@ data class PlaybackSettings(
     val showNotDownloadedSmartPlaylist: Boolean = true,
     val showDownloadedSmartPlaylist: Boolean = true,
     val showNewReleasesSmartPlaylist: Boolean = true,
+    val debugButtonEnabled: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -165,6 +166,7 @@ class SettingsStore(private val context: Context) {
         val showNotDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_not_downloaded")
         val showDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_downloaded")
         val showNewReleasesSmartPlaylist = booleanPreferencesKey("show_smart_playlist_new_releases")
+        val debugButtonEnabled = booleanPreferencesKey("debug_button_enabled")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -220,6 +222,7 @@ class SettingsStore(private val context: Context) {
             showNotDownloadedSmartPlaylist = prefs[Keys.showNotDownloadedSmartPlaylist] ?: true,
             showDownloadedSmartPlaylist = prefs[Keys.showDownloadedSmartPlaylist] ?: true,
             showNewReleasesSmartPlaylist = prefs[Keys.showNewReleasesSmartPlaylist] ?: true,
+            debugButtonEnabled = prefs[Keys.debugButtonEnabled] ?: true,
         )
     }
 
@@ -231,6 +234,9 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setAppearance(value: Appearance) = edit { it[Keys.appearance] = value.name }
+
+    suspend fun setDebugButtonEnabled(value: Boolean) =
+        edit { it[Keys.debugButtonEnabled] = value }
 
     suspend fun setVolumeBoostDefault(value: Boolean) =
         edit { it[Keys.volumeBoost] = value }
