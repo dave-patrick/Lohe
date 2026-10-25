@@ -12,9 +12,9 @@ The current release is **0.10.1 (build 2026.25.10.17)**. The APK is built with t
 
 ## See Lohe
 
-| Kani on the home screen | Settings categories |
+| Kani on the home screen | Settings overview |
 | --- | --- |
-| ![Kani and listening signal on the Lohe home screen](docs/assets/screenshot-home.png) | ![Lohe settings for appearance, playback, floating player, archiving, and downloads](docs/assets/screenshot-settings.png) |
+| ![Kani and listening signal on the Lohe home screen](docs/assets/screenshot-home.png) | ![Full Settings screen showing appearance, playback, floating player, archiving, and downloads](docs/assets/screenshot-settings.png) |
 
 ## Made for the way you listen
 
