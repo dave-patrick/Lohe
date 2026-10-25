@@ -38,7 +38,6 @@ data class PlaybackSettings(
     val defaultPlaybackSpeed: Float = 1.0f,
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
-    val markPlayedAtEnd: Boolean = true,
     val autoArchiveHours: Int = 24,
     val floatingPlayerEnabled: Boolean = false,
     val floatingPlayerSizeDp: Int = 56,
@@ -151,7 +150,6 @@ class SettingsStore(private val context: Context) {
         val defaultSpeed = floatPreferencesKey("default_playback_speed")
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
-        val markPlayedAtEnd = booleanPreferencesKey("mark_played_at_end")
         val autoArchiveHours = intPreferencesKey("auto_archive_hours")
         val floatingPlayerEnabled = booleanPreferencesKey("floating_player_enabled")
         val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
@@ -198,7 +196,6 @@ class SettingsStore(private val context: Context) {
                 .coerceIn(5, 60),
             skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
                 .coerceIn(5, 120),
-            markPlayedAtEnd = prefs[Keys.markPlayedAtEnd] ?: true,
             autoArchiveHours = (prefs[Keys.autoArchiveHours] ?: 24).takeIf { it in listOf(-1, 0, 1, 24, 168) } ?: 24,
             floatingPlayerEnabled = prefs[Keys.floatingPlayerEnabled] ?: false,
             floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
@@ -255,9 +252,6 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setSkipForwardSeconds(value: Int) =
         edit { it[Keys.skipForward] = value.coerceIn(5, 120) }
-
-    suspend fun setMarkPlayedAtEnd(value: Boolean) =
-        edit { it[Keys.markPlayedAtEnd] = value }
 
     suspend fun setAutoArchiveHours(value: Int) {
         require(value in listOf(-1, 0, 1, 24, 168))

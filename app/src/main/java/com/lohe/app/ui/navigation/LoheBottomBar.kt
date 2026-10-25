@@ -28,12 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.LoheAccent
+import com.lohe.app.ui.theme.backgroundIsLight
 
 /**
  * Lohe's bottom navigation.
@@ -43,8 +45,8 @@ import com.lohe.app.ui.theme.LoheAccent
  * Android app" rather than as this product.
  *
  * What it does instead:
- *   - translucent fill with a hairline light catch on the top edge, so the
- *     artwork behind it bleeds through (the brand's signature glass recipe)
+ *   - a mostly opaque, softly frosted surface with a quiet top-edge light
+ *     catch, keeping navigation legible over every screen
  *   - accent reserved for the active item only, per the brand's "electric blue
  *     marks what is tappable or currently active, and nothing else" rule
  *   - a dot rather than a pill, to keep the bar visually light
@@ -56,19 +58,26 @@ fun LoheBottomBar(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isLight = backgroundIsLight()
+    val shape = RoundedCornerShape(32.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(LoheAccent.glassFill)
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .height(BarHeight)
+            .clip(shape)
+            .background(if (isLight) LoheAccent.barGlassFillLight else LoheAccent.barGlassFill)
             .border(
                 width = 1.dp,
-                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(LoheAccent.glassBorder, Color.Transparent),
+                brush = Brush.verticalGradient(
+                    listOf(
+                        (if (isLight) LoheAccent.barGlassEdgeLight else LoheAccent.barGlassEdge),
+                        Color.Transparent,
+                    ),
                 ),
-                shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp),
-            )
-            .navigationBarsPadding()
-            .height(BarHeight),
+                shape = shape,
+            ),
         verticalArrangement = Arrangement.Center,
     ) {
         Row(

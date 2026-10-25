@@ -100,7 +100,7 @@
     <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
     <string name="home_cta_discover">Find a show</string>
     <string name="home_cta_import">Import from this device</string>
-    <string name="home_kani_title">Catch the frequency</string>
+    <string name="home_kani_title">ua lohe ʻoe? - Have you heard?</string>
     <string name="home_kani_body">Kani has been counting your listening. Here is where it stands.</string>
     <string name="home_kani_in_progress">%1$d episodes in progress.</string>
     <string name="home_kani_played">%1$d episodes listened to. Kani is impressed.</string>
@@ -116,9 +116,6 @@
     <string name="settings_seconds">%1$ds</string>
     <string name="settings_volume_boost">Volume boost</string>
     <string name="settings_volume_boost_hint">Starts every episode amplified.</string>
-    <string name="settings_mark_played">Mark played when finished</string>
-    <string name="settings_mark_played_hint">Keeps finished episodes out of continue listening.</string>
-
     <string name="discovery_title">Discover</string>
     <string name="discovery_search_label">Search the catalog</string>
     <string name="discovery_search_hint">topic, show, or host</string>
@@ -135,13 +132,13 @@
     <!-- About -->
     <string name="about_title">About</string>
     <string name="about_open">About Lohe</string>
-    <string name="about_tagline">Catch the frequency</string>
-    <string name="about_version">Version %1$s</string>
+    <string name="about_tagline">ua lohe ʻoe? - Have you heard?</string>
+    <string name="about_version">Version %1$s (build %2$s)</string>
     <string name="about_version_unknown">Version unavailable</string>
-    <string name="about_name_heading">The name</string>
-    <string name="about_name_body">Lohe (lōhe) is a Hawaiian word. It means to listen, to hear, and to mind. Lohe is the app itself. It holds the shows you keep and records what you have heard.</string>
+    <string name="about_name_heading">To hear. To listen. To take something to heart.</string>
+    <string name="about_name_body">In Hawaiian, that is Lohe (lōhe). We built the app around the simple idea of listening on your own terms. Whether you are into gripping stories, honest conversations, the daily news, or a deep dive on a random obsession, Lohe lets you hear what you want, exactly how you want to hear it. It stays out of your way and remembers where you left off.\n\nUa lohe ʻoe?</string>
     <string name="about_kani_heading">Kani</string>
-    <string name="about_kani_body">Kani (kāni) is the dragonfly on the home screen. His name means attentive listening, the quiet kind you do on someone else\'s behalf. He watches the library and tells you what is waiting.</string>
+    <string name="about_kani_body">That little dragonfly on your home screen is Kani. His name comes from the Hawaiian idea of listening with quiet, focused attention. He keeps an eye on your library so your next listen is always ready when you are.</string>
     <string name="about_credits_heading">Credits</string>
     <string name="about_studio">An Atomic 22 Industries app.</string>
     <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Atomic 22 Design</string>

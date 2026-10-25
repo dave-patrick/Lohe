@@ -6,6 +6,20 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Release version changes only when requested. The final component of the
+// custom build ID increases for each distinct build, even within one release.
+val loheReleaseVersion = "0.10.1"
+// Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
+val loheBuildId = "2026.25.10.15"
+val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
+check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
+    "Lohe release version must be major.minor.patch with each component from 0 to 99"
+}
+// Android's update-ordering code identifies the release version only. The
+// custom build number is separate and is shown in About.
+val loheAndroidVersionCode =
+    loheVersionParts[0] * 10_000 + loheVersionParts[1] * 100 + loheVersionParts[2]
+
 android {
     namespace = "com.lohe.app"
     compileSdk = 37
@@ -14,8 +28,9 @@ android {
         applicationId = "com.lohe.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.9.2"
+        versionCode = loheAndroidVersionCode
+        versionName = loheReleaseVersion
+        buildConfigField("String", "BUILD_ID", "\"$loheBuildId\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

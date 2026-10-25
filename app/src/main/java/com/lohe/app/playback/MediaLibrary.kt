@@ -36,6 +36,8 @@ object MediaLibrary {
 
     const val ROOT = "lohe-root"
     const val CONTINUE = "lohe-continue"
+    const val UP_NEXT = "lohe-up-next"
+    const val DOWNLOADS = "lohe-downloads"
     const val SHOWS = "lohe-shows"
     const val PLAYLISTS = "lohe-playlists"
 
@@ -86,6 +88,8 @@ class LibraryCatalog(
     suspend fun children(parentId: String): List<MediaItem> = when {
         parentId == MediaLibrary.ROOT -> listOf(
             browsable(MediaLibrary.CONTINUE, "Continue listening", null),
+            browsable(MediaLibrary.UP_NEXT, "Up Next", null),
+            browsable(MediaLibrary.DOWNLOADS, "Downloads", null),
             browsable(MediaLibrary.SHOWS, "Shows", null),
             browsable(MediaLibrary.PLAYLISTS, "Playlists", null),
         )
@@ -93,7 +97,22 @@ class LibraryCatalog(
         parentId == MediaLibrary.CONTINUE -> {
             val shows = showsByUuid()
             repository.observeInProgress().first()
-                .filterNot { it.isDeleted }
+                .filterNot { it.isDeleted || it.isArchived }
+                .map { playable(it, shows) }
+        }
+
+        parentId == MediaLibrary.UP_NEXT -> {
+            val shows = showsByUuid()
+            repository.observeQueue().first()
+                .filterNot { it.isDeleted || it.isArchived }
+                .map { playable(it, shows) }
+        }
+
+        parentId == MediaLibrary.DOWNLOADS -> {
+            val shows = showsByUuid()
+            repository.observeDownloads().first()
+                .mapNotNull { repository.episodeOnce(it.uuid) }
+                .filterNot { it.isDeleted || it.isArchived }
                 .map { playable(it, shows) }
         }
 
@@ -136,6 +155,10 @@ class LibraryCatalog(
             mediaId == MediaLibrary.ROOT -> rootItem()
             mediaId == MediaLibrary.CONTINUE ->
                 browsable(MediaLibrary.CONTINUE, "Continue listening", null)
+            mediaId == MediaLibrary.UP_NEXT ->
+                browsable(MediaLibrary.UP_NEXT, "Up Next", null)
+            mediaId == MediaLibrary.DOWNLOADS ->
+                browsable(MediaLibrary.DOWNLOADS, "Downloads", null)
             mediaId == MediaLibrary.SHOWS ->
                 browsable(MediaLibrary.SHOWS, "Shows", null)
             mediaId == MediaLibrary.PLAYLISTS ->
@@ -167,6 +190,23 @@ class LibraryCatalog(
     suspend fun playable(mediaId: String, shows: Map<String, PodcastEntity>): MediaItem? {
         val episode = repository.episodeOnce(mediaId) ?: return null
         return playable(episode, shows)
+    }
+
+    /** Podcast and episode matches for Android Auto voice and text search. */
+    suspend fun search(query: String, limit: Int = 200): List<MediaItem> {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return emptyList()
+
+        val shows = showsByUuid()
+        val matchingShows = repository.observeSearchResults(cleanQuery).first()
+            .take(limit.coerceAtLeast(0))
+            .map { browsable(MediaLibrary.showId(it.uuid), it.title, it.artworkUrl) }
+        val remaining = (limit - matchingShows.size).coerceAtLeast(0)
+        val matchingEpisodes = if (remaining == 0) emptyList() else {
+            repository.searchEpisodes(cleanQuery, remaining)
+                .map { playable(it, shows) }
+        }
+        return matchingShows + matchingEpisodes
     }
 
     private fun playable(episode: EpisodeEntity, shows: Map<String, PodcastEntity>): MediaItem {

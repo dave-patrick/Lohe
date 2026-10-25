@@ -1,6 +1,7 @@
 package com.lohe.app.ui.navigation
 
 import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.ui.formatDuration
 import kotlin.math.roundToInt
 
 /**
@@ -11,9 +12,6 @@ import kotlin.math.roundToInt
  * MIME type ("MPEG"), which tells a listener nothing.
  */
 object EpisodeMeta {
-
-    private const val MINUTE = 60
-    private const val HOUR = 3600
 
     /** Milliseconds in a day. Distinct from [HOUR], which is in seconds. */
     private const val DAY_MS = 86_400_000L
@@ -30,21 +28,14 @@ object EpisodeMeta {
         if (epochMillis <= 0L) epochMillis else if (epochMillis < SECONDS_SCALE_THRESHOLD) epochMillis * 1000L else epochMillis
 
     /**
-     * Coarse runtime, e.g. "24 min", "1 hr 5 min".
+     * Coarse runtime, e.g. "24m", "1h 5m", or "2d 3h".
      *
      * Returns an empty string for an unknown or implausible duration: a list
      * row reads better with a gap than with "0 min" or a fabricated length.
      */
     fun duration(seconds: Int?): String {
         if (seconds == null || seconds <= 0) return ""
-        if (seconds < MINUTE) return "${seconds}s"
-        val hours = seconds / HOUR
-        val minutes = (seconds % HOUR) / MINUTE
-        return when {
-            hours == 0 -> "${minutes} min"
-            minutes == 0 -> "$hours hr"
-            else -> "$hours hr $minutes min"
-        }
+        return formatDuration(seconds.toLong())
     }
 
     /**

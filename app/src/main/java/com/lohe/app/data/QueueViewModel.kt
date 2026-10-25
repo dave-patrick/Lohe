@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /** One queue entry, paired with its show so the row can name the source. */
 data class QueueEntry(val episode: EpisodeSummary, val showTitle: String)
@@ -250,8 +253,9 @@ class QueueViewModel(
         playlistRepository.playlists,
         settingsStore?.settings ?: flowOf(com.lohe.app.ui.theme.PlaybackSettings()),
     ) { shows, allEpisodes, history, playlists, settings ->
-        // Archived episodes are filed away: they are not part of the library
-        // the dashboard describes.
+        // Archived episodes leave active library counts. Keep archived rows
+        // with real listening time in the signal totals, though, so the 24-hour
+        // archive policy cannot erase listening progress from the dashboard.
         val activeEpisodes = allEpisodes.filter { !it.isDeleted && !it.isArchived }
         val liveUuids = allEpisodes.mapTo(mutableSetOf()) { it.uuid }
         var totalRemaining = 0L
@@ -263,30 +267,33 @@ class QueueViewModel(
         var inProgressCount = 0
 
         for (ep in allEpisodes) {
-            // An archived episode has been filed away, so it is no longer
-            // part of the library as far as the listening figures go.
-            if (ep.isArchived) continue
+            val archivedListening = ep.isArchived && ep.listenedSeconds > 0L
+            // Old/imported archives without actual listening time should not
+            // inflate either side of the listening signal.
+            if (ep.isArchived && !archivedListening) continue
 
             // Deleted items that were never played should not be in any count.
-            if (ep.isDeleted && !ep.isPlayed) continue
+            if (!ep.isArchived && ep.isDeleted && !ep.isPlayed) continue
 
-            if (ep.isPlayed) playedCount++
-
-            // Only non-deleted episodes count toward library-level stats.
-            if (!ep.isDeleted) {
-                if (ep.isDownloaded) downloaded++
-                if (ep.isInProgress) inProgressCount++
+            // Episode counts and downloads describe the active library only.
+            if (!ep.isArchived) {
+                if (ep.isPlayed) playedCount++
+                if (!ep.isDeleted) {
+                    if (ep.isDownloaded) downloaded++
+                    if (ep.isInProgress) inProgressCount++
+                }
             }
 
-            // Time stats: played episodes count even if deleted; non-deleted
-            // episodes count too.
-            if (!ep.isDeleted || ep.isPlayed) {
-                val dur = (ep.durationSeconds?.toLong() ?: 0L).coerceAtLeast(ep.playedUpToSeconds)
+            // Time stats retain actual listening after an episode is archived.
+            if (ep.isArchived || !ep.isDeleted || ep.isPlayed) {
+                val dur = (ep.durationSeconds?.toLong() ?: 0L)
+                    .coerceAtLeast(ep.playedUpToSeconds)
+                    .coerceAtLeast(if (ep.isArchived) ep.listenedSeconds else 0L)
                 // Actual listening time, not the full runtime: marking an
                 // episode listened without playing it must not add its whole
                 // duration to the total.
                 val played = ep.listenedSeconds.coerceIn(0L, dur)
-                val rem = if (ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
+                val rem = if (ep.isArchived || ep.isPlayed) 0L else (dur - played).coerceAtLeast(0L)
 
                 totalDuration += dur
                 totalPlayed += played
@@ -331,7 +338,9 @@ class QueueViewModel(
             totalPlayedSeconds = totalPlayed,
             totalDurationSeconds = totalDuration,
             timeSavedSeconds = timeSaved,
-            dailyActivityMinutes = dailyActivityMinutes(activeEpisodes),
+            // Archived episodes stay out of library counts, but their recorded
+            // listening still belongs in the activity chart.
+            dailyActivityMinutes = dailyActivityMinutes(allEpisodes),
             showActivity = showActivity(allEpisodes, shows),
             mostListenedShows = mostListenedShows(allEpisodes, shows),
         )
@@ -347,15 +356,16 @@ class QueueViewModel(
     private fun dailyActivityMinutes(episodes: List<EpisodeSummary>): List<Int> {
         if (episodes.isEmpty()) return emptyList()
 
-        val now = System.currentTimeMillis()
-        val dayMs = 86_400_000L
-        val startOfToday = now - (now % dayMs)
+        val zone = ZoneId.systemDefault()
+        val todayEpochDay = LocalDate.now(zone).toEpochDay()
         val buckets = IntArray(ACTIVITY_DAYS)
 
         episodes.forEach { ep ->
             if (!ep.isPlayed && ep.listenedSeconds <= 0L) return@forEach
-            val playedAt = ep.lastPlayedAt ?: return@forEach
-            val dayIndex = ((startOfToday - playedAt) / dayMs).toInt()
+            val playedAt = (if (ep.isPlayed) ep.playedAt ?: ep.lastPlayedAt else ep.lastPlayedAt)
+                ?: return@forEach
+            val playedDate = Instant.ofEpochMilli(playedAt).atZone(zone).toLocalDate()
+            val dayIndex = (todayEpochDay - playedDate.toEpochDay()).toInt()
             if (dayIndex !in 0 until ACTIVITY_DAYS) return@forEach
             val minutes = (ep.listenedSeconds / 60L).toInt()
             buckets[ACTIVITY_DAYS - 1 - dayIndex] += minutes

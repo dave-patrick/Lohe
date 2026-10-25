@@ -24,12 +24,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -45,6 +47,7 @@ import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Settings.
@@ -112,23 +115,21 @@ fun SettingsScreen(
         }
 
         if (category == SettingsCategory.PLAYBACK) {
-            ChoiceRow(
+            SecondsSliderRow(
                 label = stringResource(R.string.settings_skip_back),
-                choices = PlaybackSettings.SKIP_CHOICES,
                 selected = settings.skipBackSeconds,
-                format = { stringResource(R.string.settings_seconds, it) },
+                maxValue = 60,
                 onSelect = { scope.launch { settingsStore.setSkipBackSeconds(it) } },
             )
 
-            ChoiceRow(
+            SecondsSliderRow(
                 label = stringResource(R.string.settings_skip_forward),
-                choices = PlaybackSettings.SKIP_CHOICES,
                 selected = settings.skipForwardSeconds,
-                format = { stringResource(R.string.settings_seconds, it) },
+                maxValue = 120,
                 onSelect = { scope.launch { settingsStore.setSkipForwardSeconds(it) } },
             )
 
-            SpeedChoiceRow(
+            SpeedSliderRow(
                 label = "Default playback speed",
                 choices = PlaybackSettings.SPEED_CHOICES,
                 selected = settings.defaultPlaybackSpeed,
@@ -142,7 +143,10 @@ fun SettingsScreen(
                 label = stringResource(R.string.settings_volume_boost),
                 hint = stringResource(R.string.settings_volume_boost_hint),
                 checked = settings.volumeBoostByDefault,
-                onChange = { scope.launch { settingsStore.setVolumeBoostDefault(it) } },
+                onChange = {
+                    Playback.setVolumeBoost(it)
+                    scope.launch { settingsStore.setVolumeBoostDefault(it) }
+                },
             )
 
             ToggleRow(
@@ -179,12 +183,6 @@ fun SettingsScreen(
                 onChange = { scope.launch { settingsStore.setAutoTrimDefault(it) } },
             )
 
-            ToggleRow(
-                label = stringResource(R.string.settings_mark_played),
-                hint = stringResource(R.string.settings_mark_played_hint),
-                checked = settings.markPlayedAtEnd,
-                onChange = { scope.launch { settingsStore.setMarkPlayedAtEnd(it) } },
-            )
         }
 
         Spacer(Modifier.size(8.dp))
@@ -286,11 +284,74 @@ private fun ChoiceRowItem(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+private fun SecondsSliderRow(
+    label: String,
+    selected: Int,
+    maxValue: Int,
+    onSelect: (Int) -> Unit,
+) {
+    var sliderValue by remember(selected) { mutableFloatStateOf(selected.toFloat()) }
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.settings_seconds, sliderValue.roundToInt()),
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            onValueChangeFinished = { onSelect(sliderValue.roundToInt()) },
+            valueRange = 5f..maxValue.toFloat(),
+            steps = maxValue - 6,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(R.string.settings_seconds, 5), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_seconds, maxValue), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SpeedSliderRow(
+    label: String,
+    choices: List<Float>,
+    selected: Float,
+    onSelect: (Float) -> Unit,
+) {
+    val selectedIndex = choices.indexOfFirst { kotlin.math.abs(it - selected) < 0.01f }.coerceAtLeast(0)
+    var sliderIndex by remember(selectedIndex) { mutableFloatStateOf(selectedIndex.toFloat()) }
+    val currentSpeed = choices[sliderIndex.roundToInt().coerceIn(choices.indices)]
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f))
+            Text(formatSpeedLabel(currentSpeed), style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = sliderIndex,
+            onValueChange = { sliderIndex = it },
+            onValueChangeFinished = { onSelect(choices[sliderIndex.roundToInt().coerceIn(choices.indices)]) },
+            valueRange = 0f..choices.lastIndex.toFloat(),
+            steps = choices.size - 2,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatSpeedLabel(choices.first()), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatSpeedLabel(choices.last()), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun ChoiceRow(
     label: String,
     choices: List<Int>,
     selected: Int,
-    // Composable because the caller formats through stringResource, which is.
     format: @Composable (Int) -> String,
     onSelect: (Int) -> Unit,
 ) {
@@ -300,8 +361,6 @@ private fun ChoiceRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        // FlowRow rather than Row: six chips do not fit across a narrow phone,
-        // and a fixed Row wrapped "60s" onto two lines.
         FlowRow(
             modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -313,46 +372,6 @@ private fun ChoiceRow(
                     onClick = { onSelect(choice) },
                     label = { Text(format(choice), maxLines = 1) },
                     colors = FilterChipDefaults.filterChipColors(
-                        // The default selected chip takes the theme's
-                        // secondary container, which is a teal that reads as
-                        // green against the blue the app is built on.
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SpeedChoiceRow(
-    label: String,
-    choices: List<Float>,
-    selected: Float,
-    onSelect: (Float) -> Unit,
-) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        FlowRow(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            choices.forEach { choice ->
-                FilterChip(
-                    selected = kotlin.math.abs(choice - selected) < 0.01f,
-                    onClick = { onSelect(choice) },
-                    label = { Text(formatSpeedLabel(choice), maxLines = 1) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        // The default selected chip takes the theme's
-                        // secondary container, which is a teal that reads as
-                        // green against the blue the app is built on.
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                     ),

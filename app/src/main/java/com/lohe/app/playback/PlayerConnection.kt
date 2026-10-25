@@ -135,9 +135,8 @@ class PlayerConnection internal constructor(
     }
 
     fun setVolumeBoost(enabled: Boolean) {
-        // MediaController.setVolume() enforces 0..1 and throws
-        // IllegalArgumentException for values > 1f. Real amplification above
-        // 0 dB is applied via LoudnessEnhancer inside PlaybackService.
+        // MediaController.setVolume() enforces 0..1. Amplification above
+        // unity is applied by PlaybackService's session-bound audio effect.
         Playback.setVolumeBoost(enabled)
         controller?.volume = 1f
     }

@@ -599,16 +599,9 @@ fun LoheNavHost(
                 val currentQueueEpisodeId = transport.value.mediaId.takeIf {
                     transport.value.hasMedia && it.isNotBlank()
                 }
-                val selectedCurrent = nowPlaying?.takeIf { it.episodeId == currentQueueEpisodeId }
                 QueueScreen(
                     viewModel = queueViewModel,
                     currentEpisodeId = currentQueueEpisodeId,
-                    currentEpisodeTitle = selectedCurrent?.title ?: transport.value.title,
-                    currentShowTitle = selectedCurrent?.showTitle ?: transport.value.showTitle,
-                    currentArtworkUrl = selectedCurrent?.artworkUrl ?: transport.value.artworkUrl,
-                    currentProgress = transport.value.progress,
-                    currentIsPlaying = transport.value.isPlaying,
-                    onTogglePlayback = { playerConnection.togglePlayPause() },
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     onPlay = { entry ->
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {

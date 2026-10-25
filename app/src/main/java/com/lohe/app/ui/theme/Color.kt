@@ -53,6 +53,12 @@ object LoheAccent {
     val glassFillStrong = Color(0x24E4E4E7)    // ~14%
     val glassBorder = Color(0x29E4E4E7)        // ~16% hairline light catch
 
+    /** Mostly opaque satin-glass surface for the persistent player and nav. */
+    val barGlassFill = Color(0xF21D2B43)
+    val barGlassFillLight = Color(0xF2EDF3FB)
+    val barGlassEdge = Color(0x383F78B8)
+    val barGlassEdgeLight = Color(0x33245B91)
+
     /**
      * Light-mode glass.
      *

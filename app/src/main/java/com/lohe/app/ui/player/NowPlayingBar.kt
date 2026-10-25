@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
@@ -40,7 +42,8 @@ import com.lohe.app.playback.PlayerConnection
 import com.lohe.app.playback.TransportState
 import com.lohe.app.ui.image.RemoteImage
 import com.lohe.app.ui.theme.ElectricBlue
-import com.lohe.app.ui.theme.artworkBleed
+import com.lohe.app.ui.theme.LoheAccent
+import com.lohe.app.ui.theme.backgroundIsLight
 
 /**
  * Persistent mini Now Playing card shown above the bottom bar on every screen.
@@ -79,30 +82,43 @@ fun NowPlayingBar(
     // now; when the queue head is the title itself, showing it twice is noise.
     val nextUpLabel = nextUpTitle?.takeIf { it.isNotBlank() && it != shownTitle }
 
-    val shape = RoundedCornerShape(16.dp)
-    Column(
+    val isLight = backgroundIsLight()
+    val shape = RoundedCornerShape(36.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-            .shadow(
-                elevation = 20.dp,
-                shape = shape,
-                ambientColor = ElectricBlue.copy(alpha = 0.66f),
-                spotColor = ElectricBlue.copy(alpha = 0.88f),
-            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        // Draw the accent separately behind the capsule so the glow is visible
+        // outside its edge and never mottles the frosted surface.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 2.dp, vertical = 3.dp)
+                .blur(18.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                .background(ElectricBlue.copy(alpha = 0.68f), shape),
+        )
+        Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = shape)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
             .background(
-                Brush.horizontalGradient(
-                    listOf(ElectricBlue.copy(alpha = 0.14f), Color.Transparent, ElectricBlue.copy(alpha = 0.05f)),
+                if (isLight) LoheAccent.barGlassFillLight else LoheAccent.barGlassFill,
+            )
+            // A restrained, even satin sheen keeps the panel glassy without
+            // the patchy colored wash of the previous horizontal gradient.
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.045f), Color.Transparent),
                 ),
             )
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     listOf(
-                        ElectricBlue.copy(alpha = 0.78f),
-                        ElectricBlue.copy(alpha = 0.38f),
+                        (if (isLight) LoheAccent.barGlassEdgeLight else LoheAccent.barGlassEdge),
+                        Color.Transparent,
                     ),
                 ),
                 shape = shape,
@@ -113,15 +129,14 @@ fun NowPlayingBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 64.dp)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RemoteImage(
                 url = artworkUrl,
                 contentDescription = null,
-                size = 42.dp,
-                cornerRadius = 10.dp,
-                modifier = Modifier.artworkBleed(tint = ElectricBlue),
+                size = 40.dp,
+                cornerRadius = 12.dp,
             )
 
             Column(
@@ -224,6 +239,7 @@ fun NowPlayingBar(
                 size = Size(size.width * shownProgress.coerceIn(0f, 1f), barHeight),
                 cornerRadius = CornerRadius(barHeight / 2f),
             )
+        }
         }
     }
 }

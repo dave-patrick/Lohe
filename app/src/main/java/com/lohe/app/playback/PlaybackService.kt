@@ -170,11 +170,11 @@ class PlaybackService : MediaLibraryService() {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
             val all = catalog()?.children(parentId).orEmpty()
-            val from = page * pageSize
-            val slice = if (from >= all.size) {
+            val from = page.toLong() * pageSize
+            val slice = if (page < 0 || pageSize <= 0 || from >= all.size) {
                 emptyList()
             } else {
-                all.subList(from, minOf(from + pageSize, all.size))
+                all.drop(from.toInt()).take(pageSize)
             }
             LibraryResult.ofItemList(ImmutableList.copyOf(slice), params)
         }
@@ -187,6 +187,35 @@ class PlaybackService : MediaLibraryService() {
             val item = catalog()?.item(mediaId)
                 ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
             LibraryResult.ofItem(item, null)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> = future {
+            val results = catalog()?.search(query).orEmpty()
+            session.notifySearchResultChanged(browser, query, results.size, params)
+            LibraryResult.ofVoid(params)
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            val all = catalog()?.search(query).orEmpty()
+            val from = page.toLong() * pageSize
+            val slice = if (page < 0 || pageSize <= 0 || from >= all.size) {
+                emptyList()
+            } else {
+                all.drop(from.toInt()).take(pageSize)
+            }
+            LibraryResult.ofItemList(ImmutableList.copyOf(slice), params)
         }
 
         /**
@@ -298,6 +327,15 @@ class PlaybackService : MediaLibraryService() {
             }
 
             completeEpisode(stopAfterCompletion = false)
+        }
+
+        override fun onAudioSessionIdChanged(audioSessionId: Int) {
+            val boostEnabled = Playback.volumeBoost.value
+            DevDiagnostics.log(
+                "VOLUME_BOOST",
+                "audio session changed to $audioSessionId; reapplying boost=$boostEnabled",
+            )
+            applyVolumeBoost(boostEnabled)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -461,18 +499,37 @@ class PlaybackService : MediaLibraryService() {
 
     private fun applyVolumeBoost(enabled: Boolean) {
         val sessionId = player.audioSessionId
-        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId <= 0) return
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId <= 0) {
+            DevDiagnostics.log("VOLUME_BOOST", "cannot apply: invalid audio session $sessionId")
+            return
+        }
 
-        runCatching {
+        val result = runCatching {
             if (loudnessEnhancer == null || loudnessSessionId != sessionId) {
                 loudnessEnhancer?.release()
                 loudnessEnhancer = LoudnessEnhancer(sessionId)
                 loudnessSessionId = sessionId
             }
-            loudnessEnhancer?.apply {
-                setTargetGain(if (enabled) VOLUME_BOOST_MILLIBELS else 0)
-                setEnabled(enabled)
+            loudnessEnhancer?.also {
+                it.setTargetGain(if (enabled) VOLUME_BOOST_MILLIBELS else 0)
+                it.enabled = enabled
             }
+        }
+        result.onSuccess { effect ->
+            if (effect == null) {
+                DevDiagnostics.log("VOLUME_BOOST", "no enhancer instance for session=$sessionId")
+            } else {
+                DevDiagnostics.log(
+                    "VOLUME_BOOST",
+                    "session=$sessionId requested=$enabled actual=${effect.enabled} " +
+                        "gain=${effect.targetGain}mB control=${effect.hasControl()}",
+                )
+            }
+        }.onFailure { error ->
+            DevDiagnostics.log(
+                "VOLUME_BOOST",
+                "failed session=$sessionId requested=$enabled: ${error.javaClass.simpleName}: ${error.message}",
+            )
         }
     }
 
@@ -613,12 +670,9 @@ class PlaybackService : MediaLibraryService() {
         private const val TIMER_POLL_MS = 1_000L
         private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
 
-        /**
-         * Amplification applied via [LoudnessEnhancer] when volume boost is on.
-         * 500 mB = +5 dB (~1.78x linear amplitude).
-         */
-        const val VOLUME_BOOST_MILLIBELS = 500
-        const val VOLUME_BOOST_GAIN = 1.8f
+        /** Maximum amplification applied by LoudnessEnhancer when volume boost is on. */
+        const val VOLUME_BOOST_MILLIBELS = 1_000
+        const val VOLUME_BOOST_GAIN = 3.16f
 
         /** The ExoPlayer, exposed so the Android Automotive OS car app can drive it. */
         var player: ExoPlayer? = null

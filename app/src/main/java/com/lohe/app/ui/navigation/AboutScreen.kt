@@ -30,8 +30,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.lohe.app.BuildConfig
 import com.lohe.app.R
 import com.lohe.app.ui.theme.backgroundIsLight
 
@@ -95,7 +100,7 @@ fun AboutScreen(
                 .height(150.dp),
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(24.dp))
 
         // Keep the wordmark centered, with the installed version directly below.
         Column(
@@ -124,11 +129,12 @@ fun AboutScreen(
 
             Text(
                 text = if (version != null) {
-                    stringResource(R.string.about_version, version)
+                    stringResource(R.string.about_version, version, BuildConfig.BUILD_ID)
                 } else {
                     stringResource(R.string.about_version_unknown)
                 },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
@@ -152,6 +158,7 @@ fun AboutScreen(
         AboutBlock(
             heading = stringResource(R.string.about_name_heading),
             body = stringResource(R.string.about_name_body),
+            italicPhrases = listOf("Lohe (lōhe)", "Ua lohe ʻoe?"),
         )
 
         AboutBlock(
@@ -207,7 +214,11 @@ fun AboutScreen(
 }
 
 @Composable
-private fun AboutBlock(heading: String, body: String) {
+private fun AboutBlock(
+    heading: String,
+    body: String,
+    italicPhrases: List<String> = emptyList(),
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -219,8 +230,17 @@ private fun AboutBlock(heading: String, body: String) {
             color = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.height(6.dp))
+        val styledBody = buildAnnotatedString {
+            append(body)
+            italicPhrases.forEach { phrase ->
+                val start = body.indexOf(phrase)
+                if (start >= 0) {
+                    addStyle(SpanStyle(fontStyle = FontStyle.Italic), start, start + phrase.length)
+                }
+            }
+        }
         Text(
-            text = body,
+            text = styledBody,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )

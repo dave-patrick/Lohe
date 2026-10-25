@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.LoheSheet
+import com.lohe.app.ui.formatDuration
 import com.lohe.app.ui.image.RemoteImage
 
 /**
@@ -92,7 +93,7 @@ fun EpisodeNotesSheet(
                     durationSeconds?.takeIf { it > 0 }?.let { secs ->
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "Duration · ${formatTimestamp(secs * 1_000L)}",
+                            text = "Duration · ${formatDuration(secs.toLong())}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )

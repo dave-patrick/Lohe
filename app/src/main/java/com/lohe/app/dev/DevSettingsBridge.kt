@@ -25,7 +25,6 @@ object DevSettingsBridge {
         "defaultPlaybackSpeed" to "a number between 0.5 and 3.0",
         "skipBackSeconds" to "a number between 5 and 60",
         "skipForwardSeconds" to "a number between 5 and 120",
-        "markPlayedAtEnd" to "true or false",
         "autoArchiveHours" to "-1 (off), 0, 1, 24, or 168",
         "autoDownloadQueue" to "true or false",
         "sleepTimerMinutes" to "a number between 1 and 1440",
@@ -53,7 +52,6 @@ object DevSettingsBridge {
             "defaultPlaybackSpeed" -> settings.setDefaultPlaybackSpeed(value.toFloatStrict())
             "skipBackSeconds" -> settings.setSkipBackSeconds(value.toIntStrict())
             "skipForwardSeconds" -> settings.setSkipForwardSeconds(value.toIntStrict())
-            "markPlayedAtEnd" -> settings.setMarkPlayedAtEnd(value.toBooleanStrict())
             "autoArchiveHours" -> settings.setAutoArchiveHours(value.toIntStrict())
             "autoDownloadQueue" -> settings.setAutoDownloadQueue(value.toBooleanStrict())
             "sleepTimerMinutes" -> settings.setSleepTimerMinutes(value.toIntStrict())

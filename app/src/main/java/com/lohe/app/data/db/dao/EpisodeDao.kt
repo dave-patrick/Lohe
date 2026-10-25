@@ -33,6 +33,20 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes ORDER BY published DESC LIMIT :limit")
     fun observeLatest(limit: Int = 50): Flow<List<EpisodeEntity>>
 
+    @Query(
+        """
+        SELECT episodes.* FROM episodes
+        INNER JOIN podcasts ON podcasts.uuid = episodes.podcastUuid
+        WHERE podcasts.isSubscribed = 1
+          AND episodes.isDeleted = 0
+          AND episodes.isArchived = 0
+          AND episodes.title LIKE '%' || :query || '%' COLLATE NOCASE
+        ORDER BY episodes.published DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchByTitle(query: String, limit: Int): List<EpisodeEntity>
+
     /**
      * Every episode, newest first. A lightweight projection: [description] and
      * [chapters] are omitted because they are large text blobs only needed on
@@ -50,7 +64,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
         FROM episodes
         ORDER BY published DESC
         """
@@ -175,7 +189,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
         FROM episodes
         WHERE downloadState = 2 AND localPath IS NOT NULL
         ORDER BY published DESC
@@ -213,6 +227,7 @@ interface EpisodeDao {
         UPDATE episodes
         SET playedUpToSeconds = :position,
             playingStatus = 1,
+            lastPlayedAt = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
             listenedSeconds = listenedSeconds + MAX(0, :position - playedUpToSeconds),
             durationSeconds = CASE
                 WHEN durationSeconds IS NULL OR durationSeconds = 0 THEN :duration
@@ -229,7 +244,7 @@ interface EpisodeDao {
      * `listenedSeconds` is deliberately left alone: it records what was
      * actually heard, which is not the same as where to resume from.
      */
-    @Query("UPDATE episodes SET playedAt = CASE WHEN playingStatus != 2 OR playedAt IS NULL THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 ELSE playedAt END, playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
+    @Query("UPDATE episodes SET lastPlayedAt = CAST(strftime('%s', 'now') AS INTEGER) * 1000, playedAt = CASE WHEN playingStatus != 2 OR playedAt IS NULL THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 ELSE playedAt END, playingStatus = 2, playedUpToSeconds = 0 WHERE uuid = :uuid")
     suspend fun markPlayedAndClearProgress(uuid: String)
 
     /**

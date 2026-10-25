@@ -496,7 +496,6 @@ class LoheToolkit(context: Context) {
                 "defaultPlaybackSpeed" to current.defaultPlaybackSpeed,
                 "skipBackSeconds" to current.skipBackSeconds,
                 "skipForwardSeconds" to current.skipForwardSeconds,
-                "markPlayedAtEnd" to current.markPlayedAtEnd,
                 "autoArchiveHours" to current.autoArchiveHours,
                 "autoDownloadQueue" to current.autoDownloadQueue,
                 "sleepTimerMinutes" to current.sleepTimerMinutes,

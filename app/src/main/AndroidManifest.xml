@@ -52,6 +52,10 @@
         android:theme="@style/Theme.Lohe"
         android:usesCleartextTraffic="true">
 
+        <meta-data
+            android:name="androidx.car.app.TintableAttributionIcon"
+            android:resource="@drawable/ic_car_attribution" />
+
         <service
             android:name=".data.EpisodeArchiveJobService"
             android:permission="android.permission.BIND_JOB_SERVICE"
@@ -81,6 +85,8 @@
         <service
             android:name=".playback.PlaybackService"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />

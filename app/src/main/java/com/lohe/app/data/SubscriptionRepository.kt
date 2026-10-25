@@ -76,6 +76,10 @@ class SubscriptionRepository internal constructor(
     /** Completed offline downloads, newest first. */
     fun observeDownloads(): Flow<List<EpisodeSummary>> = episodes.observeDownloads()
 
+    /** Episode title matches for media-browser voice/search requests. */
+    suspend fun searchEpisodes(query: String, limit: Int = 100): List<EpisodeEntity> =
+        episodes.searchByTitle(query.trim(), limit.coerceIn(1, 250))
+
     suspend fun setDownloadState(uuid: String, state: Int, path: String?) =
         episodes.setDownloadState(uuid, state, path)
 

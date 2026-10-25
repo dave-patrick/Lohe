@@ -48,7 +48,6 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
@@ -118,6 +117,7 @@ import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.image.RemoteImage
+import com.lohe.app.ui.formatDuration
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.GlassCard
@@ -134,12 +134,6 @@ fun QueueScreen(
     viewModel: QueueViewModel,
     onPlay: (QueueEntry) -> Unit,
     currentEpisodeId: String? = null,
-    currentEpisodeTitle: String? = null,
-    currentShowTitle: String? = null,
-    currentArtworkUrl: String? = null,
-    currentProgress: Float = 0f,
-    currentIsPlaying: Boolean = false,
-    onTogglePlayback: () -> Unit = {},
     onShowMessage: (String) -> Unit = {},
     onOpenSettings: () -> Unit = {},
 ) {
@@ -321,72 +315,9 @@ fun QueueScreen(
             }
         }
 
-        if (!currentEpisodeId.isNullOrBlank() && !currentEpisodeTitle.isNullOrBlank()) {
-            GlassCard(
-                accent = ElectricBlue,
-                contentPadding = 12.dp,
-                modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text(
-                        text = "NOW PLAYING",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = ElectricBlue,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RemoteImage(
-                            url = currentArtworkUrl,
-                            contentDescription = null,
-                            size = 48.dp,
-                            cornerRadius = 10.dp,
-                        )
-                        Column(
-                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(
-                                text = currentEpisodeTitle,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            currentShowTitle?.takeIf { it.isNotBlank() }?.let { show ->
-                                Text(
-                                    text = show,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            LinearProgressIndicator(
-                                progress = { currentProgress.coerceIn(0f, 1f) },
-                                color = ElectricBlue,
-                                trackColor = ElectricBlue.copy(alpha = 0.16f),
-                                modifier = Modifier.fillMaxWidth().height(3.dp),
-                            )
-                        }
-                        IconButton(onClick = onTogglePlayback, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = if (currentIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (currentIsPlaying) "Pause" else "Play",
-                                tint = ElectricBlue,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         if (upcomingQueue.isNotEmpty()) {
             Text(
-                text = "${upcomingQueue.size} episode${if (upcomingQueue.size == 1) "" else "s"} next · ${upcomingSeconds / 60L} min remaining",
+                text = "${upcomingQueue.size} episode${if (upcomingQueue.size == 1) "" else "s"} next · ${formatDuration(upcomingSeconds)} remaining",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp),
@@ -823,7 +754,7 @@ fun PlaylistsScreen(
                                 }
                             }
                             withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                                append("${openedPlaylist.entries.size} episodes · ${openedPlaylist.totalSeconds / 60L} min")
+                                append("${openedPlaylist.entries.size} episodes · ${formatDuration(openedPlaylist.totalSeconds)}")
                             }
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -1443,10 +1374,6 @@ fun PlaylistsScreen(
                         val dragging = gridDragState.draggedKey == pl.id
                         PlaylistGridCard(
                             playlist = pl,
-                            canMoveUp = !pl.system && index > 0 &&
-                                (pl.pinned || !gridItems[index - 1].pinned),
-                            canMoveDown = !pl.system && index < gridItems.lastIndex &&
-                                (!pl.pinned || gridItems[index + 1].pinned),
                             onOpen = { openedPlaylistId = pl.id },
                             onPlayAll = {
                                 if (pl.entries.isNotEmpty()) {
@@ -1457,8 +1384,6 @@ fun PlaylistsScreen(
                             onAddToUpNext = {
                                 playlistToAdd = pl
                             },
-                            onMoveUp = { viewModel.movePlaylist(pl.id, -1) },
-                            onMoveDown = { viewModel.movePlaylist(pl.id, +1) },
                             onAssignFolder = { folderDialogTarget = pl },
                             onTogglePinned = { viewModel.setPlaylistPinned(pl.id, !pl.pinned) },
                             dragHandle = if (dragEnabled && !pl.system) {
@@ -1467,10 +1392,7 @@ fun PlaylistsScreen(
                                         state = gridDragState,
                                         playlistId = pl.id,
                                         playlistName = pl.name,
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                                        modifier = Modifier.size(40.dp),
                                     )
                                 }
                             } else null,
@@ -1826,13 +1748,9 @@ private fun PlaylistArtworkMosaic(
 @Composable
 private fun PlaylistGridCard(
     playlist: ResolvedPlaylist,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onOpen: () -> Unit,
     onPlayAll: () -> Unit,
     onAddToUpNext: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onAssignFolder: () -> Unit,
     onTogglePinned: () -> Unit,
     dragHandle: @Composable (() -> Unit)? = null,
@@ -1944,16 +1862,7 @@ private fun PlaylistGridCard(
                         )
                     }
                 }
-            }
 
-            if (dragHandle != null) {
-                Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { dragHandle() }
-                }
             }
 
             // Name and count sit tight under the artwork: they are one caption,
@@ -1999,7 +1908,7 @@ private fun PlaylistGridCard(
                         withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
                             append(playlist.entries.size.toString())
                         }
-                        append(" ep · ${playlist.totalSeconds / 60L} min")
+                        append(" ep · ${formatDuration(playlist.totalSeconds)}")
                     },
                     style = MaterialTheme.typography.labelSmall,
                     lineHeight = 13.sp,
@@ -2014,6 +1923,11 @@ private fun PlaylistGridCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (dragHandle != null) {
+                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        dragHandle()
+                    }
+                }
                 if (!playlist.system) {
                     IconButton(onClick = onTogglePinned, modifier = Modifier.size(26.dp)) {
                         Icon(
@@ -2031,26 +1945,6 @@ private fun PlaylistGridCard(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(15.dp),
                     )
-                }
-                if (canMoveUp) {
-                    IconButton(onClick = onMoveUp, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowUp,
-                            contentDescription = "Move playlist earlier",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
-                }
-                if (canMoveDown) {
-                    IconButton(onClick = onMoveDown, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "Move playlist later",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
                 }
                 IconButton(onClick = onAddToUpNext, modifier = Modifier.size(26.dp)) {
                     Icon(
@@ -2153,7 +2047,7 @@ private fun PlaylistListCard(
                                 append(if (unplayed > 0) "$unplayed unplayed" else "All listened")
                             }
                             withStyle(SpanStyle(color = muted)) {
-                                append(" · ${playlist.entries.size} ep · ${playlist.totalSeconds / 60L} min")
+                                append(" · ${playlist.entries.size} ep · ${formatDuration(playlist.totalSeconds)}")
                             }
                         },
                         style = MaterialTheme.typography.labelSmall,

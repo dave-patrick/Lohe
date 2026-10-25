@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.LoheSheet
+import com.lohe.app.ui.formatDuration
 import com.lohe.app.R
 import com.lohe.app.data.fetch.CatalogPodcast
 import com.lohe.app.data.db.entity.EpisodeEntity
@@ -262,7 +263,7 @@ fun PodcastDetailSheet(
                                 val duration = episode.durationSeconds
                                 if (duration != null && duration > 0) {
                                     Text(
-                                        text = formatEpisodeDuration(duration.toLong()),
+                                        text = formatDuration(duration.toLong()),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -285,19 +286,6 @@ fun PodcastDetailSheet(
                 }
             }
         }
-    }
-}
-
-/** Formats seconds as `Xm Ys` or `Xh Ym`. */
-private fun formatEpisodeDuration(seconds: Long): String {
-    val minutes = seconds / 60
-    val secs = seconds % 60
-    return if (minutes >= 60) {
-        "${minutes / 60}h ${minutes % 60}m"
-    } else if (minutes > 0) {
-        "${minutes}m ${secs}s"
-    } else {
-        "${secs}s"
     }
 }
 

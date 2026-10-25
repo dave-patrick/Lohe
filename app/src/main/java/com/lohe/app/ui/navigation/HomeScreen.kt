@@ -77,11 +77,15 @@ import com.lohe.app.data.HomeDashboardStats
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ShowActivity
 import com.lohe.app.ui.image.RemoteImage
+import com.lohe.app.ui.formatDuration
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.ElectricBlueMid
 import com.lohe.app.ui.theme.ElectricCyan
 import com.lohe.app.ui.theme.GlassCard
+import java.time.LocalDate
+import java.time.format.TextStyle as DateTextStyle
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -331,7 +335,7 @@ private fun HomeTelemetryDashboard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "last 14 days",
+                            text = "minutes · last 14 days",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -554,7 +558,8 @@ private fun SignalReadout(
 }
 
 /**
- * Fourteen vertical bars, one per day, tallest scaled to the best day.
+ * Fourteen daily columns with the minute total above each bar and a weekday
+ * initial beneath it. Bar height is relative to the busiest day in view.
  */
 @Composable
 private fun ActivityChart(
@@ -562,38 +567,72 @@ private fun ActivityChart(
     isLight: Boolean,
 ) {
     val peak = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
+    val firstDate = LocalDate.now().minusDays((minutes.size - 1).coerceAtLeast(0).toLong())
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.Bottom,
+            .height(82.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        minutes.forEach { value ->
+        minutes.forEachIndexed { index, value ->
             val fraction = value.toFloat() / peak
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight((fraction.coerceIn(0.06f, 1f))),
-                contentAlignment = Alignment.BottomCenter,
+            val date = firstDate.plusDays(index.toLong())
+            val dayInitial = date.dayOfWeek.getDisplayName(DateTextStyle.NARROW, Locale.getDefault())
+                .uppercase(Locale.getDefault())
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(
-                            if (value > 0) {
-                                Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue))
-                            } else {
-                                val idle = if (isLight) {
-                                    ElectricBlue.copy(alpha = 0.10f)
-                                } else {
-                                    ElectricBlueMid.copy(alpha = 0.12f)
-                                }
-                                Brush.verticalGradient(listOf(idle, idle))
-                            },
-                        ),
+                        .padding(horizontal = 2.dp),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    val barColor = if (value > 0) {
+                        Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue))
+                    } else {
+                        val idle = if (isLight) {
+                            ElectricBlue.copy(alpha = 0.10f)
+                        } else {
+                            ElectricBlueMid.copy(alpha = 0.12f)
+                        }
+                        Brush.verticalGradient(listOf(idle, idle))
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (value > 0) {
+                            Text(
+                                text = value.toString(),
+                                modifier = Modifier.fillMaxWidth().height(13.dp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(if (value > 0) (4f + 42f * fraction).dp else 2.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(barColor),
+                        )
+                    }
+                }
+                Text(
+                    text = dayInitial,
+                    modifier = Modifier.fillMaxWidth().height(14.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 9.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
                 )
             }
         }
@@ -1041,21 +1080,10 @@ internal fun compactCount(value: Int): String = when {
 
 
 /**
- * Formats a total duration in seconds as `Xh Ym`, `Xd Yh`, or `Xm Ys` for the
- * Home telemetry dashboard.
+ * Formats a total duration in seconds as `Xd Xh Xm` for the Home dashboard.
  */
 internal fun formatDashboardDuration(seconds: Long): String {
-    if (seconds <= 0L) return "0m"
-    val totalMinutes = seconds / 60
-    val hours = totalMinutes / 60
-    val mins = totalMinutes % 60
-    val secs = seconds % 60
-    return when {
-        hours >= 100 -> "${hours}h ${mins}m"
-        hours > 0 -> "${hours}h ${mins}m"
-        totalMinutes > 0 -> "${totalMinutes}m ${secs}s"
-        else -> "${secs}s"
-    }
+    return formatDuration(seconds)
 }
 
 @Composable

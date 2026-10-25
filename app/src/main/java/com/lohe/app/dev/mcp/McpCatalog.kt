@@ -323,7 +323,7 @@ object McpCatalog {
             description = "Change one setting. Keys: appearance, volumeBoostDefault, " +
                 "skipSilenceDefault, smartSpeedDefault, autoTrimDefault, " +
                 "defaultPlaybackSpeed, skipBackSeconds, skipForwardSeconds, " +
-                "markPlayedAtEnd, autoArchiveHours, autoDownloadQueue, sleepTimerMinutes, podcastSort, " +
+                "autoArchiveHours, autoDownloadQueue, sleepTimerMinutes, podcastSort, " +
                 "playlistSort, voiceEnhancementDefault.",
             inputSchema = schema(
                 properties = mapOf(

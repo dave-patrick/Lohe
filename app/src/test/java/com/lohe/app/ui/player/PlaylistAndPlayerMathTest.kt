@@ -40,8 +40,8 @@ class PlaylistAndPlayerMathTest {
     @Test
     fun `formatDashboardDuration formats hours and minutes cleanly`() {
         assertEquals("0m", formatDashboardDuration(0L))
-        assertEquals("45s", formatDashboardDuration(45L))
-        assertEquals("12m 30s", formatDashboardDuration(750L))
+        assertEquals("1m", formatDashboardDuration(45L))
+        assertEquals("12m", formatDashboardDuration(750L))
         assertEquals("2h 15m", formatDashboardDuration(8_100L))
     }
 

@@ -61,9 +61,8 @@ data class EpisodeEntity(
      * Set aside by the listener.
      *
      * Archived episodes are kept but out of the way: they are left out of the
-     * episode lists and, more to the point, they stop counting towards the
-     * listening figures, so an episode filed away is not still being credited
-     * as heard.
+     * active episode lists. Recorded listening time remains available to the
+     * Home signal, while archives without actual listening do not inflate it.
      */
     val isArchived: Boolean = false,
     /**
@@ -160,6 +159,8 @@ data class EpisodeSummary(
     val isArchived: Boolean = false,
     val queuePosition: Int? = null,
     val lastPlayedAt: Long? = null,
+    /** Completion timestamp; separate from the last playback/queue activity. */
+    val playedAt: Long? = null,
     val localPath: String? = null,
     /** One of [DownloadState]. */
     val downloadState: Int = DownloadState.NONE,
@@ -216,6 +217,7 @@ fun EpisodeEntity.toSummary(): EpisodeSummary = EpisodeSummary(
     isArchived = isArchived,
     queuePosition = queuePosition,
     lastPlayedAt = lastPlayedAt,
+    playedAt = playedAt,
     localPath = localPath,
     downloadState = downloadState,
 )

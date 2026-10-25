@@ -156,6 +156,7 @@ fun PlayerScreen(
     val skipSilence by Playback.skipSilence.collectAsState()
     var sleepRemainingMs by remember { mutableLongStateOf(0L) }
     var volumeBoostEnabled by rememberSaveable { mutableStateOf(volumeBoostDefault) }
+    var lastVolumeBoostDefault by rememberSaveable { mutableStateOf(volumeBoostDefault) }
     var sleepTimerOpen by remember { mutableStateOf(false) }
     var speedSheetOpen by remember { mutableStateOf(false) }
     var notesSheetOpen by remember { mutableStateOf(false) }
@@ -241,6 +242,13 @@ fun PlayerScreen(
 
     LaunchedEffect(volumeBoostEnabled) {
         connection.setVolumeBoost(volumeBoostEnabled)
+    }
+
+    LaunchedEffect(volumeBoostDefault) {
+        if (lastVolumeBoostDefault != volumeBoostDefault) {
+            lastVolumeBoostDefault = volumeBoostDefault
+            volumeBoostEnabled = volumeBoostDefault
+        }
     }
 
     // Swipe down collapses the full player back to the mini Now Playing card.
