@@ -4,7 +4,7 @@ Lohe is an Android podcast player built around listening on your own terms. This
 
 ## Install the current release
 
-1. Open the [Lohe 0.10.1 GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.1) and download `app-release.apk`.
+1. Open the [Lohe 0.10.1 GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.1-build-2026.25.10.17) and download `app-release.apk`.
 2. Open the downloaded APK on your Android device. If Android asks, allow your browser or file manager to install apps.
 3. Launch Lohe and add a podcast from **Discover**, or import an OPML subscription file from your podcast library.
 
