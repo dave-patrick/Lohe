@@ -200,6 +200,15 @@ fun PodcastsScreen(
             }
     }
 
+    // Episodes still to hear, per show, for the badge on each card. Deleted and
+    // archived episodes are set aside, so they do not count.
+    val unplayedCounts = remember(allEpisodes) {
+        allEpisodes
+            .filter { !it.isPlayed && !it.isDeleted && !it.isArchived }
+            .groupingBy { it.podcastUuid }
+            .eachCount()
+    }
+
     val visiblePodcasts = remember(podcasts, podcastFolders, selectedFolder, podcastSort, showStats) {
         val filtered = if (selectedFolder == ALL_FOLDERS) {
             podcasts
@@ -830,6 +839,7 @@ fun PodcastsScreen(
                         ) { onOpen ->
                             PodcastGridCard(
                                 podcast = podcast,
+                                unplayedCount = unplayedCounts[podcast.uuid] ?: 0,
                                 folderName = podcastFolders[podcast.uuid].orEmpty(),
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
@@ -900,6 +910,7 @@ fun PodcastsScreen(
                         ) { onOpen ->
                             PodcastCard(
                                 podcast = podcast,
+                                unplayedCount = unplayedCounts[podcast.uuid] ?: 0,
                                 folderName = podcastFolders[podcast.uuid].orEmpty(),
                                 inSelectionMode = inSelectionMode,
                                 isSelected = isSelected,
@@ -1386,6 +1397,7 @@ private fun EmptyPodcastsState(
 @Composable
 private fun PodcastCard(
     podcast: PodcastEntity,
+    unplayedCount: Int,
     folderName: String,
     inSelectionMode: Boolean,
     isSelected: Boolean,
@@ -1490,6 +1502,11 @@ private fun PodcastCard(
             }
         }
 
+        UnplayedBadge(
+            count = unplayedCount,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+
         IconButton(onClick = onAssignFolder, modifier = Modifier.size(34.dp)) {
             Icon(
                 imageVector = Icons.Filled.Folder,
@@ -1528,6 +1545,7 @@ private fun PodcastCard(
 @Composable
 private fun PodcastGridCard(
     podcast: PodcastEntity,
+    unplayedCount: Int,
     folderName: String,
     inSelectionMode: Boolean,
     isSelected: Boolean,
@@ -1567,6 +1585,13 @@ private fun PodcastGridCard(
                         modifier = Modifier.size(16.dp),
                     )
                 }
+
+                UnplayedBadge(
+                    count = unplayedCount,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                )
 
                 if (inSelectionMode) {
                     Icon(
@@ -1662,5 +1687,27 @@ private fun PodcastGridCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+
+/** How many episodes of a show are still to hear. Draws nothing at zero. */
+@Composable
+private fun UnplayedBadge(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.primary)
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (count > 99) "99+" else count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimary,
+            maxLines = 1,
+        )
     }
 }

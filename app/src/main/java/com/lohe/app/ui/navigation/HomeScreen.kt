@@ -669,7 +669,8 @@ private fun ShowTiles(
                 }
 
                 Text(
-                    text = compactCount(show.episodeCount),
+                    // Episodes still to hear, not the whole back catalogue.
+                    text = compactCount((show.episodeCount - show.listenedCount).coerceAtLeast(0)),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
