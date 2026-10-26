@@ -429,13 +429,8 @@ fun EpisodesScreen(
                                 false
                             }
                             SwipeToDismissBoxValue.EndToStart -> {
-                                if (episode.isDownloaded) {
-                                    val dm = ServiceLocator.downloadManager()
-                                    scope.launch { dm.delete(episode.toSummary()) }
-                                    onShowMessage("Removed download")
-                                } else {
-                                    onDownload(episode)
-                                }
+                                viewModel.toggleArchived(episode.uuid, episode.isArchived)
+                                onShowMessage(if (episode.isArchived) "Unarchived" else "Archived")
                                 false
                             }
                             SwipeToDismissBoxValue.Settled -> false
@@ -484,13 +479,13 @@ fun EpisodesScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     Text(
-                                        text = if (episode.isDownloaded) "Remove Download" else "Download",
+                                        text = if (episode.isArchived) "Unarchive" else "Archive",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Icon(
-                                        imageVector = if (episode.isDownloaded) Icons.Filled.DeleteSweep else Icons.Filled.Download,
+                                        imageVector = if (episode.isArchived) Icons.Filled.Unarchive else Icons.Filled.Archive,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSurface,
                                     )

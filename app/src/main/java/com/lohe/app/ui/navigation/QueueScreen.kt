@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -1051,6 +1052,10 @@ fun PlaylistsScreen(
                                 )
                             },
                             onClearFrom = null,
+                            onArchive = {
+                                viewModel.archiveEpisode(entry.episode.uuid)
+                                onShowMessage("Archived")
+                            },
                         )
                     }
                 }
@@ -1899,6 +1904,7 @@ private fun QueueRow(
     onRemove: (() -> Unit)?,
     onClearFrom: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onArchive: (() -> Unit)? = null,
     dragHandle: @Composable (() -> Unit)? = null,
 ) {
     val ep = entry.episode
@@ -1999,6 +2005,17 @@ private fun QueueRow(
                                 tint = MaterialTheme.colorScheme.primary,
                                 onClick = {
                                     onTogglePlayed()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
+                        if (onArchive != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.Archive,
+                                contentDescription = "Archive",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onArchive()
                                     scope.launch { dismissState.reset() }
                                 },
                             )

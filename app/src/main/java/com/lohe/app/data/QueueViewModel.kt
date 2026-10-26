@@ -554,7 +554,9 @@ class QueueViewModel(
                     .map { it.uuid }
                     .toSet()
                 allEpisodes
-                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isPlayed }
+                    .filter {
+                        it.podcastUuid in inFolder && !it.isDeleted && !it.isPlayed && !it.isArchived
+                    }
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else {
@@ -563,7 +565,7 @@ class QueueViewModel(
                     // Episodes already listened to leave the playlist and show up
                     // in Played instead, so the list only holds what is left to
                     // hear.
-                    if (ep.isPlayed) null else resolve(ep)
+                    if (ep.isPlayed || ep.isArchived) null else resolve(ep)
                 }
             }
             // Followed shows are read from the library every time, which is
@@ -576,7 +578,7 @@ class QueueViewModel(
                 val skipped = pl.excludedUuids.toSet()
                 resolvedEntries + allEpisodes
                     .filter {
-                        it.podcastUuid in followed && !it.isDeleted && !it.isPlayed &&
+                        it.podcastUuid in followed && !it.isDeleted && !it.isPlayed && !it.isArchived &&
                             it.uuid !in have && it.uuid !in skipped
                     }
                     .sortedByDescending { it.published }
@@ -661,6 +663,11 @@ class QueueViewModel(
 
     fun setPlaylistFolder(playlistId: String, folder: String) =
         playlistRepository.setPlaylistFolder(playlistId, folder)
+
+    /** Files an episode away; it leaves the playlists and the library counts. */
+    fun archiveEpisode(uuid: String) {
+        viewModelScope.launch { repository.setArchived(uuid, true) }
+    }
 
     fun setPlaylistPodcasts(playlistId: String, podcastUuids: Collection<String>) =
         playlistRepository.setPlaylistPodcasts(playlistId, podcastUuids)
