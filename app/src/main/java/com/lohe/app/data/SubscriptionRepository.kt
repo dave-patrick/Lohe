@@ -43,6 +43,11 @@ class SubscriptionRepository internal constructor(
     private val history: com.lohe.app.data.db.dao.ListeningHistoryDao,
     private val fetcher: PodcastFetcher,
     private val autoDownload: (EpisodeEntity) -> Unit = {},
+    /**
+     * Whether a playlist that downloads automatically follows this show, so its
+     * new episodes are fetched even when the show's own auto-download is off.
+     */
+    private val followedByAutoDownloadPlaylist: (String) -> Boolean = { false },
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
@@ -314,7 +319,7 @@ class SubscriptionRepository internal constructor(
 
         targets.forEach { podcast ->
             // Captured before the fetch so the diff is against pre-refresh state.
-            val known = if (podcast.autoDownload) {
+            val known = if (podcast.autoDownload || followedByAutoDownloadPlaylist(podcast.uuid)) {
                 episodes.byPodcastOnce(podcast.uuid).mapTo(mutableSetOf()) { it.uuid }
             } else {
                 null
@@ -401,6 +406,9 @@ object ServiceLocator {
             // Calling downloadManager() here instead would recurse: it builds a
             // DownloadManager that takes a repository, which would come back here.
             autoDownload = { episode -> downloadManager().start(episode.toSummary()) },
+            followedByAutoDownloadPlaylist = { uuid ->
+                playlistRepository().playlists.value.any { it.autoDownload && uuid in it.podcastUuids }
+            },
         )
 
     fun podcastFetcher(): PodcastFetcher =
