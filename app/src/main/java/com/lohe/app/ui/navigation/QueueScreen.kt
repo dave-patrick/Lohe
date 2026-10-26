@@ -2,6 +2,7 @@ package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -53,6 +56,7 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -580,6 +584,8 @@ fun PlaylistsScreen(
     val playlistSort by viewModel.playlistSort.collectAsState()
     var selectedFolder by rememberSaveable { mutableStateOf(ALL_PLAYLIST_FOLDERS) }
     var folderDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
+    var followDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
+    val subscribedShows by viewModel.subscribedShows.collectAsState()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
@@ -723,6 +729,36 @@ fun PlaylistsScreen(
                                     viewModel.setPlaylistAutoDownload(openedPlaylist.id, it)
                                 },
                             )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto-add new episodes",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = if (openedPlaylist.podcastUuids.isEmpty()) {
+                                        "No shows chosen"
+                                    } else {
+                                        val n = openedPlaylist.podcastUuids.size
+                                        "Following $n show${if (n == 1) "" else "s"}"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { followDialogTarget = openedPlaylist },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            ) {
+                                Text("Choose shows", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     } else {
                         Text(
@@ -1311,6 +1347,19 @@ fun PlaylistsScreen(
                 onShowMessage(msg)
             },
             onDismiss = { addToPlaylistEpisode = null },
+        )
+    }
+
+    followDialogTarget?.let { target ->
+        FollowShowsDialog(
+            playlistName = target.name,
+            shows = subscribedShows,
+            selected = target.podcastUuids.toSet(),
+            onSave = { chosen ->
+                viewModel.setPlaylistPodcasts(target.id, chosen)
+                followDialogTarget = null
+            },
+            onDismiss = { followDialogTarget = null },
         )
     }
 
@@ -2119,4 +2168,70 @@ private fun SwipeActionButton(
             modifier = Modifier.size(19.dp),
         )
     }
+}
+
+
+/**
+ * Picks the shows a playlist follows. Every unplayed episode of a chosen show
+ * is in the playlist, and so is each new one that arrives later.
+ */
+@Composable
+private fun FollowShowsDialog(
+    playlistName: String,
+    shows: List<com.lohe.app.data.db.entity.PodcastEntity>,
+    selected: Set<String>,
+    onSave: (Set<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var chosen by remember { mutableStateOf(selected) }
+    LoheDialog(
+        onDismiss = onDismiss,
+        title = "Shows in \"$playlistName\"",
+        icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+        confirmLabel = "Save",
+        onConfirm = { onSave(chosen) },
+        body = {
+            if (shows.isEmpty()) {
+                Text(
+                    text = "Subscribe to a podcast first.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    shows.sortedBy { it.title.lowercase() }.forEach { show ->
+                        val isOn = show.uuid in chosen
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    chosen = if (isOn) chosen - show.uuid else chosen + show.uuid
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = isOn,
+                                onCheckedChange = {
+                                    chosen = if (isOn) chosen - show.uuid else chosen + show.uuid
+                                },
+                            )
+                            Text(
+                                text = show.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    )
 }

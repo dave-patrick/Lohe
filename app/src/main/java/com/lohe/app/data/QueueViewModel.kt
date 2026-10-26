@@ -34,6 +34,8 @@ data class ResolvedPlaylist(
     val entries: List<QueueEntry>,
     val folder: String = "",
     val autoDownload: Boolean = true,
+    /** Shows this playlist follows; their new episodes are added automatically. */
+    val podcastUuids: List<String> = emptyList(),
     /**
      * True for the built-in Played and Downloaded lists.
      *
@@ -197,6 +199,9 @@ class QueueViewModel(
     private val podcasts: StateFlow<List<PodcastEntity>> = repository
         .observePodcasts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Every subscribed show, for choosing which ones a playlist follows. */
+    val subscribedShows: StateFlow<List<PodcastEntity>> = podcasts
 
     val queue: StateFlow<List<QueueEntry>> = combine(
         repository.observeQueue(),
@@ -561,12 +566,29 @@ class QueueViewModel(
                     if (ep.isPlayed) null else resolve(ep)
                 }
             }
+            // Followed shows are read from the library every time, which is
+            // what makes new episodes appear without anyone adding them.
+            val followed = pl.podcastUuids.toSet()
+            val entries = if (followed.isEmpty()) {
+                resolvedEntries
+            } else {
+                val have = resolvedEntries.mapTo(mutableSetOf()) { it.episode.uuid }
+                val skipped = pl.excludedUuids.toSet()
+                resolvedEntries + allEpisodes
+                    .filter {
+                        it.podcastUuid in followed && !it.isDeleted && !it.isPlayed &&
+                            it.uuid !in have && it.uuid !in skipped
+                    }
+                    .sortedByDescending { it.published }
+                    .map(::resolve)
+            }
             ResolvedPlaylist(
                 id = pl.id,
                 name = pl.name,
-                entries = resolvedEntries,
+                entries = entries,
                 folder = pl.folder,
                 autoDownload = pl.autoDownload,
+                podcastUuids = pl.podcastUuids,
             )
         }
 
@@ -639,6 +661,9 @@ class QueueViewModel(
 
     fun setPlaylistFolder(playlistId: String, folder: String) =
         playlistRepository.setPlaylistFolder(playlistId, folder)
+
+    fun setPlaylistPodcasts(playlistId: String, podcastUuids: Collection<String>) =
+        playlistRepository.setPlaylistPodcasts(playlistId, podcastUuids)
 
     fun setPlaylistAutoDownload(playlistId: String, enabled: Boolean) {
         playlistRepository.setPlaylistAutoDownload(playlistId, enabled)

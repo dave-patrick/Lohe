@@ -18,6 +18,13 @@ data class UserPlaylist(
     val folder: String = "",
     val autoDownload: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * Shows this playlist follows. Every unplayed episode of these shows is in
+     * the playlist, including ones that arrive later, with no further action.
+     */
+    val podcastUuids: List<String> = emptyList(),
+    /** Episodes of followed shows the listener took out by hand, so they stay out. */
+    val excludedUuids: List<String> = emptyList(),
 )
 
 /**
@@ -126,6 +133,25 @@ class PlaylistRepository(
         }
     }
 
+    /** Sets which shows [playlistId] follows for new episodes. */
+    fun setPlaylistPodcasts(playlistId: String, podcastUuids: Collection<String>) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) {
+                    pl.copy(
+                        podcastUuids = podcastUuids.distinct(),
+                        // Dropping the last show forgets the hand-removed episodes too.
+                        excludedUuids = if (podcastUuids.isEmpty()) emptyList() else pl.excludedUuids,
+                    )
+                } else {
+                    pl
+                }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
     fun setPodcastFolder(podcastUuid: String, folder: String) {
         synchronized(lock) {
             val next = _podcastFolders.value.toMutableMap()
@@ -147,7 +173,10 @@ class PlaylistRepository(
                 if (pl.id != playlistId) {
                     pl
                 } else {
-                    pl.copy(episodeUuids = (pl.episodeUuids + episodeUuids).distinct())
+                    pl.copy(
+                        episodeUuids = (pl.episodeUuids + episodeUuids).distinct(),
+                        excludedUuids = pl.excludedUuids - episodeUuids.toSet(),
+                    )
                 }
             }
             _playlists.value = next
@@ -161,7 +190,16 @@ class PlaylistRepository(
                 if (pl.id != playlistId) {
                     pl
                 } else {
-                    pl.copy(episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid })
+                    pl.copy(
+                        episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid },
+                        // An episode that comes from a followed show would
+                        // otherwise reappear straight away.
+                        excludedUuids = if (pl.podcastUuids.isNotEmpty()) {
+                            (pl.excludedUuids + episodeUuid).distinct()
+                        } else {
+                            pl.excludedUuids
+                        },
+                    )
                 }
             }
             _playlists.value = next
@@ -261,6 +299,16 @@ class PlaylistRepository(
                     } else {
                         true
                     }
+                    val podcasts = if (parts.size > 6 && parts[6].isNotBlank()) {
+                        parts[6].split(',').filter { it.isNotBlank() }
+                    } else {
+                        emptyList()
+                    }
+                    val excluded = if (parts.size > 7 && parts[7].isNotBlank()) {
+                        parts[7].split(',').filter { it.isNotBlank() }
+                    } else {
+                        emptyList()
+                    }
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -268,6 +316,8 @@ class PlaylistRepository(
                         folder = folder,
                         autoDownload = autoDownload,
                         createdAt = createdAt,
+                        podcastUuids = podcasts,
+                        excludedUuids = excluded,
                     )
                 }
         }.getOrDefault(emptyList())
@@ -283,7 +333,9 @@ class PlaylistRepository(
                 val encodedFolder = encoder.encodeToString(pl.folder.toByteArray(Charsets.UTF_8))
                 val eps = pl.episodeUuids.joinToString(",")
                 val autoDl = if (pl.autoDownload) "1" else "0"
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl"
+                val shows = pl.podcastUuids.joinToString(",")
+                val excluded = pl.excludedUuids.joinToString(",")
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t$excluded"
             }
             target.writeText(text)
         }

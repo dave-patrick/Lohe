@@ -12,12 +12,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.lohe.app.data.FeedRefreshScheduler
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.SplashScreen
 import com.lohe.app.ui.navigation.LoheNavHost
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.LoheTheme
 import com.lohe.app.ui.theme.SettingsStore
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -51,6 +54,14 @@ class MainActivity : ComponentActivity() {
             // offline and the player tries to open a path that is not there.
             LaunchedEffect(Unit) {
                 runCatching { ServiceLocator.downloadManager().repairMissingDownloads() }
+            }
+
+            // Keeps the background feed check in step with the chosen interval.
+            LaunchedEffect(Unit) {
+                settings.settings
+                    .map { it.refreshIntervalMinutes }
+                    .distinctUntilChanged()
+                    .collect { FeedRefreshScheduler.schedule(context, it) }
             }
 
             LoheTheme(appearance = appearance) {

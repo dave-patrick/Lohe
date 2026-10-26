@@ -68,6 +68,7 @@ implementation(libs.androidx.compose.foundation)
 
     // Durable preferences (theme choice, etc.)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     // datastore pulls in an older serialization; pin the cached one.
     implementation(libs.kotlinx.serialization.json)
 

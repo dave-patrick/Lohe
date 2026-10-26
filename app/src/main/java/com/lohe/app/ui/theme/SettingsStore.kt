@@ -57,10 +57,19 @@ data class PlaybackSettings(
     val podcastSort: com.lohe.app.data.PodcastSort = com.lohe.app.data.PodcastSort.TITLE,
     /** How the playlists are ordered. */
     val playlistSort: com.lohe.app.data.PlaylistSort = com.lohe.app.data.PlaylistSort.MANUAL,
+    /**
+     * How often, in minutes, subscriptions are checked for new episodes in the
+     * background. 0 turns the automatic check off; the manual refresh still works.
+     */
+    val refreshIntervalMinutes: Int = DEFAULT_REFRESH_MINUTES,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
         const val DEFAULT_SKIP_FORWARD = 30
+        const val DEFAULT_REFRESH_MINUTES = 360
+
+        /** Offered in the UI; 0 is "never". Background work cannot run more often than every 15 minutes. */
+        val REFRESH_CHOICES = listOf(0, 30, 60, 120, 360, 720, 1440)
 
         /** Offered in the UI; the choice is constrained to this list. */
         val SKIP_CHOICES = listOf(5, 10, 15, 30, 45, 60)
@@ -127,6 +136,7 @@ class SettingsStore(private val context: Context) {
         val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
+        val refreshInterval = intPreferencesKey("refresh_interval_minutes")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -169,6 +179,9 @@ class SettingsStore(private val context: Context) {
                     com.lohe.app.data.PlaylistSort.entries.firstOrNull { it.name == name }
                 }
                 ?: com.lohe.app.data.PlaylistSort.MANUAL,
+            refreshIntervalMinutes = (
+                prefs[Keys.refreshInterval] ?: PlaybackSettings.DEFAULT_REFRESH_MINUTES
+                ).coerceIn(0, 7 * 24 * 60),
         )
     }
 
@@ -216,6 +229,9 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
+
+    suspend fun setRefreshIntervalMinutes(value: Int) =
+        edit { it[Keys.refreshInterval] = value.coerceIn(0, 7 * 24 * 60) }
 
     /**
      * The playback settings for one show.

@@ -336,82 +336,82 @@ fun EpisodesScreen(
 
         Spacer(Modifier.size(10.dp))
 
-        // --- The show itself: artwork, name, and what it is about ---
-        podcast?.let { show ->
-            GlassCard(contentPadding = 16.dp) {
-                Row(verticalAlignment = Alignment.Top) {
-                    RemoteImage(
-                        url = show.artworkUrl,
-                        contentDescription = null,
-                        size = 92.dp,
-                        fallbackLabel = show.title,
-                        cornerRadius = 14.dp,
-                        modifier = Modifier.size(92.dp),
-                    )
-                    Spacer(Modifier.size(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = show.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        if (!show.author.isNullOrBlank()) {
-                            Text(
-                                text = show.author,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        val blurb = show.description
-                        if (!blurb.isNullOrBlank()) {
-                            Spacer(Modifier.size(8.dp))
-                            Text(
-                                text = blurb,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 6,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.size(12.dp))
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            EpisodeFilter.Filter.entries.forEach { option ->
-                FilterChip(
-                    selected = option == filter,
-                    onClick = { viewModel.setFilter(option) },
-                    label = { Text(option.label, maxLines = 1) },
-                )
-            }
-        }
-
-        Spacer(Modifier.size(10.dp))
-
-        if (episodes.isEmpty()) {
-            Text(
-                text = stringResource(R.string.episodes_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 24.dp),
-            )
-            return@Column
-        }
-
+        // The show card and filters scroll with the list rather than sitting pinned
+        // above it, so the episodes get the whole screen to scroll in.
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item(key = "show-header") {
+                podcast?.let { show ->
+                    GlassCard(contentPadding = 16.dp) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            RemoteImage(
+                                url = show.artworkUrl,
+                                contentDescription = null,
+                                size = 92.dp,
+                                fallbackLabel = show.title,
+                                cornerRadius = 14.dp,
+                                modifier = Modifier.size(92.dp),
+                            )
+                            Spacer(Modifier.size(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = show.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (!show.author.isNullOrBlank()) {
+                                    Text(
+                                        text = show.author,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                val blurb = show.description
+                                if (!blurb.isNullOrBlank()) {
+                                    Spacer(Modifier.size(8.dp))
+                                    Text(
+                                        text = blurb,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 6,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+            }
+            }
+            item(key = "show-filters") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    EpisodeFilter.Filter.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == filter,
+                            onClick = { viewModel.setFilter(option) },
+                            label = { Text(option.label, maxLines = 1) },
+                        )
+                    }
+            }
+            }
+            if (episodes.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        text = stringResource(R.string.episodes_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
+            }
             items(episodes, key = { it.uuid }) { episode ->
                 val isSelected = episode.uuid in selectedUuids
                 val handleTogglePlayed: () -> Unit = {

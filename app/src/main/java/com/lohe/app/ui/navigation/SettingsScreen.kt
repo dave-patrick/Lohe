@@ -171,6 +171,24 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(8.dp))
 
+        SettingsSection("Podcast updates") {
+            ChoiceRow(
+                label = "Check for new episodes",
+                choices = PlaybackSettings.REFRESH_CHOICES,
+                selected = settings.refreshIntervalMinutes,
+                format = { refreshLabel(it) },
+                onSelect = { scope.launch { settingsStore.setRefreshIntervalMinutes(it) } },
+            )
+            Text(
+                text = "How often Lohe looks for new episodes in the background. " +
+                    "Android may run it a little later to save battery.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(Modifier.size(8.dp))
+
         SettingsSection("Downloads") {
             ToggleRow(
                 label = "Auto-download Up Next",
@@ -355,4 +373,13 @@ private fun ToggleRow(
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+/** "Never", "30 min", "1 hour", "6 hours"... for a refresh interval in minutes. */
+private fun refreshLabel(minutes: Int): String = when {
+    minutes <= 0 -> "Never"
+    minutes < 60 -> "$minutes min"
+    minutes == 60 -> "1 hour"
+    minutes % 1440 == 0 -> if (minutes == 1440) "Daily" else "${minutes / 1440} days"
+    else -> "${minutes / 60} hours"
 }
