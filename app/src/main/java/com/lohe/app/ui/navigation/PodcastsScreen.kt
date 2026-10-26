@@ -1693,7 +1693,7 @@ private fun PodcastGridCard(
 
 /** How many episodes of a show are still to hear. Draws nothing at zero. */
 @Composable
-private fun UnplayedBadge(count: Int, modifier: Modifier = Modifier) {
+internal fun UnplayedBadge(count: Int, modifier: Modifier = Modifier) {
     if (count <= 0) return
     Box(
         modifier = modifier

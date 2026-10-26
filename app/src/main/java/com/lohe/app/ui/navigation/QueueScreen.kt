@@ -1573,6 +1573,13 @@ private fun PlaylistGridCard(
                     }
                 }
 
+                UnplayedBadge(
+                    count = playlist.entries.count { !it.episode.isPlayed },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                )
+
                 if (playlist.system) {
                     Box(
                         modifier = Modifier
@@ -1718,6 +1725,11 @@ private fun PlaylistListCard(
                     dragHandle()
                 }
             }
+
+            UnplayedBadge(
+                count = playlist.entries.count { !it.episode.isPlayed },
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
 
             if (canMoveUp) {
                 IconButton(onClick = onMoveUp, modifier = Modifier.size(30.dp)) {
