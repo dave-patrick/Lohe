@@ -15,6 +15,7 @@ object EpisodeFilter {
     enum class Filter {
         ALL,
         UNPLAYED,
+        PLAYED,
         IN_PROGRESS,
         DOWNLOADED,
         STARRED,
@@ -24,6 +25,7 @@ object EpisodeFilter {
             get() = when (this) {
                 ALL -> "All"
                 UNPLAYED -> "Unplayed"
+                PLAYED -> "Played"
                 IN_PROGRESS -> "Listening"
                 DOWNLOADED -> "Downloaded"
                 STARRED -> "Starred"
@@ -54,13 +56,14 @@ object EpisodeFilter {
 
         val matched = episodes.asSequence()
             .filter { episode -> !episode.isDeleted }
-            // Archived episodes are out of the way unless they are what the
-            // listener asked to see.
+            // Archived episodes are played ones that have been put away. They
+            // belong in All and Played, and in Archived itself; every other
+            // list keeps them out of the way.
             .filter { episode ->
-                if (filter == Filter.ARCHIVED) {
-                    episode.isArchived
-                } else {
-                    !episode.isArchived && episode.matches(filter)
+                when (filter) {
+                    Filter.ARCHIVED -> episode.isArchived
+                    Filter.ALL, Filter.PLAYED -> episode.matches(filter)
+                    else -> !episode.isArchived && episode.matches(filter)
                 }
             }
             .filter { episode ->
@@ -88,6 +91,7 @@ object EpisodeFilter {
         // "Unplayed" means untouched, not merely unfinished: an episode you
         // abandoned is still unplayed as far as the library is concerned.
         Filter.UNPLAYED -> !isPlayed
+        Filter.PLAYED -> isPlayed
         Filter.IN_PROGRESS -> isInProgress
         Filter.DOWNLOADED -> isDownloaded
         Filter.STARRED -> starred

@@ -144,7 +144,6 @@ class EpisodeFilterTest {
     fun `archived episodes are left out of the other lists`() {
         val withArchived = list + episode("e", isArchived = true)
         for (filter in listOf(
-            EpisodeFilter.Filter.ALL,
             EpisodeFilter.Filter.UNPLAYED,
             EpisodeFilter.Filter.IN_PROGRESS,
             EpisodeFilter.Filter.DOWNLOADED,
@@ -155,6 +154,29 @@ class EpisodeFilterTest {
                 .map { it.uuid }
             assertFalse("archived episode leaked into $filter", "e" in result)
         }
+    }
+
+    @Test
+    fun `all and played include archived episodes but unplayed does not`() {
+        val archived = episode("e", playingStatus = EpisodeEntity.PLAYED, isArchived = true)
+        val withArchived = list + archived
+        fun ids(filter: EpisodeFilter.Filter) = EpisodeFilter
+            .apply(withArchived, filter, EpisodeFilter.Order.NEWEST_FIRST)
+            .map { it.uuid }
+
+        assertTrue("e" in ids(EpisodeFilter.Filter.ALL))
+        assertTrue("e" in ids(EpisodeFilter.Filter.PLAYED))
+        assertFalse("e" in ids(EpisodeFilter.Filter.UNPLAYED))
+    }
+
+    @Test
+    fun `the played list holds only played episodes`() {
+        val played = episode("p", playingStatus = EpisodeEntity.PLAYED)
+        val result = EpisodeFilter
+            .apply(list + played, EpisodeFilter.Filter.PLAYED, EpisodeFilter.Order.NEWEST_FIRST)
+            .map { it.uuid }
+        assertTrue("p" in result)
+        assertTrue(result.all { id -> (list + played).first { it.uuid == id }.isPlayed })
     }
 
     @Test
