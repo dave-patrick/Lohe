@@ -62,11 +62,18 @@ data class PlaybackSettings(
      * background. 0 turns the automatic check off; the manual refresh still works.
      */
     val refreshIntervalMinutes: Int = DEFAULT_REFRESH_MINUTES,
+    /**
+     * How long, in hours, an archived episode stays in Played with its
+     * download kept. After that the download is removed.
+     */
+    val archiveKeepHours: Int = DEFAULT_ARCHIVE_KEEP_HOURS,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
         const val DEFAULT_SKIP_FORWARD = 30
         const val DEFAULT_REFRESH_MINUTES = 360
+        const val DEFAULT_ARCHIVE_KEEP_HOURS = 24
+        val ARCHIVE_KEEP_CHOICES = listOf(1, 6, 12, 24, 48, 72, 168)
 
         /** Offered in the UI; 0 is "never". Background work cannot run more often than every 15 minutes. */
         val REFRESH_CHOICES = listOf(0, 30, 60, 120, 360, 720, 1440)
@@ -137,6 +144,7 @@ class SettingsStore(private val context: Context) {
         val podcastSort = stringPreferencesKey("podcast_sort")
         val playlistSort = stringPreferencesKey("playlist_sort")
         val refreshInterval = intPreferencesKey("refresh_interval_minutes")
+        val archiveKeepHours = intPreferencesKey("archive_keep_hours")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -182,6 +190,9 @@ class SettingsStore(private val context: Context) {
             refreshIntervalMinutes = (
                 prefs[Keys.refreshInterval] ?: PlaybackSettings.DEFAULT_REFRESH_MINUTES
                 ).coerceIn(0, 7 * 24 * 60),
+            archiveKeepHours = (
+                prefs[Keys.archiveKeepHours] ?: PlaybackSettings.DEFAULT_ARCHIVE_KEEP_HOURS
+                ).coerceIn(1, 30 * 24),
         )
     }
 
@@ -229,6 +240,9 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setPlaylistSort(value: com.lohe.app.data.PlaylistSort) =
         edit { it[Keys.playlistSort] = value.name }
+
+    suspend fun setArchiveKeepHours(value: Int) =
+        edit { it[Keys.archiveKeepHours] = value.coerceIn(1, 30 * 24) }
 
     suspend fun setRefreshIntervalMinutes(value: Int) =
         edit { it[Keys.refreshInterval] = value.coerceIn(0, 7 * 24 * 60) }

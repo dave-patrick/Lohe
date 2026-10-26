@@ -178,6 +178,9 @@ class SubscriptionRepositoryTest {
         override suspend fun markPlayed(uuid: String) = Unit
         override suspend fun setStarred(uuid: String, starred: Boolean) = Unit
         override suspend fun setArchived(uuid: String, archived: Boolean) = Unit
+        override suspend fun archive(uuid: String, now: Long) = Unit
+        override suspend fun archivedDownloadsOlderThan(cutoff: Long) =
+            emptyList<com.lohe.app.data.db.entity.EpisodeSummary>()
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
     }

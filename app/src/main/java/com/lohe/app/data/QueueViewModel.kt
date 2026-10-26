@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.delay
+import com.lohe.app.ui.theme.PlaybackSettings
 import kotlinx.coroutines.launch
 
 /** One queue entry, paired with its show so the row can name the source. */
@@ -519,6 +522,23 @@ class QueueViewModel(
     }
 
     /**
+     * The time and the archive keep time, re-emitted every minute so an
+     * archived episode leaves Played when its time is up without the screen
+     * having to change first.
+     */
+    private data class ArchiveClock(val now: Long, val keepMillis: Long)
+
+    private val archiveClock: Flow<ArchiveClock> = combine(
+        (settingsStore?.settings ?: flowOf(PlaybackSettings())).map { it.archiveKeepHours }.distinctUntilChanged(),
+        flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(60_000)
+            }
+        },
+    ) { hours, now -> ArchiveClock(now, hours * 3_600_000L) }
+
+    /**
      * Every playlist, including the two system ones.
      *
      * [PLAYED_ID] and [DOWNLOADED_ID] are computed rather than stored: they
@@ -530,7 +550,8 @@ class QueueViewModel(
         repository.observeAllEpisodes(),
         podcasts,
         playlistRepository.podcastFolders,
-    ) { rawPlaylists, allEpisodes, shows, podcastFolders ->
+        archiveClock,
+    ) { rawPlaylists, allEpisodes, shows, podcastFolders, clock ->
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
 
@@ -595,7 +616,16 @@ class QueueViewModel(
         }
 
         val live = allEpisodes.filter { !it.isDeleted }
-        val played = live.filter { it.isPlayed }.map(::resolve)
+        // An archived episode sits in Played only for the keep time, counted
+        // from when it was archived; after that it is archived and out of sight.
+        val played = live
+            .filter { ep ->
+                ep.isPlayed && (
+                    !ep.isArchived ||
+                        (ep.archivedAt != null && clock.now - ep.archivedAt < clock.keepMillis)
+                    )
+            }
+            .map(::resolve)
         val downloaded = live.filter { it.isDownloaded }.map(::resolve)
 
         custom + listOf(

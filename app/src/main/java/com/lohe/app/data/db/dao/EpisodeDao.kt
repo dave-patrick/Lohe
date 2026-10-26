@@ -41,7 +41,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, archivedAt, queuePosition, lastPlayedAt, localPath, downloadState
         FROM episodes
         ORDER BY published DESC
         """
@@ -156,13 +156,27 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, localPath, downloadState
+               isArchived, archivedAt, queuePosition, lastPlayedAt, localPath, downloadState
         FROM episodes
         WHERE downloadState = 2 AND localPath IS NOT NULL
         ORDER BY published DESC
         """
     )
     fun observeDownloads(): Flow<List<EpisodeSummary>>
+
+    /** Archived episodes still holding a download that was archived at or before [cutoff]. */
+    @Query(
+        """
+        SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
+               sizeBytes, fileType, author, artworkUrl, playingStatus,
+               playedUpToSeconds, listenedSeconds, starred, isDeleted,
+               isArchived, archivedAt, queuePosition, lastPlayedAt, localPath, downloadState
+        FROM episodes
+        WHERE isArchived = 1 AND archivedAt IS NOT NULL AND archivedAt <= :cutoff
+          AND downloadState = 2 AND localPath IS NOT NULL
+        """
+    )
+    suspend fun archivedDownloadsOlderThan(cutoff: Long): List<EpisodeSummary>
 
     /**
      * Inserts or replaces episodes.
@@ -244,8 +258,29 @@ interface EpisodeDao {
      * An archived episode is left out of the episode lists and stops
      * counting towards the listening figures.
      */
-    @Query("UPDATE episodes SET isArchived = :archived WHERE uuid = :uuid")
+    @Query(
+        """
+        UPDATE episodes
+        SET isArchived = :archived,
+            archivedAt = CASE WHEN :archived = 1 THEN archivedAt ELSE NULL END
+        WHERE uuid = :uuid
+        """
+    )
     suspend fun setArchived(uuid: String, archived: Boolean)
+
+    /**
+     * Archives an episode: marks it played, takes it out of the queue and
+     * stamps the time, which starts the clock on removing its download.
+     */
+    @Query(
+        """
+        UPDATE episodes
+        SET isArchived = 1, archivedAt = :now, playingStatus = 2,
+            playedUpToSeconds = 0, queuePosition = NULL
+        WHERE uuid = :uuid
+        """
+    )
+    suspend fun archive(uuid: String, now: Long)
 
     @Query("DELETE FROM episodes WHERE podcastUuid = :podcastUuid")
     suspend fun deleteForPodcast(podcastUuid: String)

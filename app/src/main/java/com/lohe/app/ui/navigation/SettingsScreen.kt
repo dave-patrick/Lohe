@@ -189,6 +189,24 @@ fun SettingsScreen(
 
         Spacer(Modifier.size(8.dp))
 
+        SettingsSection("Archive") {
+            ChoiceRow(
+                label = "Keep archived downloads for",
+                choices = PlaybackSettings.ARCHIVE_KEEP_CHOICES,
+                selected = settings.archiveKeepHours,
+                format = { archiveKeepLabel(it) },
+                onSelect = { scope.launch { settingsStore.setArchiveKeepHours(it) } },
+            )
+            Text(
+                text = "An archived episode is marked played and stays in Played with its " +
+                    "download for this long. Then the download is removed; the episode stays archived.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(Modifier.size(8.dp))
+
         SettingsSection("Downloads") {
             ToggleRow(
                 label = "Auto-download Up Next",
@@ -382,4 +400,12 @@ private fun refreshLabel(minutes: Int): String = when {
     minutes == 60 -> "1 hour"
     minutes % 1440 == 0 -> if (minutes == 1440) "Daily" else "${minutes / 1440} days"
     else -> "${minutes / 60} hours"
+}
+
+/** "1 hour", "24 hours", "3 days"... for an archive keep time in hours. */
+private fun archiveKeepLabel(hours: Int): String = when {
+    hours == 1 -> "1 hour"
+    hours < 48 -> "$hours hours"
+    hours % 24 == 0 -> "${hours / 24} days"
+    else -> "$hours hours"
 }

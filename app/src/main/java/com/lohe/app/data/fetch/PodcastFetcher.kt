@@ -97,6 +97,8 @@ class RssPodcastFetcher(
                         localPath = old.localPath,
                         downloadState = old.downloadState,
                         isDeleted = old.isDeleted,
+                        isArchived = old.isArchived,
+                        archivedAt = old.archivedAt,
                     )
                     else -> ep
                 }

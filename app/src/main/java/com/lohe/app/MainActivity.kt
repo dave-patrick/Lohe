@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.lohe.app.data.ArchiveCleanup
 import com.lohe.app.data.FeedRefreshScheduler
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.SplashScreen
@@ -54,6 +55,12 @@ class MainActivity : ComponentActivity() {
             // offline and the player tries to open a path that is not there.
             LaunchedEffect(Unit) {
                 runCatching { ServiceLocator.downloadManager().repairMissingDownloads() }
+            }
+
+            // Archived downloads are removed once past their keep time: now, and then hourly.
+            LaunchedEffect(Unit) {
+                ArchiveCleanup.schedule(context)
+                runCatching { ArchiveCleanup.run() }
             }
 
             // Keeps the background feed check in step with the chosen interval.

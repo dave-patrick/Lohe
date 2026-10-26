@@ -137,8 +137,17 @@ class SubscriptionRepository internal constructor(
      * Archived episodes stay in the library but are left out of the episode
      * lists and stop counting towards the listening figures.
      */
-    suspend fun setArchived(uuid: String, archived: Boolean) =
-        episodes.setArchived(uuid, archived)
+    suspend fun setArchived(uuid: String, archived: Boolean) {
+        if (archived) {
+            episodes.archive(uuid, System.currentTimeMillis())
+        } else {
+            episodes.setArchived(uuid, false)
+        }
+    }
+
+    /** Archived episodes whose download has outlived the keep time ending at [cutoff]. */
+    suspend fun archivedDownloadsOlderThan(cutoff: Long): List<EpisodeSummary> =
+        episodes.archivedDownloadsOlderThan(cutoff)
 
     /** Persist a resume point, recording the duration when it was unknown before. */
     suspend fun saveProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) {

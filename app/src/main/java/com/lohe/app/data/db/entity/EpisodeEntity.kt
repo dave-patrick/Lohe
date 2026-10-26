@@ -66,6 +66,14 @@ data class EpisodeEntity(
      */
     val isArchived: Boolean = false,
     /**
+     * When the episode was archived, or null if it is not.
+     *
+     * An archived episode is marked played and stays in the Played list, with
+     * its download kept, for a configurable time from this moment. After that
+     * the download is removed; the episode itself stays archived.
+     */
+    val archivedAt: Long? = null,
+    /**
      * Position in the play queue; null when the episode is not queued.
      *
      * Lower sorts first. Enqueue assigns the next integer, so the queue is an
@@ -157,6 +165,8 @@ data class EpisodeSummary(
     val isDeleted: Boolean = false,
     /** Set aside by the listener; see [EpisodeEntity.isArchived]. */
     val isArchived: Boolean = false,
+    /** When it was archived; see [EpisodeEntity.archivedAt]. */
+    val archivedAt: Long? = null,
     val queuePosition: Int? = null,
     val lastPlayedAt: Long? = null,
     val localPath: String? = null,
@@ -213,6 +223,7 @@ fun EpisodeEntity.toSummary(): EpisodeSummary = EpisodeSummary(
     starred = starred,
     isDeleted = isDeleted,
     isArchived = isArchived,
+    archivedAt = archivedAt,
     queuePosition = queuePosition,
     lastPlayedAt = lastPlayedAt,
     localPath = localPath,
