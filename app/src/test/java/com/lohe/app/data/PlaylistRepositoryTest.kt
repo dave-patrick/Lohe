@@ -9,7 +9,7 @@ class PlaylistRepositoryTest {
 
     @Test
     fun followedShowsSurviveARestart() {
-        val dir = createTempDir()
+        val dir = java.nio.file.Files.createTempDirectory("lohe-playlists").toFile()
         val file = File(dir, "playlists.json")
         val repo = PlaylistRepository(file)
         val playlist = repo.createPlaylist("Morning")
