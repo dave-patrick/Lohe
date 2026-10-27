@@ -22,6 +22,7 @@ import androidx.car.app.model.Template
  * that Android Auto projection already uses, which means the car and the phone
  * share one queue, one position and one history.
  */
+@androidx.annotation.OptIn(androidx.car.app.annotations.ExperimentalCarApi::class)
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
     private var registered = false

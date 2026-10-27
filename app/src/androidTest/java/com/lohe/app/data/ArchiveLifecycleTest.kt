@@ -78,12 +78,12 @@ class ArchiveLifecycleTest {
     }
 
     @Test
-    fun manualArchiveRemovesDownloadWithoutChangingPlayedState() = runBlocking {
+    fun manualArchiveMarksPlayedAndInvokesCleanup() = runBlocking {
         val episode = episode()
         repository.setArchived(episode.uuid, true)
         val archived = repository.episodeOnce(episode.uuid)!!
         assertTrue(archived.isArchived)
-        assertEquals(EpisodeEntity.UNPLAYED, archived.playingStatus)
+        assertEquals(EpisodeEntity.PLAYED, archived.playingStatus)
         assertFalse(File(episode.localPath!!).exists())
         assertEquals(DownloadState.NONE, archived.downloadState)
         assertEquals(90L, archived.listenedSeconds)

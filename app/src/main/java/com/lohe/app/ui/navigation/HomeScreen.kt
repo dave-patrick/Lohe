@@ -566,6 +566,7 @@ private fun ActivityChart(
     minutes: List<Int>,
     isLight: Boolean,
 ) {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val peak = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
     val firstDate = LocalDate.now().minusDays((minutes.size - 1).coerceAtLeast(0).toLong())
     Row(
@@ -578,8 +579,8 @@ private fun ActivityChart(
         minutes.forEachIndexed { index, value ->
             val fraction = value.toFloat() / peak
             val date = firstDate.plusDays(index.toLong())
-            val dayInitial = date.dayOfWeek.getDisplayName(DateTextStyle.NARROW, Locale.getDefault())
-                .uppercase(Locale.getDefault())
+            val dayInitial = date.dayOfWeek.getDisplayName(DateTextStyle.NARROW, locale)
+                .uppercase(locale)
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,

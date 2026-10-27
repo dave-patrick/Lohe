@@ -33,23 +33,23 @@ class EpisodeMetaTest {
     // --- Duration ------------------------------------------------------------
 
     @Test
-    fun `under a minute reads in seconds`() {
-        assertEquals("45s", EpisodeMeta.duration(45))
+    fun `under a minute uses the minimum displayed minute`() {
+        assertEquals("1m", EpisodeMeta.duration(45))
     }
 
     @Test
     fun `minutes round down`() {
-        assertEquals("24 min", EpisodeMeta.duration(24 * 60 + 30))
+        assertEquals("24m", EpisodeMeta.duration(24 * 60 + 30))
     }
 
     @Test
     fun `whole hours drop the minutes`() {
-        assertEquals("2 hr", EpisodeMeta.duration(7_200))
+        assertEquals("2h", EpisodeMeta.duration(7_200))
     }
 
     @Test
     fun `mixed hours and minutes keep both`() {
-        assertEquals("1 hr 5 min", EpisodeMeta.duration(3_900))
+        assertEquals("1h 5m", EpisodeMeta.duration(3_900))
     }
 
     @Test
@@ -109,7 +109,7 @@ class EpisodeMetaTest {
             episode(published = now - 2 * 86_400_000L, durationSeconds = 1_500),
             now,
         )
-        assertEquals("2d ago · 25 min", line)
+        assertEquals("2d ago · 25m", line)
     }
 
     @Test
@@ -124,7 +124,7 @@ class EpisodeMetaTest {
             now,
         )
         // 1500 - 900 = 600s = 10 min remaining.
-        assertEquals("10 min left of 25 min", line)
+        assertEquals("10m left of 25m", line)
     }
 
     @Test
@@ -140,7 +140,7 @@ class EpisodeMetaTest {
             ),
             now,
         )
-        assertEquals("10 min", line)
+        assertEquals("10m", line)
     }
 
     @Test
@@ -150,7 +150,7 @@ class EpisodeMetaTest {
 
     @Test
     fun `a duration alone is used when the date is unknown`() {
-        assertEquals("25 min", EpisodeMeta.line(episode(durationSeconds = 1_500), now))
+        assertEquals("25m", EpisodeMeta.line(episode(durationSeconds = 1_500), now))
     }
 
     @Test
@@ -170,6 +170,6 @@ class EpisodeMetaTest {
             ),
             now,
         )
-        assertEquals("Yesterday · 25 min", line)
+        assertEquals("Yesterday · 25m", line)
     }
 }

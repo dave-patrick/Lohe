@@ -14,6 +14,7 @@ media3 = "1.11.1"
 documentfile = "1.1.0"
 savedstate = "1.5.0"
 datastore = "1.2.1"
+work = "2.10.0"
 junit = "4.13.2"
 kxml2 = "2.3.0"
 # Pinned to the coroutines that compose/lifecycle already resolve, so the test
@@ -32,6 +33,7 @@ androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }

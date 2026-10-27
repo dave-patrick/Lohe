@@ -40,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
-import com.lohe.app.BuildConfig
 import com.lohe.app.playback.Playback
 import com.lohe.app.ui.player.formatSpeedLabel
 import com.lohe.app.ui.player.FloatingPlayerSettings
@@ -97,9 +96,7 @@ fun SettingsScreen(
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
         if (category == null) {
             SettingsCategory.entries.forEach { section ->
-                if (section != SettingsCategory.DEBUG || BuildConfig.DEBUG) {
                 SettingsMenuRow(section.title, section.summary) { onOpenCategory(section) }
-                }
             }
             SettingsMenuRow("About", "Version and app information", onOpenAbout)
         }
@@ -117,10 +114,10 @@ fun SettingsScreen(
             )
         }
 
-        if (category == SettingsCategory.DEBUG && BuildConfig.DEBUG) {
+        if (category == SettingsCategory.DEBUG) {
             ToggleRow(
-                label = "Debug button",
-                hint = "Show or hide the floating BUG report button.",
+                label = "Local bug reports",
+                hint = "Show the BUG button and save local diagnostic events. URLs are redacted; nothing is uploaded.",
                 checked = settings.debugButtonEnabled,
                 onChange = { scope.launch { settingsStore.setDebugButtonEnabled(it) } },
             )
@@ -223,7 +220,21 @@ fun SettingsScreen(
                 onSelect = { scope.launch { settingsStore.setAutoArchiveHours(it) } },
             )
             Text(
-                "Played episodes leave playlists immediately. Archiving deletes their downloaded copy, not their listening history. Android may delay background cleanup after the selected time.",
+                "Played episodes leave other playlists immediately. Lohe can archive them after this delay; archived downloads are removed after the keep time below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+            Spacer(Modifier.size(12.dp))
+            ChoiceRow(
+                label = "Keep archived downloads for",
+                choices = PlaybackSettings.ARCHIVE_KEEP_CHOICES,
+                selected = settings.archiveKeepHours,
+                format = { archiveKeepLabel(it) },
+                onSelect = { scope.launch { settingsStore.setArchiveKeepHours(it) } },
+            )
+            Text(
+                "Archived episodes stay in Played with their downloaded copies for this long, then only the downloaded copy is removed.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 8.dp),
@@ -241,11 +252,47 @@ fun SettingsScreen(
             )
         }
 
+        if (category == SettingsCategory.PODCAST_UPDATES) {
+            ChoiceRow(
+                label = "Check for new episodes",
+                choices = PlaybackSettings.REFRESH_CHOICES,
+                selected = settings.refreshIntervalMinutes,
+                format = { refreshIntervalLabel(it) },
+                onSelect = { scope.launch { settingsStore.setRefreshIntervalMinutes(it) } },
+            )
+            Text(
+                "How often Lohe checks for new episodes in the background. Android may run the check later to save battery.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        }
+
         Spacer(Modifier.size(8.dp))
 
         Spacer(Modifier.size(32.dp))
         }
     }
+}
+
+private fun refreshIntervalLabel(minutes: Int): String = when (minutes) {
+    0 -> "Never"
+    30 -> "30 min"
+    60 -> "1 hour"
+    120 -> "2 hours"
+    360 -> "6 hours"
+    720 -> "12 hours"
+    1440 -> "Daily"
+    else -> "$minutes min"
+}
+
+private fun archiveKeepLabel(hours: Int): String = when (hours) {
+    1 -> "1 hour"
+    24 -> "24 hours"
+    48 -> "2 days"
+    72 -> "3 days"
+    168 -> "7 days"
+    else -> "$hours hours"
 }
 
 @Composable

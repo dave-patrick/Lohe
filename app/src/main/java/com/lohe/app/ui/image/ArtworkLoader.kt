@@ -6,6 +6,9 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.lohe.app.network.readBoundedBytes
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
@@ -33,46 +36,36 @@ class ArtworkLoader(
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
 
-    private val diskDir: File by lazy {
-        File(context.cacheDir, "artwork").apply { mkdirs() }
-    }
+    private val disk by lazy { ArtworkDiskCache(File(context.cacheDir, "artwork")) }
+    private val downloads = Semaphore(4)
 
     fun cached(url: String): Bitmap? = memory.get(cacheKey(url))
 
-    /**
-     * Loads [url], returning null on any failure.
-     *
-     * Never throws: a missing piece of artwork is a cosmetic problem and must
-     * not take down a list row.
-     */
-    suspend fun load(url: String): Bitmap? {
-        if (url.isBlank()) return null
-
-        cached(url)?.let { return it }
-        diskFile(url).takeIf { it.exists() && it.length() > 0L }?.let { file ->
-            val decoded = withContext(Dispatchers.IO) { decodeFile(file) }
-            if (decoded != null) {
-                memory.put(cacheKey(url), decoded)
-                return decoded
+    suspend fun load(url: String): Bitmap? = withContext(Dispatchers.IO) {
+        if (url.isBlank()) return@withContext null
+        cached(url)?.let { return@withContext it }
+        downloads.withPermit {
+            cached(url)?.let { return@withPermit it }
+            val key = cacheKey(url)
+            disk.read(key)?.let { bytes ->
+                decode(bytes)?.let { bitmap ->
+                    memory.put(key, bitmap)
+                    return@withPermit bitmap
+                }
+                disk.remove(key)
             }
-            // A corrupt cache entry would otherwise be served forever.
-            withContext(Dispatchers.IO) { runCatching { file.delete() } }
+            val bytes = download(url) ?: return@withPermit null
+            val bitmap = decode(bytes) ?: return@withPermit null
+            memory.put(key, bitmap)
+            disk.write(key, bytes)
+            bitmap
         }
-
-        val bytes = withContext(Dispatchers.IO) { download(url) } ?: return null
-        val bitmap = withContext(Dispatchers.IO) { decode(bytes) } ?: return null
-
-        memory.put(cacheKey(url), bitmap)
-        withContext(Dispatchers.IO) {
-            runCatching { diskFile(url).writeBytes(bytes) }
-        }
-        return bitmap
     }
 
     private fun download(url: String): ByteArray? = runCatching {
         client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             if (!response.isSuccessful) return null
-            response.body?.bytes()
+            response.body?.readBoundedBytes(ArtworkDiskCache.MAX_ENTRY_BYTES)
         }
     }.getOrNull()
 
@@ -80,25 +73,13 @@ class ArtworkLoader(
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         val options = BitmapFactory.Options().apply {
             inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, maxEdgePx)
             inPreferredConfig = Bitmap.Config.RGB_565
         }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     }
-
-    private fun decodeFile(file: File): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
-
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, maxEdgePx)
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-        return BitmapFactory.decodeFile(file.absolutePath, options)
-    }
-
-    private fun diskFile(url: String) = File(diskDir, cacheKey(url))
 
     companion object {
         const val DEFAULT_MAX_EDGE_PX = 512

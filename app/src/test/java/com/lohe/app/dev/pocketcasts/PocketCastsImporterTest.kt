@@ -106,6 +106,11 @@ class PocketCastsImporterTest {
 
     private class FakeEpisodeDao : EpisodeDao {
         val rows = mutableListOf<EpisodeEntity>()
+        override fun observePodcastStats() = kotlinx.coroutines.flow.flowOf(
+            rows.groupBy { it.podcastUuid }.map { (uuid, episodes) ->
+                com.lohe.app.data.db.dao.PodcastEpisodeStats(uuid, episodes.count { !it.isDeleted },
+                    episodes.count { !it.isDeleted && !it.isPlayed && !it.isArchived }, episodes.maxOf { it.published })
+            })
         override fun observeAllSummaries() = flowOf(rows.map { it.toSummary() })
         override fun observeAllEntities() = flowOf(rows.toList())
         override fun observeDownloads() =
@@ -125,15 +130,15 @@ class PocketCastsImporterTest {
             }
         }
 
+        override suspend fun getMany(uuids: List<String>) = rows.filter { it.uuid in uuids }
         override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
+        override suspend fun searchByTitle(query: String, limit: Int) = rows.filter { it.title.contains(query, ignoreCase = true) }.take(limit)
         override fun observeByPodcast(podcastUuid: String) =
             flowOf(rows.filter { it.podcastUuid == podcastUuid })
 
         override suspend fun byPodcastOnce(podcastUuid: String) =
             rows.filter { it.podcastUuid == podcastUuid }
 
-        override suspend fun searchByTitle(query: String, limit: Int) =
-            rows.filter { it.title.contains(query, ignoreCase = true) }.take(limit)
 
         override suspend fun allOnce() = rows.sortedByDescending { it.published }
         override fun observeLatest(limit: Int) = flowOf(rows.take(limit))
@@ -221,8 +226,12 @@ class PocketCastsImporterTest {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(isArchived = archived)
         }
+        override suspend fun archive(uuid: String, now: Long) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(isArchived = true, playingStatus = EpisodeEntity.PLAYED, archivedAt = now)
+        }
         override suspend fun archivePlayedIfDue(uuid: String, cutoff: Long): Int = 0
-        override suspend fun archiveCandidates(): List<EpisodeEntity> = emptyList()
+        override suspend fun dueArchiveIds(archiveEnabled: Boolean, playedCutoff: Long, deleteCutoff: Long, afterUuid: String, limit: Int): List<String> = emptyList()
         override suspend fun setDeletedFor(uuids: List<String>, deleted: Boolean) = Unit
 
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
@@ -233,6 +242,8 @@ class PocketCastsImporterTest {
         val rows = mutableListOf<ListeningHistoryEntity>()
         override fun observeAll(): Flow<List<ListeningHistoryEntity>> = flowOf(rows.toList())
         override suspend fun allOnce() = rows.toList()
+        override suspend fun getMany(uuids: List<String>) = allOnce().filter { it.episodeUuid in uuids }
+        override suspend fun deleteMany(uuids: List<String>) { uuids.forEach { delete(it) } }
         override suspend fun get(uuid: String) = rows.firstOrNull { it.episodeUuid == uuid }
 
         override suspend fun upsertAll(items: List<ListeningHistoryEntity>) {

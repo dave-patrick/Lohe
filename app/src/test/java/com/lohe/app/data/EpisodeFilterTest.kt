@@ -141,10 +141,9 @@ class EpisodeFilterTest {
     // --- Archived ------------------------------------------------------------
 
     @Test
-    fun `archived episodes are left out of the other lists`() {
-        val withArchived = list + episode("e", isArchived = true)
+    fun `archived episodes appear in all and played only`() {
+        val withArchived = list + episode("e", isArchived = true, playingStatus = EpisodeEntity.PLAYED)
         for (filter in listOf(
-            EpisodeFilter.Filter.ALL,
             EpisodeFilter.Filter.UNPLAYED,
             EpisodeFilter.Filter.IN_PROGRESS,
             EpisodeFilter.Filter.DOWNLOADED,
@@ -155,6 +154,8 @@ class EpisodeFilterTest {
                 .map { it.uuid }
             assertFalse("archived episode leaked into $filter", "e" in result)
         }
+        assertTrue("e" in EpisodeFilter.apply(withArchived, EpisodeFilter.Filter.ALL, EpisodeFilter.Order.NEWEST_FIRST).map { it.uuid })
+        assertTrue("e" in EpisodeFilter.apply(withArchived, EpisodeFilter.Filter.PLAYED, EpisodeFilter.Order.NEWEST_FIRST).map { it.uuid })
     }
 
     @Test

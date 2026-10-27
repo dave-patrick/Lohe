@@ -39,6 +39,8 @@ data class PlaybackSettings(
     val skipBackSeconds: Int = DEFAULT_SKIP_BACK,
     val skipForwardSeconds: Int = DEFAULT_SKIP_FORWARD,
     val autoArchiveHours: Int = 24,
+    val refreshIntervalMinutes: Int = DEFAULT_REFRESH_MINUTES,
+    val archiveKeepHours: Int = DEFAULT_ARCHIVE_KEEP_HOURS,
     val floatingPlayerEnabled: Boolean = false,
     val floatingPlayerSizeDp: Int = 56,
     val floatingPlayerOpacity: Float = 1f,
@@ -70,11 +72,15 @@ data class PlaybackSettings(
     val showNotDownloadedSmartPlaylist: Boolean = true,
     val showDownloadedSmartPlaylist: Boolean = true,
     val showNewReleasesSmartPlaylist: Boolean = true,
-    val debugButtonEnabled: Boolean = true,
+    val debugButtonEnabled: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
         const val DEFAULT_SKIP_FORWARD = 30
+        const val DEFAULT_REFRESH_MINUTES = 360
+        const val DEFAULT_ARCHIVE_KEEP_HOURS = 24
+        val REFRESH_CHOICES = listOf(0, 30, 60, 120, 360, 720, 1440)
+        val ARCHIVE_KEEP_CHOICES = listOf(1, 6, 12, 24, 48, 72, 168)
 
         /** Offered in the UI; the choice is constrained to this list. */
         val SKIP_CHOICES = listOf(5, 10, 15, 30, 45, 60)
@@ -152,6 +158,8 @@ class SettingsStore(private val context: Context) {
         val skipBack = intPreferencesKey("skip_back")
         val skipForward = intPreferencesKey("skip_forward")
         val autoArchiveHours = intPreferencesKey("auto_archive_hours")
+        val refreshIntervalMinutes = intPreferencesKey("refresh_interval_minutes")
+        val archiveKeepHours = intPreferencesKey("archive_keep_hours")
         val floatingPlayerEnabled = booleanPreferencesKey("floating_player_enabled")
         val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
         val floatingPlayerOpacity = floatPreferencesKey("floating_player_opacity")
@@ -199,6 +207,10 @@ class SettingsStore(private val context: Context) {
             skipForwardSeconds = (prefs[Keys.skipForward] ?: PlaybackSettings.DEFAULT_SKIP_FORWARD)
                 .coerceIn(5, 120),
             autoArchiveHours = (prefs[Keys.autoArchiveHours] ?: 24).takeIf { it in listOf(-1, 0, 1, 24, 168) } ?: 24,
+            refreshIntervalMinutes = (prefs[Keys.refreshIntervalMinutes] ?: PlaybackSettings.DEFAULT_REFRESH_MINUTES)
+                .coerceIn(0, 7 * 24 * 60),
+            archiveKeepHours = (prefs[Keys.archiveKeepHours] ?: PlaybackSettings.DEFAULT_ARCHIVE_KEEP_HOURS)
+                .coerceIn(1, 30 * 24),
             floatingPlayerEnabled = prefs[Keys.floatingPlayerEnabled] ?: false,
             floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
             floatingPlayerOpacity = com.lohe.app.playback.safeFloatingPlayerOpacity(prefs[Keys.floatingPlayerOpacity] ?: 1f),
@@ -222,7 +234,7 @@ class SettingsStore(private val context: Context) {
             showNotDownloadedSmartPlaylist = prefs[Keys.showNotDownloadedSmartPlaylist] ?: true,
             showDownloadedSmartPlaylist = prefs[Keys.showDownloadedSmartPlaylist] ?: true,
             showNewReleasesSmartPlaylist = prefs[Keys.showNewReleasesSmartPlaylist] ?: true,
-            debugButtonEnabled = prefs[Keys.debugButtonEnabled] ?: true,
+            debugButtonEnabled = prefs[Keys.debugButtonEnabled] ?: false,
         )
     }
 
@@ -262,6 +274,14 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoArchiveHours(value: Int) {
         require(value in listOf(-1, 0, 1, 24, 168))
         edit { it[Keys.autoArchiveHours] = value }
+    }
+
+    suspend fun setRefreshIntervalMinutes(value: Int) = edit {
+        it[Keys.refreshIntervalMinutes] = value.coerceIn(0, 7 * 24 * 60)
+    }
+
+    suspend fun setArchiveKeepHours(value: Int) = edit {
+        it[Keys.archiveKeepHours] = value.coerceIn(1, 30 * 24)
     }
 
     suspend fun setFloatingPlayerEnabled(value: Boolean) =

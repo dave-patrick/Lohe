@@ -14,6 +14,7 @@ object EpisodeFilter {
 
     enum class Filter {
         ALL,
+        PLAYED,
         UNPLAYED,
         IN_PROGRESS,
         DOWNLOADED,
@@ -23,6 +24,7 @@ object EpisodeFilter {
         val label: String
             get() = when (this) {
                 ALL -> "All"
+                PLAYED -> "Played"
                 UNPLAYED -> "Unplayed"
                 IN_PROGRESS -> "Listening"
                 DOWNLOADED -> "Downloaded"
@@ -60,7 +62,7 @@ object EpisodeFilter {
                 if (filter == Filter.ARCHIVED) {
                     episode.isArchived
                 } else {
-                    !episode.isArchived && episode.matches(filter)
+                    (filter == Filter.ALL || filter == Filter.PLAYED || !episode.isArchived) && episode.matches(filter)
                 }
             }
             .filter { episode ->
@@ -85,6 +87,7 @@ object EpisodeFilter {
 
     private fun EpisodeEntity.matches(filter: Filter): Boolean = when (filter) {
         Filter.ALL -> true
+        Filter.PLAYED -> isPlayed
         // "Unplayed" means untouched, not merely unfinished: an episode you
         // abandoned is still unplayed as far as the library is concerned.
         Filter.UNPLAYED -> !isPlayed

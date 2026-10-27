@@ -1,6 +1,7 @@
 package com.lohe.app.data
 
 import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.data.db.entity.EpisodeEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,8 @@ data class UserPlaylist(
     val createdAt: Long = System.currentTimeMillis(),
     val snapshot: Boolean = false,
     val pinned: Boolean = false,
+    /** Episode UUIDs hidden from this dynamic playlist by the listener. */
+    val excludedUuids: List<String> = emptyList(),
 ) {
     fun resolveExplicitEpisodes(episodes: Map<String, EpisodeSummary>): List<EpisodeSummary> =
         episodeUuids.mapNotNull { episodeUuid ->
@@ -177,6 +180,44 @@ class PlaylistRepository(
         }
     }
 
+    /** True when an auto-download playlist dynamically includes this episode. */
+    fun shouldAutoDownloadPodcast(podcastUuid: String): Boolean {
+        val folder = _podcastFolders.value[podcastUuid]
+        return _playlists.value.any { playlist ->
+            playlist.autoDownload && !playlist.snapshot && !playlist.finished &&
+                (podcastUuid in playlist.shows ||
+                    playlist.minDurationMinutes > 0 || playlist.maxDurationMinutes > 0 ||
+                    (playlist.folder.isNotBlank() && folder == playlist.folder))
+        }
+    }
+
+    /** True when an auto-download playlist dynamically includes this episode. */
+    fun shouldAutoDownloadEpisode(podcastUuid: String, episode: EpisodeEntity): Boolean {
+        val folder = _podcastFolders.value[podcastUuid]
+        return _playlists.value.any { playlist ->
+            if (!playlist.autoDownload || playlist.snapshot || episode.uuid in playlist.excludedUuids) {
+                false
+            } else {
+                val hasShowRule = playlist.shows.isNotEmpty()
+                val hasLengthRule = playlist.minDurationMinutes > 0 || playlist.maxDurationMinutes > 0
+                val matchesShow = when {
+                    hasShowRule -> podcastUuid in playlist.shows
+                    hasLengthRule -> true
+                    else -> playlist.folder.isNotBlank() && folder == playlist.folder
+                }
+                val matchesLength = if (!hasLengthRule) true else {
+                    val seconds = (episode.durationSeconds ?: 0).toLong()
+                    val minSeconds = playlist.minDurationMinutes * 60L
+                    val maxSeconds = if (playlist.maxDurationMinutes > 0) {
+                        playlist.maxDurationMinutes * 60L
+                    } else Long.MAX_VALUE
+                    seconds > 0L && seconds > minSeconds && seconds <= maxSeconds
+                }
+                matchesShow && matchesLength && (!playlist.finished || episode.isPlayed)
+            }
+        }
+    }
+
     /**
      * Points a playlist at a set of shows.
      *
@@ -187,7 +228,13 @@ class PlaylistRepository(
     fun setPlaylistShows(playlistId: String, shows: Collection<String>) {
         synchronized(lock) {
             val next = _playlists.value.map { pl ->
-                if (pl.id == playlistId) pl.copy(shows = shows.distinct()) else pl
+                if (pl.id == playlistId) {
+                    val selected = shows.distinct()
+                    pl.copy(
+                        shows = selected,
+                        excludedUuids = if (selected.isEmpty()) emptyList() else pl.excludedUuids,
+                    )
+                } else pl
             }
             _playlists.value = next
             saveToDisk(next)
@@ -253,7 +300,10 @@ class PlaylistRepository(
                 if (pl.id != playlistId) {
                     pl
                 } else {
-                    pl.copy(episodeUuids = (pl.episodeUuids + episodeUuids).distinct())
+                    pl.copy(
+                        episodeUuids = (pl.episodeUuids + episodeUuids).distinct(),
+                        excludedUuids = pl.excludedUuids - episodeUuids.toSet(),
+                    )
                 }
             }
             _playlists.value = next
@@ -267,7 +317,15 @@ class PlaylistRepository(
                 if (pl.id != playlistId) {
                     pl
                 } else {
-                    pl.copy(episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid })
+                    val dynamic = !pl.snapshot && (
+                        pl.shows.isNotEmpty() || pl.folder.isNotBlank() ||
+                            pl.minDurationMinutes > 0 || pl.maxDurationMinutes > 0
+                        )
+                    pl.copy(
+                        episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid },
+                        excludedUuids = if (dynamic) (pl.excludedUuids + episodeUuid).distinct()
+                            else pl.excludedUuids,
+                    )
                 }
             }
             _playlists.value = next
@@ -377,6 +435,11 @@ class PlaylistRepository(
                     val finished = parts.getOrNull(9).let { it == "1" || it == "true" }
                     val snapshot = parts.getOrNull(10) == "1"
                     val pinned = parts.getOrNull(11) == "1"
+                    val excluded = parts.getOrNull(12)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.split(',')
+                        ?.filter { it.isNotBlank() }
+                        ?: emptyList()
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -390,6 +453,7 @@ class PlaylistRepository(
                         createdAt = createdAt,
                         snapshot = snapshot,
                         pinned = pinned,
+                        excludedUuids = excluded,
                     )
                 }
             val cleaned = loaded.filterNot { playlist ->
@@ -414,7 +478,8 @@ class PlaylistRepository(
                 val finished = if (pl.finished) "1" else "0"
                 val snapshot = if (pl.snapshot) "1" else "0"
                 val pinned = if (pl.pinned) "1" else "0"
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished\t$snapshot\t$pinned"
+                val excluded = pl.excludedUuids.joinToString(",")
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished\t$snapshot\t$pinned\t$excluded"
             }
             target.writeText(text)
         }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -40,6 +41,8 @@ data class ResolvedPlaylist(
     val entries: List<QueueEntry>,
     val folder: String = "",
     val autoDownload: Boolean = true,
+    val shows: List<String> = emptyList(),
+    val snapshot: Boolean = false,
     /**
      * True for built-in playlists derived from episode state.
      *
@@ -213,6 +216,8 @@ class QueueViewModel(
     private val podcasts: StateFlow<List<PodcastEntity>> = repository
         .observePodcasts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val subscribedShows: StateFlow<List<PodcastEntity>> = podcasts
 
     val queue: StateFlow<List<QueueEntry>> = combine(
         repository.observeQueue(),
@@ -483,10 +488,10 @@ class QueueViewModel(
 
     private suspend fun triggerDownloadByUuids(uuids: Collection<String>) {
         if (uuids.isEmpty()) return
-        val all = repository.observeAllEpisodes().firstOrNull().orEmpty().associateBy { it.uuid }
-        uuids.forEach { id ->
-            all[id]?.let(::triggerDownloadIfNeeded)
-        }
+        // A queue action usually touches one episode. Reading the entire
+        // library here made playback switches wait on thousands of rows.
+        repository.episodesOnce(uuids.distinct())
+            .forEach { triggerDownloadIfNeeded(it.toSummary()) }
     }
 
     private fun triggerDownloadIfNeeded(ep: EpisodeSummary) {
@@ -523,6 +528,14 @@ class QueueViewModel(
         repository.enqueue(uuid, toTop)
         if (_autoDownloadUpNext.value) {
             triggerDownloadByUuids(listOf(uuid))
+        }
+    }
+
+    /** Persists the interrupted item before switching; downloads need not block playback. */
+    suspend fun enqueueInterruptedEpisode(uuid: String) {
+        repository.enqueue(uuid, toTop = true)
+        if (_autoDownloadUpNext.value) {
+            viewModelScope.launch { triggerDownloadByUuids(listOf(uuid)) }
         }
     }
 
@@ -594,7 +607,19 @@ class QueueViewModel(
         repository.observeAllEpisodes(),
         podcasts,
         playlistRepository.podcastFolders,
-    ) { rawPlaylists, allEpisodes, shows, podcastFolders ->
+        combine(
+            (settingsStore?.settings ?: flowOf(com.lohe.app.ui.theme.PlaybackSettings()))
+                .map { it.archiveKeepHours }
+                .distinctUntilChanged(),
+            flow {
+                while (true) {
+                    emit(System.currentTimeMillis())
+                    delay(60_000L)
+                }
+            },
+        ) { keepHours, now -> keepHours to now },
+    ) { rawPlaylists, allEpisodes, shows, podcastFolders, archiveClock ->
+        val (archiveKeepHours, now) = archiveClock
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
 
@@ -639,6 +664,7 @@ class QueueViewModel(
                 allEpisodes
                     .filter { ep ->
                         ep.podcastUuid in followed && !ep.isDeleted && !ep.isArchived &&
+                            ep.uuid !in pl.excludedUuids &&
                             finishedFilter(ep) && fitsLength(ep)
                     }
                     .sortedByDescending { it.published }
@@ -648,7 +674,8 @@ class QueueViewModel(
                 // show, so new ones land in the list on their own.
                 allEpisodes
                     .filter { ep ->
-                        !ep.isDeleted && !ep.isArchived && finishedFilter(ep) && fitsLength(ep)
+                        !ep.isDeleted && !ep.isArchived && ep.uuid !in pl.excludedUuids &&
+                            finishedFilter(ep) && fitsLength(ep)
                     }
                     .sortedByDescending { it.published }
                     .map(::resolve)
@@ -661,7 +688,10 @@ class QueueViewModel(
                     .map { it.uuid }
                     .toSet()
                 allEpisodes
-                    .filter { it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived && finishedFilter(it) }
+                    .filter {
+                        it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived &&
+                            it.uuid !in pl.excludedUuids && finishedFilter(it)
+                    }
                     .sortedByDescending { it.published }
                     .map(::resolve)
             } else {
@@ -673,14 +703,24 @@ class QueueViewModel(
                 entries = resolvedEntries,
                 folder = pl.folder,
                 autoDownload = pl.autoDownload,
+                shows = pl.shows,
+                snapshot = pl.snapshot,
                 pinned = pl.pinned,
             )
         }
 
         val active = allEpisodes.filter { !it.isDeleted && !it.isArchived }
-        val newReleaseCutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+        val played = allEpisodes.filter { episode ->
+            !episode.isDeleted && episode.isPlayed && (
+                !episode.isArchived || (
+                    episode.archivedAt != null && now >= episode.archivedAt &&
+                        now - episode.archivedAt < archiveKeepHours * 3_600_000L
+                    )
+                )
+        }
+        val newReleaseCutoff = (System.currentTimeMillis() / 1000) - 7L * 24 * 60 * 60
         val smartPlaylists = listOf(
-            PLAYED_ID to ("Played" to active.filter { it.isPlayed }),
+            PLAYED_ID to ("Played" to played),
             IN_PROGRESS_ID to ("In Progress" to active.filter { it.isInProgress }),
             UNPLAYED_ID to ("Unplayed" to active.filter { !it.isPlayed && !it.isInProgress }),
             NOT_DOWNLOADED_ID to ("Not Downloaded" to active.filter { !it.isDownloaded }),
@@ -745,6 +785,13 @@ class QueueViewModel(
 
     fun setPlaylistFolder(playlistId: String, folder: String) =
         playlistRepository.setPlaylistFolder(playlistId, folder)
+
+    fun setPlaylistShows(playlistId: String, shows: Collection<String>) =
+        playlistRepository.setPlaylistShows(playlistId, shows)
+
+    fun archiveEpisode(uuid: String) = viewModelScope.launch {
+        repository.setArchived(uuid, true)
+    }
 
     fun setPlaylistAutoDownload(playlistId: String, enabled: Boolean) {
         playlistRepository.setPlaylistAutoDownload(playlistId, enabled)

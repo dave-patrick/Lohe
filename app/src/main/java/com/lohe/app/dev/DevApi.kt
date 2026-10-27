@@ -19,9 +19,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.json.JSONObject
-import java.io.BufferedReader
 import java.io.IOException
-import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -45,7 +43,7 @@ import java.net.URLDecoder
  *
  * Both call the same operations, so they cannot drift apart.
  *
- * Endpoints (all JSON, all require `Authorization: Bearer lohe-dev`):
+ * Endpoints (all JSON, all require the installation-specific bearer token):
  *
  *   GET  /health
  *   GET  /shows?folder=
@@ -75,7 +73,8 @@ object DevApi {
 
     private const val TAG = "DevApi"
     private const val PORT = 8765
-    private const val TOKEN = "lohe-dev"
+    private var token: String = ""
+    private val clients = java.util.concurrent.atomic.AtomicInteger()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var started = false
@@ -92,6 +91,10 @@ object DevApi {
         if (started) return
         started = true
         val appContext = context.applicationContext
+        val tokenFile = java.io.File(appContext.noBackupFilesDir, "debug-api-token")
+        token = tokenFile.takeIf { it.exists() }?.readText()?.trim()?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            ?: ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+                .joinToString("") { "%02x".format(it) }.also { tokenFile.writeText(it) }
         val built = LoheToolkit(appContext)
         toolkit = built
         mcpTools = McpTools(built)
@@ -102,7 +105,15 @@ object DevApi {
                 Log.i(TAG, "listening on 127.0.0.1:$PORT (MCP at ${McpHttp.PATH})")
                 while (true) {
                     val client = s.accept()
-                    scope.launch { handle(appContext, client) }
+                    if (clients.incrementAndGet() > 16) {
+                        clients.decrementAndGet()
+                        client.close()
+                    } else scope.launch {
+                        try { handle(client) }
+                        catch (_: java.io.IOException) { client.close() }
+                        catch (_: IllegalArgumentException) { client.close() }
+                        finally { clients.decrementAndGet() }
+                    }
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "server failed", t)
@@ -117,53 +128,21 @@ object DevApi {
         started = false
     }
 
-    private suspend fun handle(context: Context, socket: Socket) {
+    private suspend fun handle(socket: Socket) {
         socket.use { s ->
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-            val requestLine = reader.readLine() ?: return
-            val parts = requestLine.split(' ')
-            if (parts.size < 2) return
-            val method = parts[0]
-            val rawPath = parts[1]
-            val path = rawPath.substringBefore('?')
-            val query = parseQuery(rawPath.substringAfter('?', ""))
-
-            // Read headers.
-            val headers = mutableMapOf<String, String>()
-            while (true) {
-                val line = reader.readLine() ?: break
-                if (line.isEmpty()) break
-                val idx = line.indexOf(':')
-                if (idx > 0) {
-                    headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
-                }
-            }
-
-            // Read body.
-            val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-            val body = if (contentLength > 0) {
-                val buf = CharArray(contentLength)
-                var read = 0
-                while (read < contentLength) {
-                    val n = reader.read(buf, read, contentLength - read)
-                    if (n < 0) break
-                    read += n
-                }
-                String(buf, 0, read)
-            } else ""
-
-            // The MCP endpoint speaks its own dialect: JSON-RPC in, JSON-RPC
-            // out, with its own idea of what a response looks like.
-            if (path == McpHttp.PATH) {
-                val tools = mcpTools ?: return
-                McpHttp.handle(s, method, headers, body, tools)
+            s.soTimeout = 5_000
+            val request = try { DevHttpRequest.read(s.getInputStream().buffered(), token) }
+            catch (failure: DevHttpException) {
+                respond(s, failure.status, errorJson(failure.message ?: "Invalid request"))
                 return
             }
-
-            // Auth check (skip for health? no, keep uniform).
-            val auth = headers["authorization"] ?: ""
-            if (auth != "Bearer $TOKEN") {
-                respond(s, 401, errorJson("unauthorized"))
+            val method = request.method
+            val path = request.target.substringBefore('?')
+            val query = parseQuery(request.target.substringAfter('?', ""))
+            val body = request.body
+            if (path == McpHttp.PATH) {
+                val tools = mcpTools ?: return
+                McpHttp.handle(s, method, body, tools)
                 return
             }
 
@@ -466,6 +445,9 @@ object DevApi {
         202 -> "Accepted"
         400 -> "Bad Request"
         401 -> "Unauthorized"
+        408 -> "Request Timeout"
+        413 -> "Content Too Large"
+        431 -> "Request Header Fields Too Large"
         404 -> "Not Found"
         500 -> "Internal Server Error"
         503 -> "Service Unavailable"

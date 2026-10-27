@@ -13,7 +13,13 @@ import com.lohe.app.data.ServiceLocator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
+import kotlinx.coroutines.runBlocking
+import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.data.db.entity.EpisodeEntity
+import androidx.media3.common.Player
+import java.util.concurrent.CountDownLatch
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
@@ -50,13 +56,26 @@ class MediaLibraryBrowseTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        check(context.packageName.endsWith(".audit")) { "Run browser integration tests in the isolated .audit package" }
         ServiceLocator.init(context)
+        runBlocking {
+            ServiceLocator.database().podcastDao().upsert(PodcastEntity(
+                "audit-browse-show", "Audit fixture", feedUrl = "https://example.invalid/audit-feed"))
+            ServiceLocator.database().episodeDao().upsertAll(listOf(EpisodeEntity(
+                "audit-browse-episode", "audit-browse-show", "Audit episode", "https://example.invalid/audit.mp3", 1)))
+        }
         browser = onMainFuture {
             MediaBrowser.Builder(
                 context,
                 SessionToken(context, ComponentName(context, PlaybackService::class.java)),
             ).buildAsync()
         }
+    }
+
+    @After
+    fun tearDown() {
+        if (::browser.isInitialized) onMain { browser.stop(); browser.release() }
+        runBlocking { ServiceLocator.database().podcastDao().deleteByUuid("audit-browse-show") }
     }
 
     private fun childrenOf(parentId: String): List<MediaItem> {
@@ -84,7 +103,7 @@ class MediaLibraryBrowseTest {
         val shows = childrenOf(MediaLibrary.SHOWS)
         assertTrue("the library should have at least one show", shows.isNotEmpty())
 
-        val show = shows.first { MediaLibrary.isShow(it.mediaId) }
+        val show = shows.first { it.mediaId == MediaLibrary.showId("audit-browse-show") }
         val episodes = childrenOf(show.mediaId)
         assertTrue("a show should offer its episodes", episodes.isNotEmpty())
 
@@ -101,18 +120,32 @@ class MediaLibraryBrowseTest {
     @Test
     fun tappingAnEpisodeInACarResolvesItToSomethingPlayable() {
         val shows = childrenOf(MediaLibrary.SHOWS)
-        val show = shows.first { MediaLibrary.isShow(it.mediaId) }
+        val show = shows.first { it.mediaId == MediaLibrary.showId("audit-browse-show") }
         val episode = childrenOf(show.mediaId).first()
 
         // This is what the car does when a row is tapped: it hands back the
         // item it was given -- an id and no URI -- and expects the real,
         // playable one in its place.
-        onMain { browser.setMediaItems(listOf(episode)) }
-        Thread.sleep(500)
-
-        var current: MediaItem? = null
-        onMain { current = browser.currentMediaItem }
-        assertNotNull("the car needs a playable item", current)
-        assertNotNull("the resolved item needs a uri", current?.requestMetadata?.mediaUri ?: current?.localConfiguration?.uri)
+        val resolved = CountDownLatch(1)
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (mediaItem?.mediaId == "audit-browse-episode" && mediaItem.localConfiguration?.uri != null) resolved.countDown()
+            }
+        }
+        onMain {
+            PlaybackService.player!!.addListener(listener)
+            browser.setMediaItems(listOf(episode))
+        }
+        try {
+            assertTrue("the session should resolve the ID to a playable source", resolved.await(5, TimeUnit.SECONDS))
+            var current: MediaItem? = null
+            onMain { current = PlaybackService.player?.currentMediaItem }
+            assertEquals("audit-browse-episode", current?.mediaId)
+            // Media3 deliberately strips local configuration from browser-side items.
+            // Verify the service-side player received the resolved source instead.
+            assertEquals("https://example.invalid/audit.mp3", current?.localConfiguration?.uri.toString())
+        } finally {
+            onMain { PlaybackService.player?.removeListener(listener) }
+        }
     }
 }

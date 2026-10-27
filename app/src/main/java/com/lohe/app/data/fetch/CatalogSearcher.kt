@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import com.lohe.app.network.readBoundedBytes
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -93,7 +94,7 @@ class CatalogSearcher(
             if (!it.isSuccessful) {
                 throw IllegalStateException("Search failed (HTTP ${it.code})")
             }
-            it.body?.string() ?: throw IllegalStateException("Search returned an empty body")
+            it.body?.let { body -> String(body.readBoundedBytes(4 * 1024 * 1024), body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8) } ?: throw IllegalStateException("Search returned an empty body")
         }
     }
 

@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lohe.app.data.ServiceLocator
+import com.lohe.app.data.FeedRefreshScheduler
 import com.lohe.app.dev.BugReportOverlay
 import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.SplashScreen
@@ -36,11 +37,9 @@ class MainActivity : ComponentActivity() {
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
         com.lohe.app.dev.DevApi.start(this)
-        com.lohe.app.data.FeedRefreshScheduler.schedule(applicationContext)
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // Throttled inside, so returning to the app is cheap.
-                com.lohe.app.data.FeedRefreshScheduler.refreshIfDue(applicationContext)
+            ServiceLocator.settingsStore().settings.map { it.debugButtonEnabled }.distinctUntilChanged().collect {
+                DevDiagnostics.recordingEnabled = BuildConfig.DEBUG || it
             }
         }
         lifecycleScope.launch {
@@ -82,6 +81,13 @@ class MainActivity : ComponentActivity() {
             // offline and the player tries to open a path that is not there.
             LaunchedEffect(Unit) {
                 runCatching { ServiceLocator.downloadManager().repairMissingDownloads() }
+            }
+
+            LaunchedEffect(Unit) {
+                settings.settings
+                    .map { it.refreshIntervalMinutes }
+                    .distinctUntilChanged()
+                    .collect { FeedRefreshScheduler.schedule(context, it) }
             }
 
             LoheTheme(appearance = appearance) {

@@ -12,6 +12,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
+import androidx.media3.common.Player
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -62,6 +67,14 @@ class PlayerConnection internal constructor(
      */
     private var pendingPlay: Pair<MediaItem, Boolean>? = null
 
+    private val _controllers = MutableStateFlow<MediaController?>(null)
+    val controllers = _controllers.asStateFlow()
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying = _isPlaying.asStateFlow()
+    private val listener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) { _isPlaying.value = isPlaying }
+    }
+
     /** Null until the session binds; commands issued before then are deferred. */
     var controller: MediaController? = null
         private set
@@ -74,7 +87,12 @@ class PlayerConnection internal constructor(
         pending.addListener(
             {
                 controller = runCatching { pending.get() }.getOrNull()
-                controller?.let(::drainPendingPlay)
+                controller?.let {
+                    it.addListener(listener)
+                    _isPlaying.value = it.isPlaying
+                    _controllers.value = it
+                    drainPendingPlay(it)
+                }
             },
             MoreExecutors.directExecutor(),
         )
@@ -84,13 +102,14 @@ class PlayerConnection internal constructor(
     private fun drainPendingPlay(c: MediaController) {
         val request = pendingPlay ?: return
         pendingPlay = null
-        c.setMediaItem(request.first)
-        c.prepare()
-        c.playWhenReady = request.second
+        replaceMediaItem(c, request.first, request.second)
     }
 
     fun detach() {
         pendingPlay = null
+        controller?.removeListener(listener)
+        _controllers.value = null
+        _isPlaying.value = false
         future?.let { MediaController.releaseFuture(it) }
         future = null
         controller = null
@@ -102,6 +121,13 @@ class PlayerConnection internal constructor(
             pendingPlay = item to playWhenReady
             return
         }
+        replaceMediaItem(c, item, playWhenReady)
+    }
+
+    private fun replaceMediaItem(c: MediaController, item: MediaItem, playWhenReady: Boolean) {
+        com.lohe.app.dev.DevDiagnostics.log("PLAYBACK_LOAD", "Replacing ${c.currentMediaItem?.mediaId} with ${item.mediaId}")
+        c.pause()
+        c.stop()
         c.setMediaItem(item)
         c.prepare()
         c.playWhenReady = playWhenReady
@@ -181,12 +207,14 @@ fun rememberPlayerConnection(): PlayerConnection {
 @Composable
 fun rememberTransportState(connection: PlayerConnection): State<TransportState> =
     produceState(initialValue = TransportState(), connection) {
-        while (isActive) {
-            val c = connection.controller
-            value = if (c == null) {
-                TransportState()
-            } else {
-                TransportState(
+        connection.controllers.collectLatest { c ->
+            if (c == null) {
+                value = TransportState()
+                return@collectLatest
+            }
+            val events = Channel<Unit>(Channel.CONFLATED)
+            fun update() {
+                value = TransportState(
                     connected = true,
                     isPlaying = c.isPlaying,
                     hasMedia = c.mediaItemCount > 0,
@@ -200,7 +228,22 @@ fun rememberTransportState(connection: PlayerConnection): State<TransportState> 
                     mediaId = c.currentMediaItem?.mediaId.orEmpty(),
                 )
             }
-            delay(POLL_MS)
+            val listener = object : Player.Listener {
+                override fun onEvents(player: Player, changed: Player.Events) {
+                    update()
+                    events.trySend(Unit)
+                }
+            }
+            c.addListener(listener)
+            try {
+                while (isActive) {
+                    update()
+                    if (c.isPlaying) delay(POLL_MS) else events.receive()
+                }
+            } finally {
+                c.removeListener(listener)
+                events.close()
+            }
         }
     }
 
