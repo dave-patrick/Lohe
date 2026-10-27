@@ -1,7 +1,7 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -341,17 +341,18 @@ fun EpisodesScreen(
 
         // --- The show itself: artwork, name, and what it is about ---
         podcast?.let { show ->
+            var descriptionExpanded by remember(show.uuid) { mutableStateOf(false) }
             GlassCard(contentPadding = 16.dp) {
                 Row(verticalAlignment = Alignment.Top) {
                     RemoteImage(
                         url = show.artworkUrl,
                         contentDescription = null,
-                        size = 92.dp,
+                        size = 132.dp,
                         fallbackLabel = show.title,
-                        cornerRadius = 14.dp,
-                        modifier = Modifier.size(92.dp),
+                        cornerRadius = 18.dp,
+                        modifier = Modifier.size(132.dp),
                     )
-                    Spacer(Modifier.size(14.dp))
+                    Spacer(Modifier.size(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = show.title,
@@ -372,8 +373,9 @@ fun EpisodesScreen(
                                 text = blurb,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 6,
+                                maxLines = if (descriptionExpanded) Int.MAX_VALUE else 10,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable { descriptionExpanded = !descriptionExpanded },
                             )
                         }
                     }
@@ -515,11 +517,8 @@ fun EpisodesScreen(
                                     selectedUuids + episode.uuid
                                 }
                             } else {
-                                // Always download when pressing play
-                                if (!episode.isDownloaded && !episode.isDownloading) {
-                                    ServiceLocator.downloadManager().start(episode.toSummary())
-                                }
-                                onPlay(episode)
+                                // Tapping shows the notes; playing is a button there.
+                                notesEpisode = episode
                             }
                         },
                         onLongPress = {
@@ -572,8 +571,27 @@ fun EpisodesScreen(
             artworkUrl = ep.artworkUrl ?: podcast?.artworkUrl,
             description = ep.description ?: podcast?.description,
             durationSeconds = ep.durationSeconds,
-            onPlay = { onPlay(ep) },
-            onAddToUpNext = { onQueue(ep) },
+            onPlay = {
+                // Always download when pressing play
+                if (!ep.isDownloaded && !ep.isDownloading) {
+                    ServiceLocator.downloadManager().start(ep.toSummary())
+                }
+                onPlay(ep)
+            },
+            onAddToUpNextTop = {
+                // Enqueue is a no-op for an episode already queued, and the
+                // promote that follows still moves it to the front.
+                queueViewModel.enqueue(ep.uuid, toTop = true)
+                onShowMessage("Added to top of Up Next")
+            },
+            onAddToUpNextBottom = {
+                if (ep.isQueued) {
+                    queueViewModel.moveInQueue(ep.uuid, 100_000)
+                } else {
+                    queueViewModel.enqueue(ep.uuid)
+                }
+                onShowMessage("Added to bottom of Up Next")
+            },
             onDismiss = { notesEpisode = null },
         )
     }
@@ -678,36 +696,14 @@ private fun EpisodeRow(
     onToggleArchived: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
-    var upwardDistance by remember(episode.uuid) { mutableStateOf(0f) }
-    var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
-    var notesOpenedBySwipe by remember(episode.uuid) { mutableStateOf(false) }
+    // No drag handler on the row. A swipe-up-for-details gesture lived here,
+    // but an upward drag is also how the list scrolls: the handler consumed
+    // every drag, so the list would not scroll and details opened instead.
+    // Details stay one tap away on the notes button.
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onPlay,
         onLongClick = onLongPress,
-        modifier = Modifier.pointerInput(episode.uuid, swipeThreshold) {
-            detectDragGestures(
-                onDragStart = {
-                    upwardDistance = 0f
-                    horizontalDistance = 0f
-                    notesOpenedBySwipe = false
-                },
-                onDrag = { change, dragAmount ->
-                    horizontalDistance += dragAmount.x
-                    upwardDistance += dragAmount.y
-                    if (!notesOpenedBySwipe &&
-                        upwardDistance <= -swipeThreshold &&
-                        kotlin.math.abs(horizontalDistance) < swipeThreshold
-                    ) {
-                        notesOpenedBySwipe = true
-                        change.consume()
-                        onOpenNotes()
-                    }
-                    if (notesOpenedBySwipe) change.consume()
-                },
-            )
-        },
         contentPadding = 14.dp,
     ) {
         // Played episodes read as dimmed so unplayed items stand out.

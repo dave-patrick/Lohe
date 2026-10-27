@@ -15,8 +15,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -49,7 +50,8 @@ fun EpisodeNotesSheet(
     description: String?,
     durationSeconds: Int? = null,
     onPlay: (() -> Unit)? = null,
-    onAddToUpNext: (() -> Unit)? = null,
+    onAddToUpNextTop: (() -> Unit)? = null,
+    onAddToUpNextBottom: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     LoheSheet(onDismiss = onDismiss) {
@@ -101,44 +103,62 @@ fun EpisodeNotesSheet(
                 }
             }
 
-            if (onPlay != null || onAddToUpNext != null) {
+            if (onPlay != null) {
                 Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        onPlay()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Play")
+                }
+            }
+            if (onAddToUpNextTop != null || onAddToUpNextBottom != null) {
+                Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (onPlay != null) {
-                        Button(
-                            onClick = {
-                                onPlay()
-                                onDismiss()
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Play")
-                        }
-                    }
-                    if (onAddToUpNext != null) {
+                    if (onAddToUpNextTop != null) {
                         OutlinedButton(
                             onClick = {
-                                onAddToUpNext()
+                                onAddToUpNextTop()
                                 onDismiss()
                             },
                             modifier = Modifier.weight(1f),
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                imageVector = Icons.Filled.VerticalAlignTop,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Add to Up Next")
+                            Text("Up Next: Top", maxLines = 1)
+                        }
+                    }
+                    if (onAddToUpNextBottom != null) {
+                        OutlinedButton(
+                            onClick = {
+                                onAddToUpNextBottom()
+                                onDismiss()
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VerticalAlignBottom,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Up Next: Bottom", maxLines = 1)
                         }
                     }
                 }

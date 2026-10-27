@@ -261,7 +261,8 @@ class FeedParserTest {
     fun `description is truncated to a sane length`() {
         val long = "x".repeat(5_000)
         val feed = parse("<rss><channel><title>S</title><description>$long</description></channel></rss>")
-        assertEquals(401, feed.podcast.description!!.length)
+        // The show page has room for a full blurb, so the cap is 2,000 plus the ellipsis.
+        assertEquals(2_001, feed.podcast.description!!.length)
     }
 
     @Test
@@ -386,6 +387,21 @@ class FeedParserTest {
         val rfc = FeedParser.parseDate("Mon, 11 Mar 2024 09:00:00 GMT")
         val iso = FeedParser.parseDate("2024-03-11T09:00:00Z")
         assertEquals(rfc, iso)
+    }
+
+    @Test
+    fun `parseDate reads the sloppy formats publishers actually emit`() {
+        val expected = FeedParser.parseDate("2024-03-11T09:00:00Z")
+        // Numeric offset, single-digit day, wrong weekday, no seconds, no weekday.
+        assertEquals(expected, FeedParser.parseDate("Mon, 11 Mar 2024 09:00:00 +0000"))
+        assertEquals(expected, FeedParser.parseDate("Tue, 11 Mar 2024 09:00:00 GMT"))
+        assertEquals(expected, FeedParser.parseDate("11 Mar 2024 09:00 GMT"))
+        assertEquals(expected, FeedParser.parseDate("2024-03-11 09:00:00"))
+        assertEquals(
+            FeedParser.parseDate("2024-03-05T09:00:00Z"),
+            FeedParser.parseDate("Mon, 5 Mar 2024 9:00:00 +0000"),
+        )
+        assertNotNull(FeedParser.parseDate("2024-03-11"))
     }
 
     @Test

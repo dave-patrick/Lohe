@@ -141,6 +141,9 @@ class SubscriptionRepositoryTest {
         override suspend fun byPodcastOnce(podcastUuid: String) =
             rows.filter { it.podcastUuid == podcastUuid }
 
+        override suspend fun searchByTitle(query: String, limit: Int) =
+            rows.filter { it.title.contains(query, ignoreCase = true) }.take(limit)
+
         override suspend fun allOnce() = rows.sortedByDescending { it.published }
 
         override fun observeLatest(limit: Int) = kotlinx.coroutines.flow.flowOf(rows.take(limit))

@@ -442,6 +442,16 @@ fun QueueScreen(
                         }
                     },
                     onRemove = { viewModel.dequeue(entry.episode.uuid) },
+                    onMoveToTop = if (index > 0) {
+                        { viewModel.moveInQueue(entry.episode.uuid, -MOVE_TO_END) }
+                    } else {
+                        null
+                    },
+                    onMoveToBottom = if (index < items.lastIndex) {
+                        { viewModel.moveInQueue(entry.episode.uuid, MOVE_TO_END) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -1136,6 +1146,24 @@ fun PlaylistsScreen(
                                     openedPlaylist.id,
                                     entry.episode.uuid,
                                 )
+                            },
+                            onMoveToTop = if (unplayedOnly || index <= 0) null else {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
+                                        entry.episode.uuid,
+                                        -MOVE_TO_END,
+                                    )
+                                }
+                            },
+                            onMoveToBottom = if (unplayedOnly || index >= displayItems.lastIndex) null else {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
+                                        entry.episode.uuid,
+                                        MOVE_TO_END,
+                                    )
+                                }
                             },
                         )
                     }
@@ -2241,6 +2269,9 @@ private fun EmptyQueue(
     }
 }
 
+/** A move far enough that the list clamps it to the first or last slot. */
+private const val MOVE_TO_END = 100_000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QueueRow(
@@ -2257,6 +2288,8 @@ private fun QueueRow(
     onMoveDown: (() -> Unit)?,
     onTogglePlayed: (() -> Unit)?,
     onRemove: (() -> Unit)?,
+    onMoveToTop: (() -> Unit)? = null,
+    onMoveToBottom: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     dragHandle: @Composable (() -> Unit)? = null,
     dragHandleAtStart: Boolean = false,
@@ -2315,6 +2348,28 @@ private fun QueueRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        if (onMoveToTop != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.VerticalAlignTop,
+                                label = "Top",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onMoveToTop()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
+                        if (onMoveToBottom != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.VerticalAlignBottom,
+                                label = "Bottom",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onMoveToBottom()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
                         if (onMoveUp != null) {
                             SwipeActionButton(
                                 icon = Icons.Filled.KeyboardArrowUp,

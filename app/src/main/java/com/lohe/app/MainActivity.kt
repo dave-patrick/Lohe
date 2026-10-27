@@ -36,6 +36,13 @@ class MainActivity : ComponentActivity() {
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
         com.lohe.app.dev.DevApi.start(this)
+        com.lohe.app.data.FeedRefreshScheduler.schedule(applicationContext)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // Throttled inside, so returning to the app is cheap.
+                com.lohe.app.data.FeedRefreshScheduler.refreshIfDue(applicationContext)
+            }
+        }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 ServiceLocator.settingsStore().settings.map { it.floatingPlayerEnabled }.distinctUntilChanged().collect {
