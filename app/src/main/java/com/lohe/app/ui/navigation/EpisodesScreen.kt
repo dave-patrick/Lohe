@@ -584,6 +584,7 @@ fun EpisodesScreen(
             onSetSkipOutro = { v -> scope.launch { store.setShowSkipOutroSeconds(podcast!!.uuid, v) } },
             onReset = { scope.launch { store.clearShowPlaybackSettings(podcast!!.uuid) } },
             onDismiss = { showSettings = false },
+            extra = { ShowUpNextControls(podcast!!.uuid) },
         )
     }
 

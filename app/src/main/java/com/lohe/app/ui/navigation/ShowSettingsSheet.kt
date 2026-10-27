@@ -2,6 +2,14 @@ package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -66,7 +74,106 @@ fun ShowSettingsSheetFor(
         onSetSkipOutro = { v -> scope.launch { store.setShowSkipOutroSeconds(podcastUuid, v) } },
         onReset = { scope.launch { store.clearShowPlaybackSettings(podcastUuid) } },
         onDismiss = onDismiss,
+        extra = { ShowUpNextControls(podcastUuid) },
     )
+}
+
+/**
+ * Up Next automation for one show: queue its new episodes as they arrive,
+ * and pull in everything already published with one tap.
+ */
+@Composable
+fun ShowUpNextControls(podcastUuid: String) {
+    val repository = remember { com.lohe.app.data.ServiceLocator.subscriptionRepository() }
+    val scope = rememberCoroutineScope()
+    var podcast by remember(podcastUuid) {
+        mutableStateOf<com.lohe.app.data.db.entity.PodcastEntity?>(null)
+    }
+    var message by remember(podcastUuid) { mutableStateOf<String?>(null) }
+    LaunchedEffect(podcastUuid) { podcast = repository.getPodcast(podcastUuid) }
+    val show = podcast ?: return
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Add new episodes to Up Next",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Queue each new episode when this show refreshes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = show.autoAddNewEpisodesToUpNext,
+                onCheckedChange = { enabled ->
+                    podcast = show.copy(autoAddNewEpisodesToUpNext = enabled)
+                    scope.launch { repository.setAutoAddNewEpisodesToUpNext(podcastUuid, enabled) }
+                },
+            )
+        }
+
+        if (show.autoAddNewEpisodesToUpNext) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Place them at the",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(8.dp))
+                RadioButton(
+                    selected = show.autoAddNewEpisodesAtTop,
+                    onClick = {
+                        podcast = show.copy(autoAddNewEpisodesAtTop = true)
+                        scope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, true) }
+                    },
+                )
+                Text("Top")
+                Spacer(Modifier.width(8.dp))
+                RadioButton(
+                    selected = !show.autoAddNewEpisodesAtTop,
+                    onClick = {
+                        podcast = show.copy(autoAddNewEpisodesAtTop = false)
+                        scope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, false) }
+                    },
+                )
+                Text("Bottom")
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(true to "Add all to top", false to "Add all to bottom").forEach { (atTop, label) ->
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val added = repository.addAllEpisodesToUpNext(podcastUuid, atTop)
+                            message = if (added == 0) {
+                                "No unplayed episodes to add"
+                            } else {
+                                "Added $added episode${if (added == 1) "" else "s"} to Up Next"
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(label, maxLines = 1)
+                }
+            }
+        }
+        message?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 /**
@@ -92,6 +199,7 @@ fun ShowSettingsSheet(
     onSetSkipOutro: (Int?) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
+    extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -120,6 +228,8 @@ fun ShowSettingsSheet(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            extra()
 
             Text(
                 text = "These apply to this show only. Anything left alone follows your " +

@@ -2206,23 +2206,71 @@ fun AddToPlaylistDialog(
     queueViewModel: QueueViewModel,
     onAdded: (String) -> Unit,
     onDismiss: () -> Unit,
+    /**
+     * When adding whole shows, their uuids. The listener can then keep the
+     * playlist (or Up Next) updated with each show's future episodes.
+     */
+    followPodcastUuids: Collection<String> = emptyList(),
 ) {
     val playlists by queueViewModel.userPlaylists.collectAsState()
     var newName by remember { mutableStateOf("") }
+    var keepUpdated by remember { mutableStateOf(true) }
+    val following = followPodcastUuids.isNotEmpty() && keepUpdated
+    val repository = remember { com.lohe.app.data.ServiceLocator.subscriptionRepository() }
+    val scope = rememberCoroutineScope()
 
     LoheDialog(
         onDismiss = onDismiss,
-        title = "Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…",
+        title = if (followPodcastUuids.isNotEmpty()) {
+            "Add ${followPodcastUuids.size} show${if (followPodcastUuids.size == 1) "" else "s"} to…"
+        } else {
+            "Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…"
+        },
         icon = Icons.AutoMirrored.Filled.PlaylistAdd,
         body = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (followPodcastUuids.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Keep updated",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Include every new episode automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = keepUpdated, onCheckedChange = { keepUpdated = it })
+                    }
+                }
+
                 GlassCard(
                     onClick = {
                         queueViewModel.enqueueAll(episodeUuids)
-                        onAdded("Added ${episodeUuids.size} to Up Next")
+                        if (following) {
+                            // New episodes of these shows now queue themselves.
+                            scope.launch {
+                                followPodcastUuids.forEach {
+                                    repository.setAutoAddNewEpisodesToUpNext(it, true)
+                                }
+                            }
+                        }
+                        onAdded(
+                            if (following) {
+                                "Added ${episodeUuids.size} to Up Next; new episodes will follow"
+                            } else {
+                                "Added ${episodeUuids.size} to Up Next"
+                            },
+                        )
                     },
                     contentPadding = 12.dp,
                 ) {
@@ -2247,7 +2295,12 @@ fun AddToPlaylistDialog(
                     GlassCard(
                         onClick = {
                             queueViewModel.addEpisodesToPlaylist(pl.id, episodeUuids)
-                            onAdded("Added ${episodeUuids.size} to ${pl.name}")
+                            if (following && !pl.snapshot) {
+                                queueViewModel.followShowsInPlaylist(pl.id, followPodcastUuids)
+                                onAdded("Added to ${pl.name}; new episodes will follow")
+                            } else {
+                                onAdded("Added ${episodeUuids.size} to ${pl.name}")
+                            }
                         },
                         contentPadding = 12.dp,
                     ) {
@@ -2291,8 +2344,18 @@ fun AddToPlaylistDialog(
         confirmLabel = if (newName.isNotBlank()) "Create & Add" else null,
         onConfirm = if (newName.isNotBlank()) {
             {
-                val created = queueViewModel.createPlaylist(newName, episodeUuids)
-                onAdded("Created \"${created.name}\" (${episodeUuids.size} episodes)")
+                val created = queueViewModel.createPlaylist(
+                    newName,
+                    episodeUuids,
+                    shows = if (following) followPodcastUuids else emptyList(),
+                )
+                onAdded(
+                    if (following) {
+                        "Created \"${created.name}\"; new episodes will follow"
+                    } else {
+                        "Created \"${created.name}\" (${episodeUuids.size} episodes)"
+                    },
+                )
             }
         } else {
             null

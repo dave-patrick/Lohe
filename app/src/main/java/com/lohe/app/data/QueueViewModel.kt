@@ -661,9 +661,13 @@ class QueueViewModel(
                 // Following shows: they add their new episodes on their own,
                 // without the playlist being touched. A length rule, if the
                 // playlist has one, narrows what they bring.
+                // Episodes added to the playlist by hand stay in it alongside
+                // the followed shows, so following a show never hides them.
+                val picked = pl.episodeUuids.toSet()
                 allEpisodes
                     .filter { ep ->
-                        ep.podcastUuid in followed && !ep.isDeleted && !ep.isArchived &&
+                        (ep.podcastUuid in followed || ep.uuid in picked) &&
+                            !ep.isDeleted && !ep.isArchived &&
                             ep.uuid !in pl.excludedUuids &&
                             finishedFilter(ep) && fitsLength(ep)
                     }
@@ -767,8 +771,11 @@ class QueueViewModel(
         initialEpisodeUuids: Collection<String> = emptyList(),
         folder: String = "",
         autoDownload: Boolean = true,
+        shows: Collection<String> = emptyList(),
     ): UserPlaylist {
-        val created = playlistRepository.createPlaylist(name, initialEpisodeUuids, folder, autoDownload)
+        val created = playlistRepository.createPlaylist(
+            name, initialEpisodeUuids, folder, autoDownload, shows = shows,
+        )
         if (autoDownload && initialEpisodeUuids.isNotEmpty()) {
             viewModelScope.launch { triggerDownloadByUuids(initialEpisodeUuids) }
         }
@@ -803,6 +810,17 @@ class QueueViewModel(
 
     fun setPlaylistPinned(playlistId: String, pinned: Boolean) =
         playlistRepository.setPlaylistPinned(playlistId, pinned)
+
+    /**
+     * Makes a playlist follow more shows: their current and future episodes
+     * appear in it without the playlist being touched again.
+     */
+    fun followShowsInPlaylist(playlistId: String, shows: Collection<String>) {
+        val current = playlistRepository.playlists.value
+            .firstOrNull { it.id == playlistId } ?: return
+        if (current.snapshot) return
+        playlistRepository.setPlaylistShows(playlistId, (current.shows + shows).distinct())
+    }
 
     fun addEpisodesToPlaylist(playlistId: String, episodeUuids: Collection<String>) {
         playlistRepository.addEpisodes(playlistId, episodeUuids)
