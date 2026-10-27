@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,11 +52,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -76,7 +75,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.lohe.app.R
 import com.lohe.app.data.EpisodeFilter
 import com.lohe.app.data.EpisodesViewModel
@@ -123,11 +124,14 @@ fun EpisodesScreen(
     // otherwise be recomputed for every episode and could disagree mid-list.
     val now = remember { System.currentTimeMillis() }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item(key = "episodes-header") {
         if (inSelectionMode) {
             val selectedEpisodes = remember(episodes, selectedUuids) {
                 episodes.filter { it.uuid in selectedUuids }
@@ -337,10 +341,11 @@ fun EpisodesScreen(
             }
         }
 
-        Spacer(Modifier.size(10.dp))
+        }
 
         // --- The show itself: artwork, name, and what it is about ---
-        podcast?.let { show ->
+        if (podcast != null) item(key = "podcast-details") {
+            val show = podcast ?: return@item
             GlassCard(contentPadding = 16.dp) {
                 Row(verticalAlignment = Alignment.Top) {
                     RemoteImage(
@@ -379,9 +384,9 @@ fun EpisodesScreen(
                     }
                 }
             }
-            Spacer(Modifier.size(12.dp))
         }
 
+        item(key = "episode-filters") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -397,24 +402,18 @@ fun EpisodesScreen(
                 )
             }
         }
-
-        Spacer(Modifier.size(10.dp))
-
-        if (episodes.isEmpty()) {
-            Text(
-                text = stringResource(R.string.episodes_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 24.dp),
-            )
-            return@Column
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        if (episodes.isEmpty()) {
+            item(key = "episodes-empty") {
+                Text(
+                    text = stringResource(R.string.episodes_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
+        } else {
             items(episodes, key = { it.uuid }) { episode ->
                 val isSelected = episode.uuid in selectedUuids
                 val handleTogglePlayed: () -> Unit = {
@@ -424,98 +423,64 @@ fun EpisodesScreen(
                         viewModel.togglePlayed(episode.uuid, episode.isPlayed)
                     }
                 }
-                val swipeState = rememberSwipeToDismissBoxState(
-                    confirmValueChange = { value ->
-                        when (value) {
-                            SwipeToDismissBoxValue.StartToEnd -> {
-                                handleTogglePlayed()
-                                false
-                            }
-                            SwipeToDismissBoxValue.EndToStart -> {
-                                if (episode.isDownloaded) {
-                                    val dm = ServiceLocator.downloadManager()
-                                    scope.launch { dm.delete(episode.toSummary()) }
-                                    onShowMessage("Removed download")
-                                } else {
-                                    onDownload(episode)
-                                }
-                                false
-                            }
-                            SwipeToDismissBoxValue.Settled -> false
-                        }
-                    },
-                )
-
-                SwipeToDismissBox(
-                    state = swipeState,
-                    backgroundContent = {
-                        val direction = swipeState.dismissDirection
-                        val bgColor = when (direction) {
-                            SwipeToDismissBoxValue.StartToEnd -> ElectricBlue.copy(alpha = 0.28f)
-                            SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-                            else -> Color.Transparent
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(bgColor)
-                                .padding(horizontal = 20.dp),
-                        ) {
-                            if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                                Row(
-                                    modifier = Modifier.align(Alignment.CenterStart),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.CheckCircle,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Text(
-                                        text = if (episode.isPlayed) "Mark Unplayed" else "Mark Listened",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            } else if (direction == SwipeToDismissBoxValue.EndToStart) {
-                                Row(
-                                    modifier = Modifier.align(Alignment.CenterEnd),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        text = if (episode.isDownloaded) "Remove Download" else "Download",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Icon(
-                                        imageVector = if (episode.isDownloaded) Icons.Filled.DeleteSweep else Icons.Filled.Download,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
-                            }
-                        }
-                    },
+                var swipeOffset by remember(episode.uuid) { mutableStateOf(0f) }
+                var swipeDirection by remember(episode.uuid) { mutableStateOf(0) }
+                var rowWidth by remember { mutableStateOf(0f) }
+                val cancelSwipe = { swipeDirection = 0; swipeOffset = 0f }
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                        .onSizeChanged { rowWidth = it.width.toFloat() }
+                        .then(swipeActionDismissal(swipeDirection != 0, cancelSwipe)),
                 ) {
+                    if (swipeOffset > 0f) {
+                        Row(
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            SwipeActionButton(
+                                icon = if (episode.isQueued) Icons.AutoMirrored.Filled.PlaylistAddCheck else Icons.AutoMirrored.Filled.PlaylistAdd,
+                                label = if (episode.isQueued) "Remove from Up Next" else "Add to Up Next",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = { onQueue(episode); cancelSwipe() },
+                            )
+                            SwipeActionButton(
+                                icon = Icons.Filled.Close,
+                                label = "Cancel",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = cancelSwipe,
+                            )
+                        }
+                    } else if (swipeOffset < 0f) {
+                        Row(
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.Close,
+                                label = "Cancel",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onClick = cancelSwipe,
+                            )
+                            SwipeActionButton(
+                                icon = if (episode.isArchived) Icons.Filled.Unarchive else Icons.Filled.Archive,
+                                label = if (episode.isArchived) "Unarchive" else "Archive",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = { viewModel.toggleArchived(episode.uuid, episode.isArchived); cancelSwipe() },
+                            )
+                        }
+                    }
                     EpisodeRow(
+                        modifier = Modifier.offset { IntOffset(swipeOffset.roundToInt(), 0) },
                         episode = episode,
                         now = now,
                         inSelectionMode = inSelectionMode,
                         isSelected = isSelected,
                         onPlay = {
                             if (inSelectionMode) {
-                                selectedUuids = if (isSelected) {
-                                    selectedUuids - episode.uuid
-                                } else {
-                                    selectedUuids + episode.uuid
-                                }
+                                selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
                             } else {
-                                // Always download when pressing play
                                 if (!episode.isDownloaded && !episode.isDownloading) {
                                     ServiceLocator.downloadManager().start(episode.toSummary())
                                 }
@@ -523,33 +488,29 @@ fun EpisodesScreen(
                             }
                         },
                         onLongPress = {
-                            selectedUuids = if (isSelected) {
-                                selectedUuids - episode.uuid
-                            } else {
-                                selectedUuids + episode.uuid
-                            }
+                            selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
                         },
                         onQueue = { onQueue(episode) },
                         onDownload = { onDownload(episode) },
                         onRemoveDownloads = {
                             val dm = ServiceLocator.downloadManager()
-                            scope.launch {
-                                dm.delete(episode.toSummary())
-                            }
+                            scope.launch { dm.delete(episode.toSummary()) }
                             onShowMessage("Removed download")
                         },
                         onOpenNotes = { notesEpisode = episode },
                         onTogglePlayed = handleTogglePlayed,
                         onToggleStar = { viewModel.setStarred(episode.uuid, !episode.starred) },
-                        onToggleArchived = {
-                            viewModel.toggleArchived(episode.uuid, episode.isArchived)
+                        onToggleArchived = { viewModel.toggleArchived(episode.uuid, episode.isArchived) },
+                        onSwipeOffsetChanged = { swipeOffset = it },
+                        onSwipeActionRevealed = { queue ->
+                            swipeDirection = if (queue) 1 else -1
+                            swipeOffset = rowWidth * swipeDirection
                         },
                         onRefresh = {
                             scope.launch {
                                 val show = podcast
                                 if (show != null) {
-                                    ServiceLocator.subscriptionRepository()
-                                        .importFeed(show.feedUrl)
+                                    ServiceLocator.subscriptionRepository().importFeed(show.feedUrl)
                                 }
                                 if (episode.isDownloaded) {
                                     val dm = ServiceLocator.downloadManager()
@@ -677,6 +638,9 @@ private fun EpisodeRow(
     onToggleStar: () -> Unit,
     onToggleArchived: () -> Unit,
     onRefresh: () -> Unit,
+    onSwipeOffsetChanged: (Float) -> Unit,
+    onSwipeActionRevealed: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
     var upwardDistance by remember(episode.uuid) { mutableStateOf(0f) }
@@ -686,16 +650,20 @@ private fun EpisodeRow(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onPlay,
         onLongClick = onLongPress,
-        modifier = Modifier.pointerInput(episode.uuid, swipeThreshold) {
+        modifier = modifier.pointerInput(episode.uuid, swipeThreshold) {
             detectDragGestures(
                 onDragStart = {
                     upwardDistance = 0f
                     horizontalDistance = 0f
                     notesOpenedBySwipe = false
+                    onSwipeOffsetChanged(0f)
                 },
                 onDrag = { change, dragAmount ->
                     horizontalDistance += dragAmount.x
                     upwardDistance += dragAmount.y
+                    onSwipeOffsetChanged(
+                        horizontalDistance.coerceIn(-swipeThreshold * 1.6f, swipeThreshold * 1.6f),
+                    )
                     if (!notesOpenedBySwipe &&
                         upwardDistance <= -swipeThreshold &&
                         kotlin.math.abs(horizontalDistance) < swipeThreshold
@@ -706,6 +674,17 @@ private fun EpisodeRow(
                     }
                     if (notesOpenedBySwipe) change.consume()
                 },
+                onDragEnd = {
+                    if (!notesOpenedBySwipe &&
+                        kotlin.math.abs(horizontalDistance) >= swipeThreshold &&
+                        kotlin.math.abs(horizontalDistance) > kotlin.math.abs(upwardDistance)
+                    ) {
+                        onSwipeActionRevealed(horizontalDistance > 0f)
+                    } else {
+                        onSwipeOffsetChanged(0f)
+                    }
+                },
+                onDragCancel = { onSwipeOffsetChanged(0f) },
             )
         },
         contentPadding = 14.dp,

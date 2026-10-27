@@ -3,7 +3,6 @@ package com.lohe.app.dev.mcp
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import java.io.IOException
 import java.io.OutputStreamWriter
 import java.net.Socket
 import java.util.UUID
@@ -11,24 +10,22 @@ import java.util.UUID
 /**
  * The HTTP transport of the MCP server.
  *
- * The Streamable HTTP transport is a single endpoint that answers POST with
- * JSON-RPC, keeps a server-to-client stream open on GET, and forgets the
- * session on DELETE. Everything is served from a socket the debug build owns
- * on the loopback interface, so it is only reachable through `adb forward`.
+ * POST serves JSON-RPC; DELETE closes the logical session. No notifications
+ * are pushed, so GET returns 405. The debug-only loopback server authenticates
+ * every request before handing it to this transport. Loopback is also reachable
+ * by other apps on the device, so authentication is required even without adb.
  */
 object McpHttp {
 
     /** The path the MCP endpoint is mounted on. */
     const val PATH = "/mcp"
 
-    /** The bearer token, the same one the REST surface uses. */
-    const val TOKEN = "lohe-dev"
 
     /** The name the server introduces itself under. */
     const val SERVER_NAME = "lohe"
 
     /** The server version reported at initialize. */
-    const val SERVER_VERSION = "0.8.0"
+    val SERVER_VERSION = com.lohe.app.BuildConfig.VERSION_NAME
 
     /**
      * The session id handed out with every response.
@@ -39,29 +36,13 @@ object McpHttp {
      */
     private val sessionId: String = UUID.randomUUID().toString()
 
-    /** How long the server-to-client stream is held open before it is closed. */
-    private const val SSE_HOLD_MS = 10 * 60 * 1000L
-
-    /** How often a comment is written to keep the stream alive. */
-    private const val SSE_PING_MS = 15_000L
-
-    /** Serves one MCP request. */
+    /** Serves a request already authenticated by DevApi. GET streams are optional in MCP. */
     suspend fun handle(
         socket: Socket,
         method: String,
-        headers: Map<String, String>,
         body: String,
         tools: McpTools,
     ) {
-        if (!authorized(headers)) {
-            respondJson(
-                socket,
-                401,
-                McpProtocol.failure(null, -32001, "Unauthorized").toString(),
-            )
-            return
-        }
-
         when (method) {
             "POST" -> {
                 val (status, payload) = handlePost(body, tools)
@@ -71,7 +52,7 @@ object McpHttp {
                     respondJson(socket, status, payload)
                 }
             }
-            "GET" -> respondEventStream(socket)
+            "GET" -> respondJson(socket, 405, McpProtocol.failure(null, -32000, "Server notifications are not supported").toString())
             "DELETE" -> respondEmpty(socket, 200)
             else -> respondJson(
                 socket,
@@ -79,12 +60,6 @@ object McpHttp {
                 McpProtocol.failure(null, McpProtocol.INVALID_REQUEST, "Method not allowed").toString(),
             )
         }
-    }
-
-    /** Whether the request carries the bearer token. */
-    private fun authorized(headers: Map<String, String>): Boolean {
-        val auth = headers["authorization"].orEmpty()
-        return auth == "Bearer $TOKEN"
     }
 
     /** Runs a batch or a single request and works out what to answer with. */
@@ -176,37 +151,6 @@ object McpHttp {
         w.write("Connection: close\r\n")
         w.write("\r\n")
         w.flush()
-    }
-
-    /**
-     * Holds the server-to-client stream open.
-     *
-     * Lohe has nothing to push — no notifications are sent — but the stream
-     * still has to exist for a client that insists on one. Comments keep it
-     * from being reaped as idle.
-     */
-    private fun respondEventStream(socket: Socket) {
-        val out = socket.getOutputStream()
-        val w = OutputStreamWriter(out, Charsets.UTF_8)
-        try {
-            w.write("HTTP/1.1 200 OK\r\n")
-            w.write("Content-Type: text/event-stream\r\n")
-            w.write("Cache-Control: no-store\r\n")
-            w.write("Mcp-Session-Id: $sessionId\r\n")
-            w.write("Connection: keep-alive\r\n")
-            w.write("\r\n")
-            w.flush()
-            val deadline = System.currentTimeMillis() + SSE_HOLD_MS
-            while (System.currentTimeMillis() < deadline) {
-                Thread.sleep(SSE_PING_MS)
-                w.write(": keep-alive\n\n")
-                w.flush()
-            }
-        } catch (e: IOException) {
-            // The client hung up. Nothing to clean up but the socket.
-        } finally {
-            runCatching { socket.close() }
-        }
     }
 
     private fun statusText(status: Int): String = when (status) {

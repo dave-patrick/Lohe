@@ -1,6 +1,7 @@
 package com.lohe.app.data.fetch
 
 import com.lohe.app.LOHE_FALLBACK_USER_AGENT
+import com.lohe.app.network.readBoundedBytes
 import com.lohe.app.LOHE_USER_AGENT
 import com.lohe.app.data.db.dao.EpisodeDao
 import com.lohe.app.data.db.dao.ListeningHistoryDao
@@ -43,6 +44,8 @@ private object NoOpListeningHistoryDao : ListeningHistoryDao {
     override suspend fun get(uuid: String): ListeningHistoryEntity? = null
     override suspend fun upsertAll(entries: List<ListeningHistoryEntity>) = Unit
     override suspend fun delete(uuid: String) = Unit
+    override suspend fun getMany(uuids: List<String>): List<ListeningHistoryEntity> = emptyList()
+    override suspend fun deleteMany(uuids: List<String>) = Unit
     override suspend fun clear() = Unit
 }
 
@@ -59,6 +62,7 @@ class RssPodcastFetcher(
     private val historyDao: ListeningHistoryDao = NoOpListeningHistoryDao,
     private val parser: FeedParser = FeedParser(),
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val transaction: suspend (suspend () -> Unit) -> Unit = { it() },
 ) : PodcastFetcher {
 
     override suspend fun fetch(feedUrl: String): PodcastEntity = withContext(io) {
@@ -72,43 +76,35 @@ class RssPodcastFetcher(
     override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> = runCatching {
         withContext(io) {
             val parsed = parser.parse(feedUrl, download(feedUrl))
-            podcastDao.upsert(parsed.podcast)
-
-            // Preserve user-controlled fields from existing episodes so a feed
-            // refresh never wipes out played status, resume position, downloads,
-            // or queue position.
-            val existing = episodeDao.byPodcastOnce(parsed.podcast.uuid)
-                .associateBy { it.uuid }
-            val mergedEpisodes = parsed.episodes.map { ep ->
-                val old = existing[ep.uuid]
-                // A show that was re-subscribed brings back episodes whose
-                // listening time was archived when it was removed. Fold the
-                // archived time back in so it is not counted twice.
-                val archived = historyDao.get(ep.uuid)
-                val restored = when {
-                    archived != null -> ep.copy(listenedSeconds = archived.listenedSeconds)
-                    old != null -> ep.copy(
-                        playingStatus = old.playingStatus,
-                        playedAt = old.playedAt,
-                        playedUpToSeconds = old.playedUpToSeconds,
-                        listenedSeconds = old.listenedSeconds,
-                        starred = old.starred,
-                        queuePosition = old.queuePosition,
-                        lastPlayedAt = old.lastPlayedAt,
-                        localPath = old.localPath,
-                        downloadState = old.downloadState,
-                        isDeleted = old.isDeleted,
-                        // Archived is the listener filing an episode away.
-                        // Dropping it here un-archived the whole back catalogue
-                        // on every refresh.
-                        isArchived = old.isArchived,
-                    )
-                    else -> ep
+            transaction {
+                podcastDao.upsert(parsed.podcast)
+                // Keep each batch below SQLite's bind limit and merge under the write transaction.
+                for (batch in parsed.episodes.chunked(400)) {
+                    val ids = batch.map { it.uuid }
+                    val existing = episodeDao.getMany(ids).associateBy { it.uuid }
+                    val history = historyDao.getMany(ids).associateBy { it.episodeUuid }
+                    val changed = batch.map { ep ->
+                        val old = existing[ep.uuid]
+                        val restored = if (old == null) ep else ep.copy(
+                            playingStatus = old.playingStatus,
+                            playedAt = old.playedAt,
+                            playedUpToSeconds = old.playedUpToSeconds,
+                            listenedSeconds = old.listenedSeconds,
+                            starred = old.starred,
+                            queuePosition = old.queuePosition,
+                            lastPlayedAt = old.lastPlayedAt,
+                            localPath = old.localPath,
+                            downloadState = old.downloadState,
+                            isDeleted = old.isDeleted,
+                            isArchived = old.isArchived,
+                            archivedAt = old.archivedAt,
+                        )
+                        restored.copy(listenedSeconds = maxOf(restored.listenedSeconds, history[ep.uuid]?.listenedSeconds ?: 0))
+                    }.filter { it != existing[it.uuid] }
+                    if (changed.isNotEmpty()) episodeDao.upsertAll(changed)
+                    if (history.isNotEmpty()) historyDao.deleteMany(history.keys.toList())
                 }
-                if (archived != null) historyDao.delete(ep.uuid)
-                restored
             }
-            episodeDao.upsertAll(mergedEpisodes)
             parsed.podcast
         }
     }
@@ -158,7 +154,7 @@ class RssPodcastFetcher(
 
         if (response.isSuccessful) {
             return response.use {
-                it.body?.bytes()
+                it.body?.readBoundedBytes(16 * 1024 * 1024)
                     ?: throw IllegalStateException("Feed returned an empty body")
             }
         }
@@ -186,7 +182,7 @@ class RssPodcastFetcher(
         return try {
             val alt = execute(candidate, bustCache = false, asBrowser = false)
             if (alt.isSuccessful) {
-                alt.use { it.body?.bytes() }
+                alt.use { it.body?.readBoundedBytes(16 * 1024 * 1024) }
             } else {
                 alt.close()
                 null

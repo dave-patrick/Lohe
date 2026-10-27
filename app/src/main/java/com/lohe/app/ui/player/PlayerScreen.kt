@@ -145,6 +145,8 @@ fun PlayerScreen(
     knownDurationMs: Long? = null,
     /** Whether playback starts amplified. */
     volumeBoostDefault: Boolean = false,
+    /** Waits for an interrupted episode to be queued before replacing it. */
+    onBeforeSwitchEpisode: suspend (String) -> Unit = {},
     onPersistSpeed: (Float) -> Unit = {},
     onPersistSkipSilence: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -212,9 +214,9 @@ fun PlayerScreen(
         }
     }
 
-    // Loading a new item is a one-shot per URI; re-running it on recomposition
-    // would restart the episode every time the transport poll ticks.
-    LaunchedEffect(mediaUri) {
+    // Loading a new item is a one-shot per episode/URI; re-running it on
+    // recomposition would restart the episode every time the transport poll ticks.
+    LaunchedEffect(mediaUri, mediaEpisodeId) {
         val uri = mediaUri?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val itemId = mediaEpisodeId?.takeIf { it.isNotBlank() } ?: uri
 
@@ -227,6 +229,15 @@ fun PlayerScreen(
             controller.currentMediaItem?.mediaId == itemId
         ) {
             return@LaunchedEffect
+        }
+
+        val interruptedEpisodeId = controller?.currentMediaItem?.mediaId
+            ?.takeIf { it.isNotBlank() && it != itemId }
+        if (interruptedEpisodeId != null) {
+            // Stop the old audio as soon as a different episode is selected,
+            // before waiting for its queue position to be persisted.
+            controller?.pause()
+            onBeforeSwitchEpisode(interruptedEpisodeId)
         }
 
         connection.play(

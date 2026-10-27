@@ -13,7 +13,7 @@ package com.lohe.app
  * fetches, the catalog search, and episode downloads) and a mismatch between
  * them is exactly the kind of thing that looks like a random 403.
  */
-const val LOHE_USER_AGENT = "Lohe/0.8.0 (+https://github.com/dave-patrick/Lohe)"
+val LOHE_USER_AGENT = "Lohe/${BuildConfig.VERSION_NAME} (+https://github.com/dave-patrick/Lohe)"
 
 /**
  * The User-Agent used for a second attempt after a 403.

@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.DropdownMenu
@@ -634,6 +635,7 @@ fun PlaylistsScreen(
 ) {
     val now = remember { System.currentTimeMillis() }
     val userPlaylists by viewModel.userPlaylists.collectAsState()
+    val subscribedShows by viewModel.subscribedShows.collectAsState()
     val dashboardStats by viewModel.dashboardStats.collectAsState()
     val settingsStore = remember { ServiceLocator.settingsStore() }
     val playlistSettings by settingsStore.settings.collectAsState(
@@ -649,6 +651,7 @@ fun PlaylistsScreen(
     val playlistSort by viewModel.playlistSort.collectAsState()
     var selectedFolder by rememberSaveable { mutableStateOf(ALL_PLAYLIST_FOLDERS) }
     var folderDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
+    var followDialogTarget by remember { mutableStateOf<ResolvedPlaylist?>(null) }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
@@ -817,6 +820,14 @@ fun PlaylistsScreen(
                                     viewModel.setPlaylistAutoDownload(openedPlaylist.id, it)
                                 },
                             )
+                        }
+                        if (!openedPlaylist.snapshot) {
+                            OutlinedButton(
+                                onClick = { followDialogTarget = openedPlaylist },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (openedPlaylist.shows.isEmpty()) "Choose shows to follow" else "Choose shows (${openedPlaylist.shows.size})")
+                            }
                         }
                     } else {
                         Text(
@@ -1137,6 +1148,9 @@ fun PlaylistsScreen(
                                     entry.episode.uuid,
                                 )
                             },
+                            onArchive = if (!openedPlaylist.system) ({
+                                viewModel.archiveEpisode(entry.episode.uuid)
+                            }) else null,
                         )
                     }
                 }
@@ -1694,6 +1708,56 @@ fun PlaylistsScreen(
             dismissLabel = "Cancel",
         )
     }
+
+    followDialogTarget?.let { playlist ->
+        FollowShowsDialog(
+            playlist = playlist,
+            shows = subscribedShows,
+            onDismiss = { followDialogTarget = null },
+            onSave = { selected ->
+                viewModel.setPlaylistShows(playlist.id, selected)
+                followDialogTarget = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun FollowShowsDialog(
+    playlist: ResolvedPlaylist,
+    shows: List<com.lohe.app.data.db.entity.PodcastEntity>,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>) -> Unit,
+) {
+    var selected by remember(playlist.id) { mutableStateOf(playlist.shows.toSet()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose shows") },
+        text = {
+            LazyColumn {
+                itemsIndexed(shows, key = { _, show -> show.uuid }) { _, show ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selected = if (show.uuid in selected) selected - show.uuid else selected + show.uuid
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = show.uuid in selected,
+                            onCheckedChange = { checked ->
+                                selected = if (checked) selected + show.uuid else selected - show.uuid
+                            },
+                        )
+                        Text(show.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(selected) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -2257,6 +2321,7 @@ private fun QueueRow(
     onMoveDown: (() -> Unit)?,
     onTogglePlayed: (() -> Unit)?,
     onRemove: (() -> Unit)?,
+    onArchive: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     dragHandle: @Composable (() -> Unit)? = null,
     dragHandleAtStart: Boolean = false,
@@ -2285,7 +2350,7 @@ private fun QueueRow(
                 // they can actually be tapped; the old behaviour settled
                 // straight back, which made them unreachable.
                 SwipeToDismissBoxValue.StartToEnd -> true
-                else -> false
+                SwipeToDismissBoxValue.Settled -> true
             }
         },
     )
@@ -2294,7 +2359,11 @@ private fun QueueRow(
 
     SwipeToDismissBox(
         state = dismissState,
-        modifier = modifier,
+        modifier = modifier.then(swipeActionDismissal(
+            open = dismissState.currentValue != SwipeToDismissBoxValue.Settled ||
+                dismissState.targetValue != SwipeToDismissBoxValue.Settled,
+            onDismiss = { scope.launch { dismissState.reset() } },
+        )),
         backgroundContent = {
             val direction = dismissState.dismissDirection
             val background = when (direction) {
@@ -2348,6 +2417,23 @@ private fun QueueRow(
                                 },
                             )
                         }
+                        if (onArchive != null && !ep.isArchived) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.Archive,
+                                label = "Archive",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onArchive()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
+                        SwipeActionButton(
+                            icon = Icons.Filled.Close,
+                            label = "Cancel",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = { scope.launch { dismissState.reset() } },
+                        )
                     }
                 } else if (direction == SwipeToDismissBoxValue.EndToStart && onRemove != null) {
                     Row(
@@ -2355,6 +2441,12 @@ private fun QueueRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        SwipeActionButton(
+                            icon = Icons.Filled.Close,
+                            label = "Cancel",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = { scope.launch { dismissState.reset() } },
+                        )
                         SwipeActionButton(
                             icon = Icons.Filled.Close,
                             label = stringResource(R.string.queue_remove),
@@ -2519,7 +2611,7 @@ private fun QueueRow(
  * The icon alone asked the listener to guess, so each one carries its name.
  */
 @Composable
-private fun SwipeActionButton(
+internal fun SwipeActionButton(
     icon: ImageVector,
     label: String,
     tint: Color,
@@ -2530,6 +2622,7 @@ private fun SwipeActionButton(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

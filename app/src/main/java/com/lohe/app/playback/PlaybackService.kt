@@ -26,6 +26,7 @@ import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.theme.ShowPlaybackSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -155,7 +156,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
             val root = catalog()?.rootItem()
             if (root == null) {
-                LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+                LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE)
             } else {
                 LibraryResult.ofItem(root, params)
             }
@@ -185,7 +186,7 @@ class PlaybackService : MediaLibraryService() {
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
             val item = catalog()?.item(mediaId)
-                ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+                ?: return@future LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE)
             LibraryResult.ofItem(item, null)
         }
 
@@ -231,12 +232,42 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
+            val startedAt = android.os.SystemClock.elapsedRealtime()
             val catalog = catalog() ?: return@future mutableListOf()
-            val shows = catalog.showsByUuid()
             val resolved = mediaItems.mapNotNull { item ->
-                catalog.playable(item.mediaId, shows)
+                catalog.playable(item.mediaId)
             }
+            DevDiagnostics.log(
+                "PLAYBACK_LOAD",
+                "Resolved ${resolved.size} item(s) in ${android.os.SystemClock.elapsedRealtime() - startedAt}ms",
+            )
             resolved.toMutableList()
+        }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+            val catalog = catalog()
+            val resolved = mediaItems.mapNotNull { catalog?.playable(it.mediaId) }
+            if (resolved.isEmpty()) {
+                return@future MediaSession.MediaItemsWithStartPosition(
+                    resolved, C.INDEX_UNSET, C.TIME_UNSET,
+                )
+            }
+            val index = if (startIndex == C.INDEX_UNSET) 0 else startIndex.coerceIn(resolved.indices)
+            val selected = resolved[index]
+            val position = if (startIndex != C.INDEX_UNSET && startPositionMs > 0L) {
+                startPositionMs
+            } else {
+                val saved = ServiceLocator.subscriptionRepository().playedPosition(selected.mediaId)
+                playbackStartPositionMs(saved, selected.mediaMetadata.durationMs ?: 0L)
+            }
+            DevDiagnostics.log("PLAYBACK_RESUME", "Prepared ${selected.mediaId} at ${position}ms before playback")
+            MediaSession.MediaItemsWithStartPosition(resolved, index, position)
         }
     }
 
@@ -281,11 +312,22 @@ class PlaybackService : MediaLibraryService() {
         private var observedMediaId: String? = null
         private var completingMediaId: String? = null
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady && player.playbackState != Player.STATE_IDLE &&
+                player.playbackState != Player.STATE_ENDED
+            ) {
+                persistProgress(player.currentPosition, player.duration)
+            }
+        }
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             val nextId = mediaItem?.mediaId?.takeIf { it.isNotBlank() }
             val previousId = observedMediaId
             observedMediaId = nextId
-            if (nextId != previousId) completingMediaId = null
+            if (nextId != previousId) {
+                completingMediaId = null
+                resumedForMediaId = null
+            }
 
             // A multi-item MediaSession queue transitions directly between
             // episodes without reporting STATE_ENDED for each one.
@@ -314,7 +356,7 @@ class PlaybackService : MediaLibraryService() {
                 applyVolumeBoost(Playback.volumeBoost.value)
             }
             if (playbackState != Player.STATE_ENDED) {
-                if (playbackState == Player.STATE_READY) resumeOnce()
+                if (playbackState == Player.STATE_READY) configureEpisodeOnce()
                 return
             }
 
@@ -398,6 +440,7 @@ class PlaybackService : MediaLibraryService() {
                         showTitle = showTitle,
                         artworkUrl = artworkUrl,
                     ),
+                    playbackStartPositionMs(next.playedUpToSeconds, (next.durationSeconds?.toLong() ?: 0L) * 1_000L),
                 )
                 applyShowSettings(next.podcastUuid)
                 applyCrossfade(next.uuid)
@@ -421,33 +464,24 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * Seeks to the stored position the first time an item becomes ready.
+         * Applies show settings once after preparation. The initial resume
+         * position is supplied before preparation, never sought after audio starts.
          *
-         * Guarded by [resumedForMediaId] because STATE_READY fires repeatedly —
-         * on every buffering recovery, not just the first load — and re-seeking
-         * each time would yank the listener back to the resume point.
+         * Guarded by [resumedForMediaId] because STATE_READY fires repeatedly
+         * on buffering recovery, and settings/intro handling should run once.
          */
-        private fun resumeOnce() {
+        private fun configureEpisodeOnce() {
             val item = player.currentMediaItem ?: return
             val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
             observedMediaId = mediaId
             if (resumedForMediaId == mediaId) return
             resumedForMediaId = mediaId
 
-            // player.duration must be read on the main thread (ExoPlayer requirement).
-            // resumeOnce() is called from onPlaybackStateChanged which runs on Main.
-            val durationMs = player.duration.takeIf { it > 0L } ?: 0L
+            val initialPositionMs = player.currentPosition
 
             scope.launch(Dispatchers.IO) {
                 val repository = runCatching { ServiceLocator.subscriptionRepository() }
                     .getOrNull() ?: return@launch
-                val saved = runCatching { repository.playedPosition(mediaId) }
-                    .getOrDefault(0L)
-
-                val intoTail = durationMs > 0L &&
-                    durationMs / 1_000L - saved < PLAYED_TAIL_SECONDS
-                val resumeSeconds = if (saved <= 0L || intoTail) 0L else saved
-
                 // Settings hang off the show, not the episode. Asking for the
                 // episode uuid found nothing, so every per-show setting — trim
                 // included — was silently falling back to the defaults.
@@ -455,6 +489,7 @@ class PlaybackService : MediaLibraryService() {
                     .getOrNull()
 
                 withContext(Dispatchers.Main) {
+                    if (player.currentMediaItem?.mediaId != mediaId) return@withContext
                     if (showUuid != null) {
                         applyShowSettings(showUuid)
                     } else {
@@ -468,12 +503,9 @@ class PlaybackService : MediaLibraryService() {
                     // A saved position inside this show's intro is no use: the
                     // listener was still in the bit the show asks to skip, so
                     // start from the top and let the head cut do its work.
-                    val insideIntro = _currentSkipIntroMs > 0L &&
-                        resumeSeconds * 1_000L < _currentSkipIntroMs
-                    if (resumeSeconds > 0L && !insideIntro) {
-                        player.seekTo(resumeSeconds * 1_000L)
-                    }
-                    onEpisodeStarted(mediaId, startingAtTheTop = resumeSeconds <= 0L || insideIntro)
+                    if (player.currentMediaItem?.mediaId != mediaId) return@withContext
+                    val insideIntro = _currentSkipIntroMs > 0L && initialPositionMs < _currentSkipIntroMs
+                    onEpisodeStarted(mediaId, startingAtTheTop = initialPositionMs <= 0L || insideIntro)
                 }
             }
         }
@@ -580,12 +612,12 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun startSleepTimerPolling() {
         scope.launch {
-            while (isActive) {
-                if (sleepTimer.isDue()) {
+            sleepTimer.state.collectLatest { state ->
+                if (state.deadlineMs != null) {
+                    while (!sleepTimer.isDue()) delay(sleepTimer.remainingMs().coerceAtLeast(1L))
                     sleepTimer.cancel()
                     player.pause()
                 }
-                delay(TIMER_POLL_MS)
             }
         }
     }
@@ -667,7 +699,6 @@ class PlaybackService : MediaLibraryService() {
     }
 
     companion object {
-        private const val TIMER_POLL_MS = 1_000L
         private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
 
         /** Maximum amplification applied by LoudnessEnhancer when volume boost is on. */

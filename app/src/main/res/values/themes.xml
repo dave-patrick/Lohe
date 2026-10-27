@@ -2,10 +2,11 @@
 <resources>
     <!-- Base window background. Dark is the primary mode, so this is the
          default even before the user picks a mode. -->
-    <style name="Theme.Lohe" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Lohe.Base" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/lohe_bg_900</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <style name="Theme.Lohe" parent="Theme.Lohe.Base" />
 </resources>

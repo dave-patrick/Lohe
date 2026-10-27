@@ -192,6 +192,13 @@ class LibraryCatalog(
         return playable(episode, shows)
     }
 
+    /** Resolves a play request using only that episode and its show. */
+    suspend fun playable(mediaId: String): MediaItem? {
+        val episode = repository.episodeOnce(mediaId) ?: return null
+        val show = repository.getPodcast(episode.podcastUuid)
+        return playable(episode, if (show == null) emptyMap() else mapOf(show.uuid to show))
+    }
+
     /** Podcast and episode matches for Android Auto voice and text search. */
     suspend fun search(query: String, limit: Int = 200): List<MediaItem> {
         val cleanQuery = query.trim()

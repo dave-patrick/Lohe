@@ -40,7 +40,10 @@ internal object EpisodeMaintenance {
                 .build())
         }
         scope.launch {
-            ServiceLocator.settingsStore().settings.map { it.autoArchiveHours }.distinctUntilChanged().collect {
+            ServiceLocator.settingsStore().settings
+                .map { it.autoArchiveHours to it.archiveKeepHours }
+                .distinctUntilChanged()
+                .collect {
                 safelyRun()
             }
         }
@@ -66,13 +69,29 @@ internal object EpisodeMaintenance {
         val repository = ServiceLocator.subscriptionRepository()
         val settings = ServiceLocator.settingsStore().settings.first()
         val now = System.currentTimeMillis()
-        val episodes = ServiceLocator.database().episodeDao().archiveCandidates()
-        for (episode in episodes) {
-            if (shouldAutoArchive(episode.isPlayed, episode.isArchived, episode.playedAt, settings.autoArchiveHours, now)) {
-                repository.archivePlayedIfDue(episode.uuid, now - settings.autoArchiveHours * 3_600_000L)
-            } else if (episode.isArchived && (episode.localPath != null || episode.downloadState != 0)) {
-                ServiceLocator.downloadManager().delete(episode.toSummary())
+        val dao = ServiceLocator.database().episodeDao()
+        var afterUuid = ""
+        while (true) {
+            val ids = dao.dueArchiveIds(settings.autoArchiveHours >= 0,
+                now - settings.autoArchiveHours.coerceAtLeast(0) * 3_600_000L,
+                now - settings.archiveKeepHours * 3_600_000L, afterUuid, 200)
+            if (ids.isEmpty()) break
+            for (id in ids) {
+                val episode = dao.get(id) ?: continue
+                if (shouldAutoArchive(episode.isPlayed, episode.isArchived, episode.playedAt, settings.autoArchiveHours, now)) {
+                    repository.archivePlayedIfDue(
+                        episode.uuid,
+                        now - settings.autoArchiveHours * 3_600_000L,
+                    )
+                } else if (
+                    episode.isArchived && episode.archivedAt != null && now >= episode.archivedAt &&
+                    now - episode.archivedAt >= settings.archiveKeepHours * 3_600_000L &&
+                    (episode.localPath != null || episode.downloadState != 0)
+                ) {
+                    ServiceLocator.downloadManager().delete(episode.toSummary())
+                }
             }
+            afterUuid = ids.last()
         }
     }
 }

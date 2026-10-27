@@ -21,8 +21,12 @@ class CarPlaybackService : CarAppService() {
     override fun onCreateSession(): Session = CarSession()
 
     override fun createHostValidator(): HostValidator {
-        // Allow the app to connect to any host for now. In production, this
-        // should be restricted to the head unit's certificate digest.
-        return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+        return if (com.lohe.app.BuildConfig.DEBUG) {
+            HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
+        } else {
+            HostValidator.Builder(this)
+                .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)
+                .build()
+        }
     }
 }

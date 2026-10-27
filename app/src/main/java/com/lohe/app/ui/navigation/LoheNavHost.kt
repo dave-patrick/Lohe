@@ -124,6 +124,14 @@ fun LoheNavHost(
     appearance: Appearance,
     onToggleAppearance: () -> Unit,
 ) {
+    SwipeActionsHost { LoheNavigationContent(appearance, onToggleAppearance) }
+}
+
+@Composable
+private fun LoheNavigationContent(
+    appearance: Appearance,
+    onToggleAppearance: () -> Unit,
+) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -160,6 +168,7 @@ fun LoheNavHost(
         DevDiagnostics.recordRoute(route, if (uuidArg.isNotBlank()) "uuid=$uuidArg" else "")
     }
 
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -216,6 +225,11 @@ fun LoheNavHost(
     // screen plays.
     val playerConnection = rememberPlayerConnection()
     val transport = rememberTransportState(playerConnection)
+    // Keep the selected episode in one piece of UI state; PlayerScreen queues
+    // the interrupted item before it replaces the active player item.
+    fun startEpisode(episode: NowPlaying) {
+        nowPlaying = episode
+    }
 
     LaunchedEffect(transport.value.mediaId) {
         transport.value.mediaId.takeIf { it.isNotBlank() }?.let { activeId ->
@@ -379,14 +393,14 @@ fun LoheNavHost(
                             if (!target.episode.isDownloaded && !target.episode.isDownloading) {
                                 ServiceLocator.downloadManager().start(target.episode.toSummary())
                             }
-                            nowPlaying = NowPlaying(
+                            startEpisode(NowPlaying(
                                 title = target.episode.title,
                                 uri = target.episode.playbackUri,
                                 showTitle = target.showTitle,
                                 episodeId = target.episode.uuid,
                                 artworkUrl = target.episode.artworkUrl,
                                 knownDurationSeconds = target.episode.durationSeconds,
-                            )
+                            ))
                             navController.navigate(Dest.PLAYER.route)
                         },
                         onOpenPlayer = {
@@ -397,14 +411,14 @@ fun LoheNavHost(
                                 val episode = fallbackEntry?.episode?.toSummary() ?: nextUp?.episode
                                 val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
                                 if (episode != null) {
-                                    nowPlaying = NowPlaying(
+                                    startEpisode(NowPlaying(
                                         title = episode.title,
                                         uri = episode.playbackUri,
                                         showTitle = showTitle,
                                         episodeId = episode.uuid,
                                         artworkUrl = episode.artworkUrl,
                                         knownDurationSeconds = episode.durationSeconds,
-                                    )
+                                    ))
                                 }
                             }
                             navController.navigate(Dest.PLAYER.route)
@@ -471,14 +485,14 @@ fun LoheNavHost(
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode.toSummary())
                         }
-                        nowPlaying = NowPlaying(
+                        startEpisode(NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
                             showTitle = entry.showTitle,
                             episodeId = entry.episode.uuid,
                             artworkUrl = entry.episode.artworkUrl,
                             knownDurationSeconds = entry.episode.durationSeconds,
-                        )
+                        ))
                         navController.navigate(Dest.PLAYER.route)
                     },
                     appearance = appearance,
@@ -499,7 +513,7 @@ fun LoheNavHost(
                     onPickOpmlToImport = { opmlPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) },
                     onPickExportDestination = { document ->
                         pendingExport = document
-                        exportWriter.launch(context.getString(R.string.opml_file_name))
+                        exportWriter.launch(resources.getString(R.string.opml_file_name))
                     },
                 )
             }
@@ -545,7 +559,7 @@ fun LoheNavHost(
                             ServiceLocator.downloadManager().start(episode.toSummary())
                         }
                         // A downloaded copy plays offline; playbackUri prefers it.
-                        nowPlaying = NowPlaying(
+                        startEpisode(NowPlaying(
                             title = episode.title,
                             uri = episode.playbackUri,
                             showTitle = queueTitle,
@@ -553,7 +567,7 @@ fun LoheNavHost(
                             artworkUrl = episode.artworkUrl ?: show?.artworkUrl,
                             description = episode.description ?: show?.description,
                             knownDurationSeconds = episode.durationSeconds,
-                        )
+                        ))
                         navController.navigate(Dest.PLAYER.route)
                     },
                 )
@@ -580,7 +594,7 @@ fun LoheNavHost(
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)
                         }
-                        nowPlaying = NowPlaying(
+                        startEpisode(NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
                             showTitle = entry.showTitle,
@@ -588,7 +602,7 @@ fun LoheNavHost(
                             artworkUrl = entry.episode.artworkUrl,
 
                             knownDurationSeconds = entry.episode.durationSeconds,
-                        )
+                        ))
                         navController.navigate(Dest.PLAYER.route)
                     },
                     onShowMessage = { msg -> importMessage = msg },
@@ -607,7 +621,7 @@ fun LoheNavHost(
                         if (!entry.episode.isDownloaded && !entry.episode.isDownloading) {
                             ServiceLocator.downloadManager().start(entry.episode)
                         }
-                        nowPlaying = NowPlaying(
+                        startEpisode(NowPlaying(
                             title = entry.episode.title,
                             uri = entry.episode.playbackUri,
                             showTitle = entry.showTitle,
@@ -615,7 +629,7 @@ fun LoheNavHost(
                             artworkUrl = entry.episode.artworkUrl,
 
                             knownDurationSeconds = entry.episode.durationSeconds,
-                        )
+                        ))
                         navController.navigate(Dest.PLAYER.route)
                     },
                     onShowMessage = { msg -> importMessage = msg },
@@ -628,6 +642,13 @@ fun LoheNavHost(
                     appearance = appearance,
                     floatingPlayerEnabled = playbackSettings.floatingPlayerEnabled,
                     settingsStore = settingsStore,
+                    onBeforeSwitchEpisode = { previousEpisodeId ->
+                        queueViewModel.enqueueInterruptedEpisode(previousEpisodeId)
+                        DevDiagnostics.log(
+                            "PLAYBACK_SWITCH",
+                            "Queued interrupted episode $previousEpisodeId at the head before switching",
+                        )
+                    },
                     onShrink = { navController.popBackStack() },
                     mediaUri = nowPlaying?.uri,
                     mediaEpisodeId = nowPlaying?.episodeId,

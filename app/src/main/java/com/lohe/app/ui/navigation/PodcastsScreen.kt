@@ -121,13 +121,6 @@ import kotlinx.coroutines.launch
 
 private const val ALL_PODCASTS = "__ALL_PODCASTS__"
 
-/** What a show's cards need to say without being opened. */
-private data class ShowStats(
-    val total: Int,
-    val unplayed: Int,
-    val latest: Long,
-)
-
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PodcastsScreen(
@@ -143,6 +136,7 @@ fun PodcastsScreen(
     onPickOpmlToImport: () -> Unit,
     onPickExportDestination: (String) -> Unit,
 ) {
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val podcasts by viewModel.podcasts.collectAsState()
@@ -213,17 +207,7 @@ fun PodcastsScreen(
     // Counts and freshness per show. The counts are on every card, not only
     // in the two orders that sort by them: how much of a show is still waiting
     // is the first thing a library of this size has to answer.
-    val showStats = remember(allEpisodes) {
-        allEpisodes.groupBy { it.podcastUuid }
-            .mapValues { (_, episodes) ->
-                val live = episodes.filter { !it.isDeleted }
-                ShowStats(
-                    total = live.size,
-                    unplayed = live.count { !it.isPlayed && !it.isArchived },
-                    latest = episodes.maxOf { it.published },
-                )
-            }
-    }
+    val showStats by viewModel.showStats.collectAsState()
 
     val visiblePodcasts = remember(podcasts, userPlaylists, selectedPlaylistId, podcastSort, showStats) {
         val playlistPodcastUuids = userPlaylists.firstOrNull { it.id == selectedPlaylistId }
@@ -248,7 +232,7 @@ fun PodcastsScreen(
         when (val state = import) {
             is FeedImportState.Succeeded -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(R.string.podcasts_feed_added, state.showTitle),
+                    resources.getString(R.string.podcasts_feed_added, state.showTitle),
                 )
                 showAddFeed = false
                 viewModel.consumeFeedImport()
@@ -270,7 +254,7 @@ fun PodcastsScreen(
                 if (r.failed == 0) {
                     // Nothing went wrong, so the summary is all that is needed.
                     snackbarHostState.showSnackbar(
-                        context.getString(R.string.opml_imported_clean, r.imported),
+                        resources.getString(R.string.opml_imported_clean, r.imported),
                         duration = SnackbarDuration.Long,
                     )
                 } else {
@@ -306,9 +290,9 @@ fun PodcastsScreen(
             is RefreshState.Done -> {
                 val s = state.summary
                 val summary = if (s.failed == 0) {
-                    context.getString(R.string.refresh_clean, s.refreshed)
+                    resources.getString(R.string.refresh_clean, s.refreshed)
                 } else {
-                    context.getString(R.string.refresh_partial, s.refreshed, s.failed)
+                    resources.getString(R.string.refresh_partial, s.refreshed, s.failed)
                 }
                 snackbarHostState.showSnackbar(summary)
                 viewModel.consumeRefresh()
@@ -641,7 +625,7 @@ fun PodcastsScreen(
                                             .getOrNull()
                                         if (document == null) {
                                             snackbarHostState.showSnackbar(
-                                                context.getString(R.string.opml_export_failed),
+                                                resources.getString(R.string.opml_export_failed),
                                             )
                                         } else {
                                             onPickExportDestination(document)
@@ -1332,110 +1316,72 @@ private fun SwipeablePodcastCard(
     content: @Composable (() -> Unit) -> Unit,
 ) {
     val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value -> false }, // always settle back; actions are tapped in the background
+        confirmValueChange = { true }, // Reveal actions; committing still requires a tap.
     )
-
-    val startBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-    val endBg = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f)
 
     SwipeToDismissBox(
         state = state,
+        modifier = swipeActionDismissal(
+            open = state.currentValue != SwipeToDismissBoxValue.Settled ||
+                state.targetValue != SwipeToDismissBoxValue.Settled,
+            onDismiss = { scope.launch { state.reset() } },
+        ),
         backgroundContent = {
-            val dir = state.dismissDirection
-            val bg = when (dir) {
-                SwipeToDismissBoxValue.StartToEnd -> startBg
-                SwipeToDismissBoxValue.EndToStart -> endBg
-                else -> Color.Transparent
-            }
+            val direction = state.dismissDirection
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(bg)
-                    .padding(horizontal = 16.dp),
+                Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                    .padding(horizontal = 12.dp),
             ) {
-                if (dir == SwipeToDismissBoxValue.StartToEnd) {
-                    Row(
-                        modifier = Modifier.align(Alignment.CenterStart),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        IconButton(
-                            onClick = onQueue,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                contentDescription = "Add to Up Next",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Text(
-                            text = "Up Next",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                Row(
+                    modifier = Modifier.align(
+                        if (direction == SwipeToDismissBoxValue.EndToStart) Alignment.CenterEnd
+                        else Alignment.CenterStart,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SwipeActionButton(
+                        icon = Icons.Filled.Close,
+                        label = "Cancel",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = { scope.launch { state.reset() } },
+                    )
+                    if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                        SwipeActionButton(
+                            icon = Icons.AutoMirrored.Filled.QueueMusic,
+                            label = "Up Next",
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = { onQueue(); scope.launch { state.reset() } },
                         )
-                        IconButton(
-                            onClick = onAddToPlaylist,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
-                                contentDescription = "Add to Playlist",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Text(
-                            text = "Playlist",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                        SwipeActionButton(
+                            icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+                            label = "Playlist",
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = { onAddToPlaylist(); scope.launch { state.reset() } },
                         )
-                        IconButton(
-                            onClick = onTogglePlayed,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.CheckCircle,
-                                contentDescription = "Toggle listened",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Text(
-                            text = "Listened",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                        SwipeActionButton(
+                            icon = Icons.Filled.CheckCircle,
+                            label = "Listened",
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = { onTogglePlayed(); scope.launch { state.reset() } },
                         )
-                    }
-                } else if (dir == SwipeToDismissBoxValue.EndToStart) {
-                    Row(
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        IconButton(
+                    } else if (direction == SwipeToDismissBoxValue.EndToStart) {
+                        SwipeActionButton(
+                            icon = Icons.Filled.DeleteOutline,
+                            label = "Unsubscribe",
+                            tint = MaterialTheme.colorScheme.error,
                             onClick = {
                                 scope.launch { viewModel.unsubscribe(podcast.uuid) }
                                 onShowMessage("Unsubscribed from ${podcast.title}")
+                                scope.launch { state.reset() }
                             },
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteOutline,
-                                contentDescription = "Unsubscribe",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                        )
                     }
                 }
             }
         },
-    ) {
-        content(onOpen)
-    }
+    ) { content(onOpen) }
 }
 
 @Composable

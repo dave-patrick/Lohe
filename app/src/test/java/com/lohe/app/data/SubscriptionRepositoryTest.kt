@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 /**
  * Exercises the repository's fan-out logic against in-memory DAOs and a
@@ -111,7 +112,13 @@ class SubscriptionRepositoryTest {
     }
 
     private class FakeEpisodeDao : com.lohe.app.data.db.dao.EpisodeDao {
+        var upsertCalls = 0
         val rows = mutableListOf<EpisodeEntity>()
+        override fun observePodcastStats() = kotlinx.coroutines.flow.flowOf(
+            rows.groupBy { it.podcastUuid }.map { (uuid, episodes) ->
+                com.lohe.app.data.db.dao.PodcastEpisodeStats(uuid, episodes.count { !it.isDeleted },
+                    episodes.count { !it.isDeleted && !it.isPlayed && !it.isArchived }, episodes.maxOf { it.published })
+            })
         override fun observeAllSummaries() =
             kotlinx.coroutines.flow.flowOf(rows.map { it.toSummary() }.toList())
         override fun observeAllEntities() = kotlinx.coroutines.flow.flowOf(rows.toList())
@@ -128,13 +135,16 @@ class SubscriptionRepositoryTest {
             kotlinx.coroutines.flow.flowOf(rows.filter { it.isQueued }.sortedBy { it.queuePosition })
 
         override suspend fun upsertAll(episodes: List<EpisodeEntity>) {
+            upsertCalls++
             episodes.forEach { incoming ->
                 rows.removeAll { it.uuid == incoming.uuid }
                 rows += incoming
             }
         }
 
+        override suspend fun getMany(uuids: List<String>) = rows.filter { it.uuid in uuids }
         override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
+        override suspend fun searchByTitle(query: String, limit: Int) = rows.filter { it.title.contains(query, ignoreCase = true) }.take(limit)
         override fun observeByPodcast(podcastUuid: String) =
             kotlinx.coroutines.flow.flowOf(rows.filter { it.podcastUuid == podcastUuid })
 
@@ -182,8 +192,9 @@ class SubscriptionRepositoryTest {
         override suspend fun markPlayed(uuid: String) = Unit
         override suspend fun setStarred(uuid: String, starred: Boolean) = Unit
         override suspend fun setArchived(uuid: String, archived: Boolean) = Unit
+        override suspend fun archive(uuid: String, now: Long) = Unit
         override suspend fun archivePlayedIfDue(uuid: String, cutoff: Long): Int = 0
-        override suspend fun archiveCandidates(): List<EpisodeEntity> = emptyList()
+        override suspend fun dueArchiveIds(archiveEnabled: Boolean, playedCutoff: Long, deleteCutoff: Long, afterUuid: String, limit: Int): List<String> = emptyList()
         override suspend fun setDeletedFor(uuids: List<String>, deleted: Boolean) = Unit
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
@@ -262,13 +273,20 @@ class SubscriptionRepositoryTest {
 
     /** In-memory stand-in for the archived listening history store. */
     private class FakeHistoryDao : com.lohe.app.data.db.dao.ListeningHistoryDao {
+        var batchReads = 0
+        var singleReads = 0
         private val rows = mutableMapOf<String, com.lohe.app.data.db.entity.ListeningHistoryEntity>()
         override fun observeAll(): kotlinx.coroutines.flow.Flow<
             List<com.lohe.app.data.db.entity.ListeningHistoryEntity>,
             > = kotlinx.coroutines.flow.flowOf(rows.values.toList())
         override suspend fun allOnce(): List<com.lohe.app.data.db.entity.ListeningHistoryEntity> =
             rows.values.toList()
-        override suspend fun get(uuid: String) = rows[uuid]
+        override suspend fun getMany(uuids: List<String>): List<com.lohe.app.data.db.entity.ListeningHistoryEntity> {
+            batchReads++
+            return allOnce().filter { it.episodeUuid in uuids }
+        }
+        override suspend fun deleteMany(uuids: List<String>) { uuids.forEach { delete(it) } }
+        override suspend fun get(uuid: String): com.lohe.app.data.db.entity.ListeningHistoryEntity? { singleReads++; return rows[uuid] }
         override suspend fun upsertAll(
             entries: List<com.lohe.app.data.db.entity.ListeningHistoryEntity>,
         ) {
@@ -650,4 +668,30 @@ class SubscriptionRepositoryTest {
         sizeBytes = size,
         downloadState = downloadState,
     )
+
+    @Test
+    fun `feed refresh batches history preserves local state and skips unchanged episodes`() = runTest {
+        val feed = """<rss version="2.0"><channel><title>Show</title><item><guid>one</guid><title>Updated</title><enclosure url="https://example.com/audio.mp3" type="audio/mpeg"/><pubDate>Mon, 26 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>"""
+        val url = "https://example.com/feed"
+        val parsed = com.lohe.app.data.fetch.FeedParser().parse(url, feed.toByteArray())
+        val episode = parsed.episodes.single().copy(title = "Old", playingStatus = 1,
+            playedUpToSeconds = 42, listenedSeconds = 40, starred = true, queuePosition = 3,
+            localPath = "/private/audio.mp3", downloadState = DownloadState.DONE, isArchived = true, archivedAt = 100L)
+        val episodes = FakeEpisodeDao().also { it.rows.add(episode) }
+        val history = FakeHistoryDao()
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(200).message("OK").body(feed.toResponseBody()).build()
+        }.build()
+        var transactions = 0
+        val fetcher = com.lohe.app.data.fetch.RssPodcastFetcher(client, FakePodcastDao(), episodes, history,
+            transaction = { block -> transactions++; block() })
+        assertTrue(fetcher.importFeed(url).isSuccess)
+        assertEquals(episode.copy(title = "Updated"), episodes.rows.single())
+        assertTrue(fetcher.importFeed(url).isSuccess)
+        assertEquals(1, episodes.upsertCalls)
+        assertEquals(2, history.batchReads)
+        assertEquals(0, history.singleReads)
+        assertEquals(2, transactions)
+    }
 }

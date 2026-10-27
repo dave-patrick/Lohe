@@ -65,6 +65,8 @@ data class EpisodeEntity(
      * Home signal, while archives without actual listening do not inflate it.
      */
     val isArchived: Boolean = false,
+    /** When archived; starts the retention period for its downloaded copy. */
+    val archivedAt: Long? = null,
     /**
      * Position in the play queue; null when the episode is not queued.
      *
@@ -157,6 +159,8 @@ data class EpisodeSummary(
     val isDeleted: Boolean = false,
     /** Set aside by the listener; see [EpisodeEntity.isArchived]. */
     val isArchived: Boolean = false,
+    /** When archived; null for archived episodes from older versions. */
+    val archivedAt: Long? = null,
     val queuePosition: Int? = null,
     val lastPlayedAt: Long? = null,
     /** Completion timestamp; separate from the last playback/queue activity. */
@@ -215,6 +219,7 @@ fun EpisodeEntity.toSummary(): EpisodeSummary = EpisodeSummary(
     starred = starred,
     isDeleted = isDeleted,
     isArchived = isArchived,
+    archivedAt = archivedAt,
     queuePosition = queuePosition,
     lastPlayedAt = lastPlayedAt,
     playedAt = playedAt,

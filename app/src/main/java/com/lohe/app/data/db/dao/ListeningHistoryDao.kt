@@ -25,6 +25,12 @@ interface ListeningHistoryDao {
     @Query("DELETE FROM listening_history WHERE episodeUuid = :uuid")
     suspend fun delete(uuid: String)
 
+    @Query("SELECT * FROM listening_history WHERE episodeUuid IN (:uuids)")
+    suspend fun getMany(uuids: List<String>): List<ListeningHistoryEntity>
+
+    @Query("DELETE FROM listening_history WHERE episodeUuid IN (:uuids)")
+    suspend fun deleteMany(uuids: List<String>)
+
     @Query("DELETE FROM listening_history")
     suspend fun clear()
 }

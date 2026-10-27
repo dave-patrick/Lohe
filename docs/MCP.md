@@ -93,10 +93,16 @@ Two things end the session without being asked to:
 
 ## Pointing a client at it
 
-Every request needs the bearer token:
+Each debug installation generates a random token stored only in its private,
+non-backed-up `no_backup/debug-api-token` file. Retrieve it locally through
+`adb shell run-as com.lohe.app cat no_backup/debug-api-token` and configure your
+client privately. Do not commit or share its value. Release builds never start
+this API. Reinstalling after clearing app data generates a new token.
+
+Every request needs that token:
 
 ```
-Authorization: Bearer lohe-dev
+Authorization: Bearer <installation-token>
 ```
 
 For OpenCode, add it to the global configuration
@@ -110,7 +116,7 @@ For OpenCode, add it to the global configuration
       "type": "remote",
       "url": "http://127.0.0.1:8765/mcp",
       "headers": {
-        "Authorization": "Bearer lohe-dev"
+        "Authorization": "Bearer <installation-token>"
       },
       "enabled": true
     }
@@ -200,7 +206,7 @@ POST /subscribe                {"feedUrl":...}
 ```
 
 ```cmd
-curl -H "Authorization: Bearer lohe-dev" http://127.0.0.1:8765/shows
+curl -H "Authorization: Bearer <installation-token>" http://127.0.0.1:8765/shows
 ```
 
 ## What it will not do
@@ -217,3 +223,12 @@ curl -H "Authorization: Bearer lohe-dev" http://127.0.0.1:8765/shows
 - `lohe_refresh_feeds` and `lohe_subscribe` are network round trips, one
   per show. They are slow on purpose: a feed that cannot be read fails on
   its own rather than taking the rest of the refresh down with it.
+
+## Request limits
+
+The API authenticates before reading a body. It permits up to 16 simultaneous
+connections, 8 KiB per header line, 32 KiB of headers, and 16 MiB of UTF-8 body
+bytes. Socket reads time out after five idle seconds and requests have a
+30-second read deadline. Chunked request bodies are not supported. The MCP
+server has no server-originated notifications; GET `/mcp` returns 405 rather
+than holding an idle SSE stream. Clients should use POST for requests.

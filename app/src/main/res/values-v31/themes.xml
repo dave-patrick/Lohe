@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Lohe" parent="Theme.Lohe.Base">
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <!-- Lohe renders its full branded splash in Compose. Avoid showing a
+             second, system-masked launcher icon before that artwork. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_empty</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>

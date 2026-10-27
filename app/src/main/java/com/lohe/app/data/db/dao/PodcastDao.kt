@@ -100,7 +100,7 @@ interface PodcastDao {
     @Query("SELECT COUNT(*) FROM podcasts WHERE isSubscribed = 1")
     suspend fun count(): Int
 
-    @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 AND (title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%') ORDER BY title COLLATE NOCASE")
+    @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 AND (title LIKE '%' || replace(replace(replace(:query, '!', '!!'), '%', '!%'), '_', '!_') || '%' ESCAPE '!' OR author LIKE '%' || replace(replace(replace(:query, '!', '!!'), '%', '!%'), '_', '!_') || '%' ESCAPE '!' OR description LIKE '%' || replace(replace(replace(:query, '!', '!!'), '%', '!%'), '_', '!_') || '%' ESCAPE '!') ORDER BY title COLLATE NOCASE")
     fun observeSearchResults(query: String): Flow<List<PodcastEntity>>
 
     @Query("SELECT * FROM podcasts WHERE feedUrl = :feedUrl LIMIT 1")

@@ -48,7 +48,6 @@ class FloatingPlaybackService : Service() {
     private val preferences by lazy { getSharedPreferences("floating-player-position", MODE_PRIVATE) }
     private var expanded = false
     private var attached = false
-    private var displayedPlaying: Boolean? = null
     private var backSeconds = 10
     private var forwardSeconds = 30
     private var diameter = 56
@@ -100,24 +99,26 @@ class FloatingPlaybackService : Service() {
             }
         }
         scope.launch {
+            connection.isPlaying.collect { playing -> updatePlaying(playing) }
+        }
+        scope.launch {
             while (isActive) {
                 if (!Settings.canDrawOverlays(this@FloatingPlaybackService)) {
                     ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
                     stopSelf()
                     break
                 }
-                val playing = connection.controller?.isPlaying == true
-                if (displayedPlaying != playing) {
-                    playButton.setImageResource(if (playing) R.drawable.ic_float_pause else R.drawable.ic_float_play)
-                    playButton.contentDescription = if (playing) {
-                        "Pause; double-tap to expand controls; hold to close"
-                    } else {
-                        "Play; double-tap to expand controls; hold to close"
-                    }
-                    displayedPlaying = playing
-                }
-                delay(300)
+                delay(2_000)
             }
+        }
+    }
+
+    private fun updatePlaying(playing: Boolean) {
+        playButton.setImageResource(if (playing) R.drawable.ic_float_pause else R.drawable.ic_float_play)
+        playButton.contentDescription = if (playing) {
+            "Pause; double-tap to expand controls; hold to close"
+        } else {
+            "Play; double-tap to expand controls; hold to close"
         }
     }
 
@@ -161,7 +162,6 @@ class FloatingPlaybackService : Service() {
     }
 
     private fun render() {
-        displayedPlaying = null
         controls.removeAllViews()
         val buttonSize = floatingPlayerButtonSize(diameter)
         (controls.background as GradientDrawable).cornerRadius = dp(diameter / 2).toFloat()
@@ -173,7 +173,7 @@ class FloatingPlaybackService : Service() {
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } else connection.togglePlayPause()
         }
-        playButton.contentDescription = "Play or pause; double-tap to expand controls; hold to close"
+        updatePlaying(connection.isPlaying.value)
         val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(event: MotionEvent): Boolean = true
 

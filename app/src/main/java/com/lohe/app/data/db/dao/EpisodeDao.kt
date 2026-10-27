@@ -9,8 +9,20 @@ import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.EpisodeSummary
 import kotlinx.coroutines.flow.Flow
 
+data class PodcastEpisodeStats(val podcastUuid: String, val total: Int, val unplayed: Int, val latest: Long)
+
 @Dao
 interface EpisodeDao {
+    @Query("""
+        SELECT podcastUuid, SUM(CASE WHEN isDeleted = 0 THEN 1 ELSE 0 END) AS total,
+            SUM(CASE WHEN isDeleted = 0 AND playingStatus != 2 AND isArchived = 0 THEN 1 ELSE 0 END) AS unplayed,
+            MAX(published) AS latest FROM episodes GROUP BY podcastUuid
+    """)
+    fun observePodcastStats(): Flow<List<PodcastEpisodeStats>>
+
+
+    @Query("SELECT * FROM episodes WHERE uuid IN (:uuids)")
+    suspend fun getMany(uuids: List<String>): List<EpisodeEntity>
 
     @Query("SELECT * FROM episodes WHERE uuid = :uuid")
     suspend fun get(uuid: String): EpisodeEntity?
@@ -40,7 +52,7 @@ interface EpisodeDao {
         WHERE podcasts.isSubscribed = 1
           AND episodes.isDeleted = 0
           AND episodes.isArchived = 0
-          AND episodes.title LIKE '%' || :query || '%' COLLATE NOCASE
+          AND episodes.title LIKE '%' || replace(replace(replace(:query, '!', '!!'), '%', '!%'), '_', '!_') || '%' ESCAPE '!' COLLATE NOCASE
         ORDER BY episodes.published DESC
         LIMIT :limit
         """,
@@ -64,7 +76,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
+               isArchived, archivedAt, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
         FROM episodes
         ORDER BY published DESC
         """
@@ -189,7 +201,7 @@ interface EpisodeDao {
         SELECT uuid, podcastUuid, title, audioUrl, published, durationSeconds,
                sizeBytes, fileType, author, artworkUrl, playingStatus,
                playedUpToSeconds, listenedSeconds, starred, isDeleted,
-               isArchived, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
+               isArchived, archivedAt, queuePosition, lastPlayedAt, playedAt, localPath, downloadState
         FROM episodes
         WHERE downloadState = 2 AND localPath IS NOT NULL
         ORDER BY published DESC
@@ -257,7 +269,8 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET playingStatus = 0, playedUpToSeconds = 0, listenedSeconds = 0, isArchived = 0, playedAt = NULL
+        SET playingStatus = 0, playedUpToSeconds = 0, listenedSeconds = 0,
+            isArchived = 0, archivedAt = NULL, playedAt = NULL
         WHERE uuid = :uuid AND playingStatus = 2
         """
     )
@@ -294,7 +307,8 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET playingStatus = 0, playedUpToSeconds = 0, playedAt = NULL
+        SET playingStatus = 0, playedUpToSeconds = 0, playedAt = NULL,
+            isArchived = 0, archivedAt = NULL
         WHERE uuid = :uuid
         """
     )
@@ -315,14 +329,22 @@ interface EpisodeDao {
      * An archived episode is left out of the episode lists and stops
      * counting towards the listening figures.
      */
-    @Query("UPDATE episodes SET isArchived = :archived WHERE uuid = :uuid")
+    @Query("UPDATE episodes SET isArchived = :archived, archivedAt = CASE WHEN :archived = 1 THEN archivedAt ELSE NULL END WHERE uuid = :uuid")
     suspend fun setArchived(uuid: String, archived: Boolean)
 
-    @Query("UPDATE episodes SET isArchived = 1 WHERE uuid = :uuid AND playingStatus = 2 AND isArchived = 0 AND playedAt IS NOT NULL AND playedAt <= :cutoff")
+    @Query("UPDATE episodes SET isArchived = 1, archivedAt = CAST(strftime('%s', 'now') AS INTEGER) * 1000, queuePosition = NULL WHERE uuid = :uuid AND playingStatus = 2 AND isArchived = 0 AND playedAt IS NOT NULL AND playedAt <= :cutoff")
     suspend fun archivePlayedIfDue(uuid: String, cutoff: Long): Int
 
-    @Query("SELECT * FROM episodes WHERE (playingStatus = 2 AND isArchived = 0 AND playedAt IS NOT NULL) OR (isArchived = 1 AND (localPath IS NOT NULL OR downloadState != 0))")
-    suspend fun archiveCandidates(): List<EpisodeEntity>
+    @Query("UPDATE episodes SET isArchived = 1, archivedAt = :now, playingStatus = 2, playedAt = COALESCE(playedAt, :now), playedUpToSeconds = 0, queuePosition = NULL WHERE uuid = :uuid")
+    suspend fun archive(uuid: String, now: Long)
+
+    @Query("""
+        SELECT uuid FROM episodes WHERE uuid > :afterUuid AND (
+            (:archiveEnabled AND playingStatus = 2 AND isArchived = 0 AND playedAt <= :playedCutoff)
+            OR (isArchived = 1 AND archivedAt <= :deleteCutoff AND (localPath IS NOT NULL OR downloadState != 0))
+        ) ORDER BY uuid LIMIT :limit
+    """)
+    suspend fun dueArchiveIds(archiveEnabled: Boolean, playedCutoff: Long, deleteCutoff: Long, afterUuid: String, limit: Int): List<String>
 
     /**
      * Files several episodes away, or brings them back, in one statement.

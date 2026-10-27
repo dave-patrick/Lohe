@@ -16,6 +16,7 @@ import com.lohe.app.ui.image.ArtworkLoader
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import androidx.room.withTransaction
 import okhttp3.OkHttpClient
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -46,12 +47,16 @@ class SubscriptionRepository internal constructor(
     private val autoDownload: (EpisodeEntity) -> Unit = {},
     private val onPlayed: suspend (String) -> Unit = {},
     private val onArchived: suspend (EpisodeEntity) -> Unit = {},
+    private val playlistMayAutoDownload: (String) -> Boolean = { false },
+    private val playlistIncludesForAutoDownload: (String, EpisodeEntity) -> Boolean = { _, _ -> false },
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
     fun observeSearchResults(query: String): Flow<List<PodcastEntity>> = 
         if (query.isBlank()) podcasts.observeAll() 
         else podcasts.observeSearchResults(query)
+
+    fun observePodcastStats() = episodes.observePodcastStats()
 
     fun observeAllEpisodes(): Flow<List<EpisodeSummary>> = episodes.observeAllSummaries()
 
@@ -148,7 +153,11 @@ class SubscriptionRepository internal constructor(
      * lists and stop counting towards the listening figures.
      */
     suspend fun setArchived(uuid: String, archived: Boolean) {
-        episodes.setArchived(uuid, archived)
+        if (archived) {
+            episodes.archive(uuid, System.currentTimeMillis())
+        } else {
+            episodes.setArchived(uuid, false)
+        }
         if (archived) episodes.get(uuid)?.let { onArchived(it) }
     }
 
@@ -374,7 +383,8 @@ class SubscriptionRepository internal constructor(
 
         targets.forEach { podcast ->
             // Captured before the fetch so the diff is against pre-refresh state.
-            val known = if (podcast.autoDownload || podcast.autoAddNewEpisodesToUpNext) {
+            val playlistMayDownload = playlistMayAutoDownload(podcast.uuid)
+            val known = if (podcast.autoDownload || podcast.autoAddNewEpisodesToUpNext || playlistMayDownload) {
                 episodes.byPodcastOnce(podcast.uuid).mapTo(mutableSetOf()) { it.uuid }
             } else {
                 null
@@ -386,9 +396,17 @@ class SubscriptionRepository internal constructor(
                     if (known != null && known.isNotEmpty()) {
                         val newlySeen = episodes.byPodcastOnce(podcast.uuid)
                             .filter { it.uuid !in known && !it.isPlayed && !it.isDeleted && !it.isArchived }
-                        if (podcast.autoDownload) newlySeen.forEach(autoDownload)
-                        if (podcast.autoAddNewEpisodesToUpNext) {
-                            enqueueNewEpisodes(podcast, newlySeen)
+                        try {
+                            if (podcast.autoDownload) newlySeen.forEach(autoDownload)
+                            else if (playlistMayDownload) {
+                                newlySeen.filter { playlistIncludesForAutoDownload(podcast.uuid, it) }
+                                    .forEach(autoDownload)
+                            }
+                            if (podcast.autoAddNewEpisodesToUpNext) {
+                                enqueueNewEpisodes(podcast, newlySeen)
+                            }
+                        } catch (e: Exception) {
+                            // Post-import bookkeeping must not fail the whole sweep.
                         }
                     }
                 }
@@ -472,26 +490,29 @@ object ServiceLocator {
             },
             onArchived = { episode ->
                 playlistRepository().removeEpisodeFromAll(episode.uuid)
-                try {
-                    downloadManager().delete(episode.toSummary())
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    android.util.Log.e("EpisodeArchive", "Download cleanup will retry for ${episode.uuid}", failure)
-                }
+            },
+            playlistMayAutoDownload = { podcastUuid ->
+                playlistRepository().shouldAutoDownloadPodcast(podcastUuid)
+            },
+            playlistIncludesForAutoDownload = { podcastUuid, episode ->
+                playlistRepository().shouldAutoDownloadEpisode(podcastUuid, episode)
             },
         )
+
+    private val baseHttpClient by lazy { OkHttpClient() }
 
     fun podcastFetcher(): PodcastFetcher =
         fetcher ?: synchronized(this) {
             fetcher ?: RssPodcastFetcher(
-                client = OkHttpClient.Builder()
+                client = baseHttpClient.newBuilder()
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .readTimeout(20, TimeUnit.SECONDS)
+                    .callTimeout(60, TimeUnit.SECONDS)
                     .build(),
                 podcastDao = database().podcastDao(),
                 episodeDao = database().episodeDao(),
                 historyDao = database().listeningHistoryDao(),
+                transaction = { block -> database().withTransaction { block() } },
             ).also { fetcher = it }
         }
 
@@ -510,9 +531,10 @@ object ServiceLocator {
     fun catalogSearcher(): CatalogSearcher =
         searcher ?: synchronized(this) {
             searcher ?: CatalogSearcher(
-                client = OkHttpClient.Builder()
+                client = baseHttpClient.newBuilder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(15, TimeUnit.SECONDS)
+                    .callTimeout(30, TimeUnit.SECONDS)
                     .build(),
             ).also { searcher = it }
         }
@@ -523,9 +545,10 @@ object ServiceLocator {
         artworkLoader ?: synchronized(this) {
             artworkLoader ?: ArtworkLoader(
                 context = context ?: error("ServiceLocator not initialized"),
-                client = OkHttpClient.Builder()
+                client = baseHttpClient.newBuilder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(15, TimeUnit.SECONDS)
+                    .callTimeout(30, TimeUnit.SECONDS)
                     .build(),
             ).also { artworkLoader = it }
         }
@@ -537,6 +560,7 @@ object ServiceLocator {
             downloads ?: DownloadManager(
                 context = context ?: error("ServiceLocator not initialized"),
                 repository = subscriptionRepository(),
+                client = baseHttpClient.newBuilder().readTimeout(30, TimeUnit.SECONDS).build(),
             ).also { downloads = it }
         }
 

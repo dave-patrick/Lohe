@@ -16,16 +16,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!--
-      Local folder playback goes through the Storage Access Framework, which
-      grants per-tree access without a runtime permission. Broad media
-      permissions are still listed for on-device discovery on API <= 32; on
-      API 33+ READ_MEDIA_AUDIO covers the equivalent.
-    -->
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Local audio uses user-granted Storage Access Framework tree access. -->
 
     <!-- Playback continues while the app is backgrounded. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -44,6 +35,8 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:largeHeap="true"
@@ -91,6 +84,7 @@
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
             </intent-filter>
 
             <!--
@@ -124,6 +118,7 @@
             android:configChanges="uiMode"
             android:enabled="false"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
@@ -141,6 +136,8 @@
         <!-- Android Automotive OS car app service. -->
         <service
             android:name=".playback.CarPlaybackService"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
