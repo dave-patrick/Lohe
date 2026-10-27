@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,7 @@ fun EpisodeNotesSheet(
     onPlay: (() -> Unit)? = null,
     onAddToUpNextTop: (() -> Unit)? = null,
     onAddToUpNextBottom: (() -> Unit)? = null,
+    onSelect: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     LoheSheet(onDismiss = onDismiss) {
@@ -161,6 +163,18 @@ fun EpisodeNotesSheet(
                             Text("Up Next: Bottom", maxLines = 1)
                         }
                     }
+                }
+            }
+
+            if (onSelect != null) {
+                TextButton(
+                    onClick = {
+                        onSelect()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Select multiple episodes")
                 }
             }
 

@@ -489,7 +489,12 @@ fun EpisodesScreen(
                             }
                         },
                         onLongPress = {
-                            selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
+                            if (inSelectionMode) {
+                                selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
+                            } else {
+                                // Long press shows the details; multi-select starts from there.
+                                notesEpisode = episode
+                            }
                         },
                         onQueue = { onQueue(episode) },
                         onDownload = { onDownload(episode) },
@@ -555,6 +560,7 @@ fun EpisodesScreen(
                 }
                 onShowMessage("Added to bottom of Up Next")
             },
+            onSelect = { selectedUuids = selectedUuids + ep.uuid },
             onDismiss = { notesEpisode = null },
         )
     }

@@ -3,6 +3,11 @@ package com.lohe.app.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,6 +69,7 @@ fun NowPlayingBar(
     onPlayFallback: (() -> Unit)? = null,
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
+    onSwipeUp: (() -> Unit)? = null,
 ) {
     // Visible when something is playing, when there is something to resume,
     // or when the queue has an episode ready to play next.
@@ -84,8 +90,27 @@ fun NowPlayingBar(
 
     val isLight = backgroundIsLight()
     val shape = RoundedCornerShape(36.dp)
+    val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    val currentOnSwipeUp by rememberUpdatedState(onSwipeUp)
     Box(
         modifier = modifier
+            // Swiping up on the bar opens the episode's full details. The bar
+            // does not scroll, so an upward drag here is never a scroll.
+            .pointerInput(Unit) {
+                var dragged = 0f
+                var fired = false
+                detectVerticalDragGestures(
+                    onDragStart = { dragged = 0f; fired = false },
+                    onVerticalDrag = { change, amount ->
+                        dragged += amount
+                        change.consume()
+                        if (!fired && dragged <= -swipeThreshold) {
+                            fired = true
+                            currentOnSwipeUp?.invoke()
+                        }
+                    },
+                )
+            }
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
