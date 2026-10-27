@@ -14,7 +14,7 @@ media3 = "1.11.1"
 documentfile = "1.1.0"
 savedstate = "1.5.0"
 datastore = "1.2.1"
-work = "2.10.0"
+work = "2.12.0"
 junit = "4.13.2"
 kxml2 = "2.3.0"
 # Pinned to the coroutines that compose/lifecycle already resolve, so the test
