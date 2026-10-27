@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class EpisodesViewModel(
     private val repository: SubscriptionRepository,
     private val podcastUuid: String,
+    private val viewStore: EpisodeViewStore? = null,
 ) : ViewModel() {
 
     val podcast: StateFlow<PodcastEntity?> = repository
@@ -25,12 +26,20 @@ class EpisodesViewModel(
         .map { list -> list.firstOrNull { it.uuid == podcastUuid } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _filter = MutableStateFlow(EpisodeFilter.Filter.ALL)
-    private val _order = MutableStateFlow(EpisodeFilter.Order.NEWEST_FIRST)
+    // The view chosen in this podcast last time, so it opens the way it was left.
+    private val saved = viewStore?.load(podcastUuid) ?: EpisodeView()
+    private val _filter = MutableStateFlow(saved.filter)
+    private val _order = MutableStateFlow(saved.order)
+    private val _hidePlayed = MutableStateFlow(saved.hidePlayed)
     private val _query = MutableStateFlow("")
 
     val filter: StateFlow<EpisodeFilter.Filter> = _filter.asStateFlow()
     val order: StateFlow<EpisodeFilter.Order> = _order.asStateFlow()
+    val hidePlayed: StateFlow<Boolean> = _hidePlayed.asStateFlow()
+
+    private fun saveView() {
+        viewStore?.save(podcastUuid, EpisodeView(_filter.value, _order.value, _hidePlayed.value))
+    }
 
     /**
      * Episodes for this show, filtered and ordered.
@@ -45,7 +54,15 @@ class EpisodesViewModel(
             _filter,
             _order,
             _query,
-        ) { all, show, filter, order, query ->
+            _hidePlayed,
+        ) { values ->
+            @Suppress("UNCHECKED_CAST")
+            val all = values[0] as List<EpisodeEntity>
+            val show = values[1] as PodcastEntity?
+            val filter = values[2] as EpisodeFilter.Filter
+            val order = values[3] as EpisodeFilter.Order
+            val query = values[4] as String
+            val hidePlayed = values[5] as Boolean
             val fallbackArt = show?.artworkUrl?.takeIf { it.isNotBlank() }
             val resolved = if (fallbackArt != null) {
                 all.map { ep ->
@@ -54,15 +71,22 @@ class EpisodesViewModel(
             } else {
                 all
             }
-            EpisodeFilter.apply(resolved, filter, order, query)
+            EpisodeFilter.apply(resolved, filter, order, query, hidePlayed)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setFilter(value: EpisodeFilter.Filter) {
         _filter.value = value
+        saveView()
     }
 
     fun setOrder(value: EpisodeFilter.Order) {
         _order.value = value
+        saveView()
+    }
+
+    fun setHidePlayed(value: Boolean) {
+        _hidePlayed.value = value
+        saveView()
     }
 
     fun setQuery(value: String) {
@@ -115,5 +139,9 @@ class EpisodesViewModelFactory(
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        EpisodesViewModel(ServiceLocator.subscriptionRepository(), podcastUuid) as T
+        EpisodesViewModel(
+            ServiceLocator.subscriptionRepository(),
+            podcastUuid,
+            ServiceLocator.episodeViewStore(),
+        ) as T
 }

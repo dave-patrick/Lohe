@@ -539,6 +539,12 @@ object ServiceLocator {
     /** Durable user preferences, shared by every screen that needs them. */
     @Volatile private var settingsStore: com.lohe.app.ui.theme.SettingsStore? = null
 
+    fun episodeViewStore(): EpisodeViewStore =
+        EpisodeViewStore(
+            (context ?: error("ServiceLocator not initialized"))
+                .getSharedPreferences("episode_views", Context.MODE_PRIVATE),
+        )
+
     fun settingsStore(): com.lohe.app.ui.theme.SettingsStore =
         settingsStore ?: synchronized(this) {
             settingsStore ?: com.lohe.app.ui.theme.SettingsStore(

@@ -111,6 +111,7 @@ fun EpisodesScreen(
     val episodes by viewModel.episodes.collectAsState()
     val filter by viewModel.filter.collectAsState()
     val order by viewModel.order.collectAsState()
+    val hidePlayed by viewModel.hidePlayed.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -397,13 +398,23 @@ fun EpisodesScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EpisodeFilter.Filter.entries.forEach { option ->
-                FilterChip(
-                    selected = option == filter,
-                    onClick = { viewModel.setFilter(option) },
-                    label = { Text(option.label, maxLines = 1) },
-                )
-            }
+            // One toggle replaces the separate Played and Unplayed chips: it
+            // works on top of whichever view is chosen, and is remembered
+            // per podcast along with the filter and the sort order.
+            FilterChip(
+                selected = hidePlayed,
+                onClick = { viewModel.setHidePlayed(!hidePlayed) },
+                label = { Text("Hide Played", maxLines = 1) },
+            )
+            EpisodeFilter.Filter.entries
+                .filter { it != EpisodeFilter.Filter.PLAYED && it != EpisodeFilter.Filter.UNPLAYED }
+                .forEach { option ->
+                    FilterChip(
+                        selected = option == filter,
+                        onClick = { viewModel.setFilter(option) },
+                        label = { Text(option.label, maxLines = 1) },
+                    )
+                }
         }
         }
 

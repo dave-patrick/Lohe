@@ -3,6 +3,8 @@ package com.lohe.app.ui.navigation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -79,8 +81,9 @@ fun ShowSettingsSheetFor(
 }
 
 /**
- * Up Next automation for one show: queue its new episodes as they arrive,
- * and pull in everything already published with one tap.
+ * Up Next automation for one show, kept to a couple of lines: a switch that
+ * queues new episodes as they arrive (with where to put them), and two small
+ * buttons that pull in everything already published.
  */
 @Composable
 fun ShowUpNextControls(podcastUuid: String) {
@@ -93,22 +96,28 @@ fun ShowUpNextControls(podcastUuid: String) {
     LaunchedEffect(podcastUuid) { podcast = repository.getPodcast(podcastUuid) }
     val show = podcast ?: return
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Add new episodes to Up Next",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+            Text(
+                text = "Add new episodes to Up Next",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            if (show.autoAddNewEpisodesToUpNext) {
+                FilterChip(
+                    selected = show.autoAddNewEpisodesAtTop,
+                    onClick = {
+                        val atTop = !show.autoAddNewEpisodesAtTop
+                        podcast = show.copy(autoAddNewEpisodesAtTop = atTop)
+                        scope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, atTop) }
+                    },
+                    label = { Text(if (show.autoAddNewEpisodesAtTop) "Top" else "Bottom") },
                 )
-                Text(
-                    text = "Queue each new episode when this show refreshes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Spacer(Modifier.width(8.dp))
             }
             Switch(
                 checked = show.autoAddNewEpisodesToUpNext,
@@ -118,60 +127,36 @@ fun ShowUpNextControls(podcastUuid: String) {
                 },
             )
         }
-
-        if (show.autoAddNewEpisodesToUpNext) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Place them at the",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(8.dp))
-                RadioButton(
-                    selected = show.autoAddNewEpisodesAtTop,
-                    onClick = {
-                        podcast = show.copy(autoAddNewEpisodesAtTop = true)
-                        scope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, true) }
-                    },
-                )
-                Text("Top")
-                Spacer(Modifier.width(8.dp))
-                RadioButton(
-                    selected = !show.autoAddNewEpisodesAtTop,
-                    onClick = {
-                        podcast = show.copy(autoAddNewEpisodesAtTop = false)
-                        scope.launch { repository.setAutoAddNewEpisodesAtTop(podcastUuid, false) }
-                    },
-                )
-                Text("Bottom")
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(true to "Add all to top", false to "Add all to bottom").forEach { (atTop, label) ->
-                OutlinedButton(
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = message ?: "Add all unplayed now",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (message != null) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.weight(1f),
+            )
+            listOf(true to "Top", false to "Bottom").forEach { (atTop, label) ->
+                TextButton(
                     onClick = {
                         scope.launch {
                             val added = repository.addAllEpisodesToUpNext(podcastUuid, atTop)
                             message = if (added == 0) {
-                                "No unplayed episodes to add"
+                                "Nothing unplayed to add"
                             } else {
-                                "Added $added episode${if (added == 1) "" else "s"} to Up Next"
+                                "Added $added to Up Next"
                             }
                         }
                     },
-                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(label, maxLines = 1)
+                    Text(label)
                 }
             }
-        }
-        message?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }
@@ -210,6 +195,9 @@ fun ShowSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // The sheet is taller than the screen once every setting is
+                // listed, so it has to scroll or the bottom is unreachable.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),

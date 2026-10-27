@@ -51,11 +51,15 @@ object EpisodeFilter {
         filter: Filter,
         order: Order,
         query: String = "",
+        hidePlayed: Boolean = false,
     ): List<EpisodeEntity> {
         val needle = query.trim().lowercase()
 
         val matched = episodes.asSequence()
             .filter { episode -> !episode.isDeleted }
+            // Hide Played composes with every filter, so "Downloaded" plus
+            // "Hide Played" is the downloaded episodes still left to hear.
+            .filter { episode -> !hidePlayed || !episode.isPlayed }
             // Archived episodes are out of the way unless they are what the
             // listener asked to see.
             .filter { episode ->
