@@ -245,4 +245,28 @@ class EpisodeFilterTest {
             }
         }
     }
+
+    @Test
+    fun `hide played drops played episodes and composes with the filter`() {
+        val shown = EpisodeFilter.apply(
+            list, EpisodeFilter.Filter.ALL, EpisodeFilter.Order.NEWEST_FIRST, hidePlayed = true,
+        )
+        assertTrue(shown.none { it.isPlayed })
+        assertFalse(shown.isEmpty())
+
+        val starred = EpisodeFilter.apply(
+            list, EpisodeFilter.Filter.STARRED, EpisodeFilter.Order.NEWEST_FIRST, hidePlayed = true,
+        )
+        assertTrue(starred.all { it.starred && !it.isPlayed })
+    }
+
+    @Test
+    fun `a saved view round trips and unknown values fall back to defaults`() {
+        val view = EpisodeView(
+            EpisodeFilter.Filter.DOWNLOADED, EpisodeFilter.Order.OLDEST_FIRST, hidePlayed = true,
+        )
+        assertEquals(view, EpisodeView.decode(view.encode()))
+        assertEquals(EpisodeView(), EpisodeView.decode(null))
+        assertEquals(EpisodeView(), EpisodeView.decode("NOPE|WRONG|x"))
+    }
 }

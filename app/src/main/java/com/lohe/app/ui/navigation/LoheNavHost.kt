@@ -181,6 +181,10 @@ private fun LoheNavigationContent(
     var pendingOpml by remember { mutableStateOf<ByteArray?>(null) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
     var importMessage by remember { mutableStateOf<String?>(null) }
+    // Episode details opened by swiping up on the Now Playing bar.
+    var barDetails by remember {
+        mutableStateOf<Pair<com.lohe.app.data.db.entity.EpisodeEntity, com.lohe.app.data.db.entity.PodcastEntity?>?>(null)
+    }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
 
     LaunchedEffect(nowPlaying?.episodeId, nowPlaying?.description) {
@@ -423,6 +427,27 @@ private fun LoheNavigationContent(
                             }
                             navController.navigate(Dest.PLAYER.route)
                         },
+                        onSwipeUp = {
+                            val id = currentEpisodeId ?: fallbackEntry?.episode?.uuid ?: nextUp?.episode?.uuid
+                            if (id != null) {
+                                scope.launch {
+                                    val repo = ServiceLocator.subscriptionRepository()
+                                    val episode = repo.episodeOnce(id) ?: return@launch
+                                    barDetails = episode to repo.getPodcast(episode.podcastUuid)
+                                }
+                            }
+                        },
+                    )
+                }
+
+                barDetails?.let { (ep, show) ->
+                    com.lohe.app.ui.player.EpisodeNotesSheet(
+                        title = ep.title,
+                        showTitle = show?.title.orEmpty(),
+                        artworkUrl = ep.artworkUrl ?: show?.artworkUrl,
+                        description = ep.description ?: show?.description,
+                        durationSeconds = ep.durationSeconds,
+                        onDismiss = { barDetails = null },
                     )
                 }
 

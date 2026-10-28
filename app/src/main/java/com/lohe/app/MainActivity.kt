@@ -37,6 +37,19 @@ class MainActivity : ComponentActivity() {
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
         com.lohe.app.dev.DevApi.start(this)
+        // Check for new episodes whenever the app comes to the front, but not
+        // more than once every 15 minutes so flipping between apps stays cheap.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val prefs = getSharedPreferences("feed_refresh", MODE_PRIVATE)
+                val now = System.currentTimeMillis()
+                val last = prefs.getLong("last_open_refresh", 0L)
+                if (now - last >= 15 * 60_000L || now < last) {
+                    prefs.edit().putLong("last_open_refresh", now).apply()
+                    runCatching { ServiceLocator.subscriptionRepository().refreshAllFeeds() }
+                }
+            }
+        }
         lifecycleScope.launch {
             ServiceLocator.settingsStore().settings.map { it.debugButtonEnabled }.distinctUntilChanged().collect {
                 DevDiagnostics.recordingEnabled = BuildConfig.DEBUG || it

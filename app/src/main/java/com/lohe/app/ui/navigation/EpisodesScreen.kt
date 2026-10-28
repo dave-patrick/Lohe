@@ -1,7 +1,8 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +111,7 @@ fun EpisodesScreen(
     val episodes by viewModel.episodes.collectAsState()
     val filter by viewModel.filter.collectAsState()
     val order by viewModel.order.collectAsState()
+    val hidePlayed by viewModel.hidePlayed.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -346,17 +348,18 @@ fun EpisodesScreen(
         // --- The show itself: artwork, name, and what it is about ---
         if (podcast != null) item(key = "podcast-details") {
             val show = podcast ?: return@item
+            var descriptionExpanded by remember(show.uuid) { mutableStateOf(false) }
             GlassCard(contentPadding = 16.dp) {
                 Row(verticalAlignment = Alignment.Top) {
                     RemoteImage(
                         url = show.artworkUrl,
                         contentDescription = null,
-                        size = 92.dp,
+                        size = 132.dp,
                         fallbackLabel = show.title,
-                        cornerRadius = 14.dp,
-                        modifier = Modifier.size(92.dp),
+                        cornerRadius = 18.dp,
+                        modifier = Modifier.size(132.dp),
                     )
-                    Spacer(Modifier.size(14.dp))
+                    Spacer(Modifier.size(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = show.title,
@@ -377,8 +380,9 @@ fun EpisodesScreen(
                                 text = blurb,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 6,
+                                maxLines = if (descriptionExpanded) Int.MAX_VALUE else 10,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable { descriptionExpanded = !descriptionExpanded },
                             )
                         }
                     }
@@ -394,13 +398,23 @@ fun EpisodesScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EpisodeFilter.Filter.entries.forEach { option ->
-                FilterChip(
-                    selected = option == filter,
-                    onClick = { viewModel.setFilter(option) },
-                    label = { Text(option.label, maxLines = 1) },
-                )
-            }
+            // One toggle replaces the separate Played and Unplayed chips: it
+            // works on top of whichever view is chosen, and is remembered
+            // per podcast along with the filter and the sort order.
+            FilterChip(
+                selected = hidePlayed,
+                onClick = { viewModel.setHidePlayed(!hidePlayed) },
+                label = { Text("Hide Played", maxLines = 1) },
+            )
+            EpisodeFilter.Filter.entries
+                .filter { it != EpisodeFilter.Filter.PLAYED && it != EpisodeFilter.Filter.UNPLAYED }
+                .forEach { option ->
+                    FilterChip(
+                        selected = option == filter,
+                        onClick = { viewModel.setFilter(option) },
+                        label = { Text(option.label, maxLines = 1) },
+                    )
+                }
         }
         }
 
@@ -481,14 +495,17 @@ fun EpisodesScreen(
                             if (inSelectionMode) {
                                 selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
                             } else {
-                                if (!episode.isDownloaded && !episode.isDownloading) {
-                                    ServiceLocator.downloadManager().start(episode.toSummary())
-                                }
-                                onPlay(episode)
+                                // Tapping shows the notes; playing is a button there.
+                                notesEpisode = episode
                             }
                         },
                         onLongPress = {
-                            selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
+                            if (inSelectionMode) {
+                                selectedUuids = if (isSelected) selectedUuids - episode.uuid else selectedUuids + episode.uuid
+                            } else {
+                                // Long press shows the details; multi-select starts from there.
+                                notesEpisode = episode
+                            }
                         },
                         onQueue = { onQueue(episode) },
                         onDownload = { onDownload(episode) },
@@ -533,8 +550,28 @@ fun EpisodesScreen(
             artworkUrl = ep.artworkUrl ?: podcast?.artworkUrl,
             description = ep.description ?: podcast?.description,
             durationSeconds = ep.durationSeconds,
-            onPlay = { onPlay(ep) },
-            onAddToUpNext = { onQueue(ep) },
+            onPlay = {
+                // Always download when pressing play
+                if (!ep.isDownloaded && !ep.isDownloading) {
+                    ServiceLocator.downloadManager().start(ep.toSummary())
+                }
+                onPlay(ep)
+            },
+            onAddToUpNextTop = {
+                // Enqueue is a no-op for an episode already queued, and the
+                // promote that follows still moves it to the front.
+                queueViewModel.enqueue(ep.uuid, toTop = true)
+                onShowMessage("Added to top of Up Next")
+            },
+            onAddToUpNextBottom = {
+                if (ep.isQueued) {
+                    queueViewModel.moveInQueue(ep.uuid, 100_000)
+                } else {
+                    queueViewModel.enqueue(ep.uuid)
+                }
+                onShowMessage("Added to bottom of Up Next")
+            },
+            onSelect = { selectedUuids = selectedUuids + ep.uuid },
             onDismiss = { notesEpisode = null },
         )
     }
@@ -558,6 +595,7 @@ fun EpisodesScreen(
             onSetSkipOutro = { v -> scope.launch { store.setShowSkipOutroSeconds(podcast!!.uuid, v) } },
             onReset = { scope.launch { store.clearShowPlaybackSettings(podcast!!.uuid) } },
             onDismiss = { showSettings = false },
+            extra = { ShowUpNextControls(podcast!!.uuid) },
         )
     }
 
@@ -642,43 +680,31 @@ private fun EpisodeRow(
     onSwipeActionRevealed: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Horizontal drags only. A swipe-up-for-details gesture used to live
+    // here, but an upward drag is also how the list scrolls: the handler took
+    // every drag, so the list would not scroll and details opened instead.
+    // Details are a tap away now.
     val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
-    var upwardDistance by remember(episode.uuid) { mutableStateOf(0f) }
     var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
-    var notesOpenedBySwipe by remember(episode.uuid) { mutableStateOf(false) }
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onPlay,
         onLongClick = onLongPress,
         modifier = modifier.pointerInput(episode.uuid, swipeThreshold) {
-            detectDragGestures(
+            detectHorizontalDragGestures(
                 onDragStart = {
-                    upwardDistance = 0f
                     horizontalDistance = 0f
-                    notesOpenedBySwipe = false
                     onSwipeOffsetChanged(0f)
                 },
-                onDrag = { change, dragAmount ->
-                    horizontalDistance += dragAmount.x
-                    upwardDistance += dragAmount.y
+                onHorizontalDrag = { change, dragAmount ->
+                    horizontalDistance += dragAmount
+                    change.consume()
                     onSwipeOffsetChanged(
                         horizontalDistance.coerceIn(-swipeThreshold * 1.6f, swipeThreshold * 1.6f),
                     )
-                    if (!notesOpenedBySwipe &&
-                        upwardDistance <= -swipeThreshold &&
-                        kotlin.math.abs(horizontalDistance) < swipeThreshold
-                    ) {
-                        notesOpenedBySwipe = true
-                        change.consume()
-                        onOpenNotes()
-                    }
-                    if (notesOpenedBySwipe) change.consume()
                 },
                 onDragEnd = {
-                    if (!notesOpenedBySwipe &&
-                        kotlin.math.abs(horizontalDistance) >= swipeThreshold &&
-                        kotlin.math.abs(horizontalDistance) > kotlin.math.abs(upwardDistance)
-                    ) {
+                    if (kotlin.math.abs(horizontalDistance) >= swipeThreshold) {
                         onSwipeActionRevealed(horizontalDistance > 0f)
                     } else {
                         onSwipeOffsetChanged(0f)

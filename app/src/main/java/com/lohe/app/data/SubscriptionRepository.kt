@@ -101,6 +101,24 @@ class SubscriptionRepository internal constructor(
         }
     }
 
+    /**
+     * Queues every unplayed episode of a show, oldest first so they play in
+     * the order they were published. Returns how many were added.
+     *
+     * Archived and deleted episodes are left out, and episodes already in Up
+     * Next keep their place unless [atTop] pulls the whole batch forward.
+     */
+    suspend fun addAllEpisodesToUpNext(podcastUuid: String, atTop: Boolean): Int {
+        val batch = episodes.byPodcastOnce(podcastUuid)
+            .filter { !it.isPlayed && !it.isDeleted && !it.isArchived }
+            .sortedBy { it.published }
+        if (batch.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        batch.forEach { episodes.enqueue(it.uuid, now) }
+        if (atTop) episodes.promoteBatchInQueue(batch.map { it.uuid })
+        return batch.size
+    }
+
     suspend fun dequeue(uuid: String) = episodes.dequeue(uuid)
 
     /** A single episode, looked up by uuid. */
@@ -520,6 +538,12 @@ object ServiceLocator {
 
     /** Durable user preferences, shared by every screen that needs them. */
     @Volatile private var settingsStore: com.lohe.app.ui.theme.SettingsStore? = null
+
+    fun episodeViewStore(): EpisodeViewStore =
+        EpisodeViewStore(
+            (context ?: error("ServiceLocator not initialized"))
+                .getSharedPreferences("episode_views", Context.MODE_PRIVATE),
+        )
 
     fun settingsStore(): com.lohe.app.ui.theme.SettingsStore =
         settingsStore ?: synchronized(this) {

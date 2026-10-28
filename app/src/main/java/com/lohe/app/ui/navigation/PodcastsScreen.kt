@@ -171,6 +171,8 @@ fun PodcastsScreen(
     var selectedPodcastUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedPodcastUuids.isNotEmpty()
     var playlistPickerUuids by remember { mutableStateOf<List<String>?>(null) }
+    // The shows behind the picker, so "Keep updated" can follow them.
+    var playlistFollowUuids by remember { mutableStateOf<List<String>>(emptyList()) }
 
     /**
      * Marks a show listened, or reopens it when it already is.
@@ -450,6 +452,7 @@ fun PodcastsScreen(
                             FilterChip(
                                 selected = false,
                                 onClick = {
+                                    playlistFollowUuids = selectedPodcastUuids.toList()
                                     playlistPickerUuids = targetEpisodes
                                         .filter { !it.isPlayed }
                                         .ifEmpty { targetEpisodes }
@@ -876,6 +879,7 @@ fun PodcastsScreen(
                                     .filter { it.podcastUuid == podcast.uuid && !it.isDeleted }
                                     .map { it.uuid }
                                 if (episodeUuids.isNotEmpty()) {
+                                    playlistFollowUuids = listOf(podcast.uuid)
                                     playlistPickerUuids = episodeUuids
                                 } else {
                                     scope.launch { snackbarHostState.showSnackbar("No episodes to add") }
@@ -944,6 +948,7 @@ fun PodcastsScreen(
                                     .filter { it.podcastUuid == podcast.uuid && !it.isDeleted }
                                     .map { it.uuid }
                                 if (episodeUuids.isNotEmpty()) {
+                                    playlistFollowUuids = listOf(podcast.uuid)
                                     playlistPickerUuids = episodeUuids
                                 } else {
                                     scope.launch { snackbarHostState.showSnackbar("No episodes to add") }
@@ -1057,12 +1062,17 @@ fun PodcastsScreen(
         AddToPlaylistDialog(
             episodeUuids = uuids,
             queueViewModel = queueViewModel,
+            followPodcastUuids = playlistFollowUuids,
             onAdded = { msg ->
                 playlistPickerUuids = null
+                playlistFollowUuids = emptyList()
                 selectedPodcastUuids = emptySet()
                 scope.launch { snackbarHostState.showSnackbar(msg) }
             },
-            onDismiss = { playlistPickerUuids = null },
+            onDismiss = {
+                playlistPickerUuids = null
+                playlistFollowUuids = emptyList()
+            },
         )
     }
 
@@ -1328,6 +1338,9 @@ private fun SwipeablePodcastCard(
         ),
         backgroundContent = {
             val direction = state.dismissDirection
+            // The card is translucent glass, so anything drawn here at rest
+            // shows through it: the Cancel button sat under every row's art.
+            if (direction == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
             Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))

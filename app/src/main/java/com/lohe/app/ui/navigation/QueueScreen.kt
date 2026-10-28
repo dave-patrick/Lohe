@@ -443,6 +443,16 @@ fun QueueScreen(
                         }
                     },
                     onRemove = { viewModel.dequeue(entry.episode.uuid) },
+                    onMoveToTop = if (index > 0) {
+                        { viewModel.moveInQueue(entry.episode.uuid, -MOVE_TO_END) }
+                    } else {
+                        null
+                    },
+                    onMoveToBottom = if (index < items.lastIndex) {
+                        { viewModel.moveInQueue(entry.episode.uuid, MOVE_TO_END) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -1147,6 +1157,24 @@ fun PlaylistsScreen(
                                     openedPlaylist.id,
                                     entry.episode.uuid,
                                 )
+                            },
+                            onMoveToTop = if (unplayedOnly || index <= 0) null else {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
+                                        entry.episode.uuid,
+                                        -MOVE_TO_END,
+                                    )
+                                }
+                            },
+                            onMoveToBottom = if (unplayedOnly || index >= displayItems.lastIndex) null else {
+                                {
+                                    viewModel.moveEpisodeInPlaylist(
+                                        openedPlaylist.id,
+                                        entry.episode.uuid,
+                                        MOVE_TO_END,
+                                    )
+                                }
                             },
                             onArchive = if (!openedPlaylist.system) ({
                                 viewModel.archiveEpisode(entry.episode.uuid)
@@ -2178,23 +2206,71 @@ fun AddToPlaylistDialog(
     queueViewModel: QueueViewModel,
     onAdded: (String) -> Unit,
     onDismiss: () -> Unit,
+    /**
+     * When adding whole shows, their uuids. The listener can then keep the
+     * playlist (or Up Next) updated with each show's future episodes.
+     */
+    followPodcastUuids: Collection<String> = emptyList(),
 ) {
     val playlists by queueViewModel.userPlaylists.collectAsState()
     var newName by remember { mutableStateOf("") }
+    var keepUpdated by remember { mutableStateOf(true) }
+    val following = followPodcastUuids.isNotEmpty() && keepUpdated
+    val repository = remember { com.lohe.app.data.ServiceLocator.subscriptionRepository() }
+    val scope = rememberCoroutineScope()
 
     LoheDialog(
         onDismiss = onDismiss,
-        title = "Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…",
+        title = if (followPodcastUuids.isNotEmpty()) {
+            "Add ${followPodcastUuids.size} show${if (followPodcastUuids.size == 1) "" else "s"} to…"
+        } else {
+            "Add ${episodeUuids.size} Episode${if (episodeUuids.size == 1) "" else "s"} to…"
+        },
         icon = Icons.AutoMirrored.Filled.PlaylistAdd,
         body = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (followPodcastUuids.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Keep updated",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Include every new episode automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = keepUpdated, onCheckedChange = { keepUpdated = it })
+                    }
+                }
+
                 GlassCard(
                     onClick = {
                         queueViewModel.enqueueAll(episodeUuids)
-                        onAdded("Added ${episodeUuids.size} to Up Next")
+                        if (following) {
+                            // New episodes of these shows now queue themselves.
+                            scope.launch {
+                                followPodcastUuids.forEach {
+                                    repository.setAutoAddNewEpisodesToUpNext(it, true)
+                                }
+                            }
+                        }
+                        onAdded(
+                            if (following) {
+                                "Added ${episodeUuids.size} to Up Next; new episodes will follow"
+                            } else {
+                                "Added ${episodeUuids.size} to Up Next"
+                            },
+                        )
                     },
                     contentPadding = 12.dp,
                 ) {
@@ -2219,7 +2295,12 @@ fun AddToPlaylistDialog(
                     GlassCard(
                         onClick = {
                             queueViewModel.addEpisodesToPlaylist(pl.id, episodeUuids)
-                            onAdded("Added ${episodeUuids.size} to ${pl.name}")
+                            if (following && !pl.snapshot) {
+                                queueViewModel.followShowsInPlaylist(pl.id, followPodcastUuids)
+                                onAdded("Added to ${pl.name}; new episodes will follow")
+                            } else {
+                                onAdded("Added ${episodeUuids.size} to ${pl.name}")
+                            }
                         },
                         contentPadding = 12.dp,
                     ) {
@@ -2263,8 +2344,18 @@ fun AddToPlaylistDialog(
         confirmLabel = if (newName.isNotBlank()) "Create & Add" else null,
         onConfirm = if (newName.isNotBlank()) {
             {
-                val created = queueViewModel.createPlaylist(newName, episodeUuids)
-                onAdded("Created \"${created.name}\" (${episodeUuids.size} episodes)")
+                val created = queueViewModel.createPlaylist(
+                    newName,
+                    episodeUuids,
+                    shows = if (following) followPodcastUuids else emptyList(),
+                )
+                onAdded(
+                    if (following) {
+                        "Created \"${created.name}\"; new episodes will follow"
+                    } else {
+                        "Created \"${created.name}\" (${episodeUuids.size} episodes)"
+                    },
+                )
             }
         } else {
             null
@@ -2305,6 +2396,9 @@ private fun EmptyQueue(
     }
 }
 
+/** A move far enough that the list clamps it to the first or last slot. */
+private const val MOVE_TO_END = 100_000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QueueRow(
@@ -2321,6 +2415,8 @@ private fun QueueRow(
     onMoveDown: (() -> Unit)?,
     onTogglePlayed: (() -> Unit)?,
     onRemove: (() -> Unit)?,
+    onMoveToTop: (() -> Unit)? = null,
+    onMoveToBottom: (() -> Unit)? = null,
     onArchive: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     dragHandle: @Composable (() -> Unit)? = null,
@@ -2384,6 +2480,28 @@ private fun QueueRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        if (onMoveToTop != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.VerticalAlignTop,
+                                label = "Top",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onMoveToTop()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
+                        if (onMoveToBottom != null) {
+                            SwipeActionButton(
+                                icon = Icons.Filled.VerticalAlignBottom,
+                                label = "Bottom",
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    onMoveToBottom()
+                                    scope.launch { dismissState.reset() }
+                                },
+                            )
+                        }
                         if (onMoveUp != null) {
                             SwipeActionButton(
                                 icon = Icons.Filled.KeyboardArrowUp,
