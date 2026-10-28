@@ -484,6 +484,14 @@ class QueueViewModel(
 
     fun setPodcastFolder(podcastUuid: String, folder: String) {
         playlistRepository.setPodcastFolder(podcastUuid, folder)
+        // A folder always has a playlist of its own that fills with the
+        // unplayed episodes of every show in it, now and as new ones arrive.
+        val clean = folder.trim()
+        if (clean.isNotEmpty() &&
+            playlistRepository.playlists.value.none { it.folder == clean && !it.snapshot }
+        ) {
+            playlistRepository.createPlaylist(name = clean, folder = clean)
+        }
     }
 
     private suspend fun triggerDownloadByUuids(uuids: Collection<String>) {
