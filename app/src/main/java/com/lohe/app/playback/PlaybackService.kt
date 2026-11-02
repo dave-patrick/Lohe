@@ -127,6 +127,15 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        // Progress is written every PROGRESS_SAVE_INTERVAL_MS, so save the
+        // exact position on the way out. The service scope is about to be
+        // cancelled, so this write runs on its own short-lived scope.
+        val finalId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
+        if (finalId != null && player.playbackState != Player.STATE_IDLE && player.playbackState != Player.STATE_ENDED) {
+            val position = player.currentPosition
+            val duration = player.duration
+            CoroutineScope(Dispatchers.IO).launch { writeProgress(finalId, position, duration) }
+        }
         scope.cancel()
         player.removeListener(EndOfEpisodeWatcher())
         runCatching { loudnessEnhancer?.release() }
@@ -343,6 +352,11 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady) {
+                // Pausing saves the exact position below (or another flow
+                // saves it), so the remembered tick is no longer the latest.
+                lastKnownProgressId = null
+            }
             if (!playWhenReady && player.playbackState != Player.STATE_IDLE &&
                 player.playbackState != Player.STATE_ENDED
             ) {
@@ -350,13 +364,60 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+            // The remembered tick predates the seek; never write it back later.
+            lastKnownProgressId = null
+            // A paused seek is not saved: pausing already saved the position,
+            // and the interrupted-playback flow decides for itself what a
+            // paused episode's resume point is.
+            if (!player.playWhenReady) return
+            // Only a seek within the same episode; a jump to another item is
+            // handled by onMediaItemTransition.
+            if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex) return
+            val id = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
+            val duration = player.duration
+            val before = oldPosition.positionMs
+            val after = newPosition.positionMs
+            scope.launch(Dispatchers.IO) {
+                // Counts the listening done up to the seek...
+                writeProgress(id, before, duration)
+                // ...then moves the resume point without counting the jump as
+                // listening time. A seek to the end is left for the periodic
+                // check or the end-of-episode handler to mark as played.
+                if (!isFinished(after, duration)) {
+                    runCatching {
+                        ServiceLocator.subscriptionRepository()
+                            .applyProgress(id, after / 1_000L, duration.takeIf { it > 0L }?.div(1_000L) ?: 0L)
+                    }
+                }
+            }
+        }
+
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             val nextId = mediaItem?.mediaId?.takeIf { it.isNotBlank() }
             val previousId = observedMediaId
             observedMediaId = nextId
+            if (previousId != null && previousId != nextId &&
+                reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+            ) {
+                // The listener moved to another episode before the next
+                // periodic save; keep where they got to in the one they left.
+                val (position, duration) = lastKnownProgress
+                if (lastKnownProgressId == previousId && position > 0L) {
+                    scope.launch(Dispatchers.IO) { writeProgress(previousId, position, duration) }
+                }
+            }
             if (nextId != previousId) {
                 completingMediaId = null
                 resumedForMediaId = null
+                markedPlayedId = null
+                lastKnownProgressId = null
             }
 
             // A multi-item MediaSession queue transitions directly between
@@ -685,18 +746,38 @@ class PlaybackService : MediaLibraryService() {
     private fun startProgressReporting() {
         scope.launch {
             var lastSaved = -1L
+            var lastSavedAt = 0L
             while (isActive) {
                 if (player.isPlaying) {
                     val position = player.currentPosition
-                    if (position != lastSaved) {
-                        persistProgress(position, player.duration)
+                    val duration = player.duration
+                    lastKnownProgressId = player.currentMediaItem?.mediaId
+                    lastKnownProgress = position to duration
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    // Every save rewrites an episode row, and every watcher of
+                    // the library re-reads it, so writes are kept rare. The
+                    // finished check still runs each tick, so an episode is
+                    // marked played as soon as it crosses the line.
+                    val due = now - lastSavedAt >= PROGRESS_SAVE_INTERVAL_MS
+                    if (position != lastSaved && (due || isFinished(position, duration))) {
+                        persistProgress(position, duration)
                         lastSaved = position
+                        lastSavedAt = now
                     }
                 }
-                delay(PROGRESS_SAVE_INTERVAL_MS)
+                delay(PROGRESS_CHECK_INTERVAL_MS)
             }
         }
     }
+
+    /** The episode [lastKnownProgress] belongs to. */
+    @Volatile private var lastKnownProgressId: String? = null
+
+    /** Position and duration (ms) seen on the last progress tick. */
+    @Volatile private var lastKnownProgress: Pair<Long, Long> = 0L to 0L
+
+    /** Episode already marked played by [writeProgress], so it is not marked again. */
+    @Volatile private var markedPlayedId: String? = null
 
     /**
      * Cuts the last few seconds off an episode when the show asks for it.
@@ -733,26 +814,43 @@ class PlaybackService : MediaLibraryService() {
 
     private fun persistProgress(positionMs: Long, durationMs: Long) {
         val episodeId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: return
+        scope.launch(Dispatchers.IO) { writeProgress(episodeId, positionMs, durationMs) }
+    }
+
+    private fun isFinished(positionMs: Long, durationMs: Long): Boolean =
+        durationMs > 0L &&
+            (positionMs.toDouble() / durationMs >= PLAYED_THRESHOLD ||
+                durationMs - positionMs <= PLAYED_TAIL_SECONDS * 1_000L)
+
+    /**
+     * Saves [positionMs] for [episodeId], or marks it played once it is past
+     * the finish line.
+     *
+     * Marking played happens once per episode: the listener can keep playing
+     * the tail after it counts as finished, and re-marking it on every save
+     * only rewrote the same row and re-ran the played bookkeeping.
+     */
+    private suspend fun writeProgress(episodeId: String, positionMs: Long, durationMs: Long) {
+        val repository = runCatching { ServiceLocator.subscriptionRepository() }.getOrNull() ?: return
         val durationSeconds = durationMs.takeIf { it > 0L }?.div(1_000L) ?: 0L
-
-        scope.launch(Dispatchers.IO) {
-            val repository = runCatching { ServiceLocator.subscriptionRepository() }.getOrNull()
-                ?: return@launch
-
-            val finished = durationMs > 0L &&
-                (positionMs.toDouble() / durationMs >= PLAYED_THRESHOLD ||
-                    durationMs - positionMs <= PLAYED_TAIL_SECONDS * 1_000L)
-
-            if (finished) {
+        runCatching {
+            if (isFinished(positionMs, durationMs)) {
+                if (markedPlayedId == episodeId) return@runCatching
                 repository.markPlayed(episodeId)
+                markedPlayedId = episodeId
             } else {
+                if (markedPlayedId == episodeId) markedPlayedId = null
                 repository.saveProgress(episodeId, positionMs / 1_000L, durationSeconds)
             }
-        }
+        }.onFailure { DevDiagnostics.log("PROGRESS", "Could not save progress for $episodeId", it) }
     }
 
     companion object {
-        private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+        /** How often the position is written to the library while playing. */
+        private const val PROGRESS_SAVE_INTERVAL_MS = 30_000L
+
+        /** How often the position is looked at (in memory, no write). */
+        private const val PROGRESS_CHECK_INTERVAL_MS = 5_000L
 
         /** Maximum amplification applied by LoudnessEnhancer when volume boost is on. */
         const val VOLUME_BOOST_MILLIBELS = 1_000
@@ -891,12 +989,15 @@ class PlaybackService : MediaLibraryService() {
     private fun applyAutoTrim(startingAtTheTop: Boolean) {
         if (!startingAtTheTop) return
         val introMs = _currentSkipIntroMs
-        val scanForSilence = _currentAutoTrim
-        if (!scanForSilence && introMs <= 0L) return
-
         val item = player.currentMediaItem ?: return
         val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
         val uri = item.localConfiguration?.uri?.toString() ?: return
+        // Scanning a stream would download the opening a second time, alongside
+        // the player's own copy. Only files already on the device are scanned;
+        // a streamed episode still gets the show's fixed intro cut.
+        val isStream = uri.startsWith("http://") || uri.startsWith("https://")
+        val scanForSilence = _currentAutoTrim && !isStream
+        if (!scanForSilence && introMs <= 0L) return
         // A clip barely longer than the scan has nothing worth cutting.
         val durationMs = player.duration
         if (durationMs in 1..TRIM_MIN_DURATION_MS) return

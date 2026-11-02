@@ -14,11 +14,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,12 +31,20 @@ internal object EpisodeMaintenance {
         if (started) return
         started = true
         val scheduler = context.getSystemService(JobScheduler::class.java)
-        if (scheduler.getPendingJob(4811) == null) {
-            scheduler.schedule(JobInfo.Builder(4811, ComponentName(context, EpisodeArchiveJobService::class.java))
-                .setPeriodic(15 * 60_000L)
+        // Archive windows are whole hours (1, 24 or 168), so an hourly sweep is
+        // enough. It used to run every 15 minutes in the background plus every
+        // minute while the app was open, waking the phone far more often than
+        // the settings need. Installs that still hold the old 15-minute job
+        // are moved to the hourly one.
+        val pending = scheduler.getPendingJob(JOB_ID)
+        if (pending == null || pending.intervalMillis != INTERVAL_MS) {
+            scheduler.schedule(JobInfo.Builder(JOB_ID, ComponentName(context, EpisodeArchiveJobService::class.java))
+                .setPeriodic(INTERVAL_MS, FLEX_MS)
                 .setPersisted(true)
                 .build())
         }
+        // Also sweep when the process starts and whenever the archive settings
+        // change, so a new setting takes effect without waiting for the job.
         scope.launch {
             ServiceLocator.settingsStore().settings
                 .map { it.autoArchiveHours to it.archiveKeepHours }
@@ -47,13 +53,11 @@ internal object EpisodeMaintenance {
                 safelyRun()
             }
         }
-        scope.launch {
-            while (isActive) {
-                delay(60_000L)
-                safelyRun()
-            }
-        }
     }
+
+    private const val JOB_ID = 4811
+    private const val INTERVAL_MS = 60 * 60_000L
+    private const val FLEX_MS = 15 * 60_000L
 
     suspend fun safelyRun(): Boolean = try {
         runOnce()

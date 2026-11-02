@@ -26,6 +26,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -225,14 +226,22 @@ private fun LoheNavigationContent(
     // screen plays.
     val playerConnection = rememberPlayerConnection()
     val transport = rememberTransportState(playerConnection)
+    // The transport snapshot changes several times a second while audio plays
+    // (the position moves). Reading it directly here would recompose the whole
+    // nav host, and every screen reading it, on each tick. These derived values
+    // only change when the episode or connection actually changes; the
+    // position itself is read only by the mini player in the bottom bar.
+    val transportMediaId by remember { derivedStateOf { transport.value.mediaId } }
+    val transportConnected by remember { derivedStateOf { transport.value.connected } }
+    val transportHasMedia by remember { derivedStateOf { transport.value.hasMedia } }
     // Keep the selected episode in one piece of UI state; PlayerScreen queues
     // the interrupted item before it replaces the active player item.
     fun startEpisode(episode: NowPlaying) {
         nowPlaying = episode
     }
 
-    LaunchedEffect(transport.value.mediaId) {
-        transport.value.mediaId.takeIf { it.isNotBlank() }?.let { activeId ->
+    LaunchedEffect(transportMediaId) {
+        transportMediaId.takeIf { it.isNotBlank() }?.let { activeId ->
             queueViewModel.dequeue(activeId).join()
         }
     }
@@ -254,10 +263,10 @@ private fun LoheNavigationContent(
     LaunchedEffect(
         playbackSettings.defaultPlaybackSpeed,
         playbackSettings.skipSilenceByDefault,
-        transport.value.connected,
-        transport.value.hasMedia,
+        transportConnected,
+        transportHasMedia,
     ) {
-        if (transport.value.connected && !transport.value.hasMedia) {
+        if (transportConnected && !transportHasMedia) {
             Playback.setPlaybackSpeed(playbackSettings.defaultPlaybackSpeed)
             Playback.setSkipSilence(playbackSettings.skipSilenceByDefault)
         }
@@ -365,7 +374,7 @@ private fun LoheNavigationContent(
                 // The in-progress episode counts as current even when the
                 // player has not been handed it yet.
                 val currentEpisodeId = nowPlaying?.episodeId
-                    ?: transport.value.mediaId.takeIf { it.isNotBlank() }
+                    ?: transportMediaId.takeIf { it.isNotBlank() }
                     ?: fallbackEntry?.episode?.uuid
                 val nextUp = upNext.firstOrNull { entry ->
                     entry.episode.uuid != currentEpisodeId
@@ -610,8 +619,8 @@ private fun LoheNavigationContent(
             }
 
             composable(Dest.QUEUE.route) {
-                val currentQueueEpisodeId = transport.value.mediaId.takeIf {
-                    transport.value.hasMedia && it.isNotBlank()
+                val currentQueueEpisodeId = transportMediaId.takeIf {
+                    transportHasMedia && it.isNotBlank()
                 }
                 QueueScreen(
                     viewModel = queueViewModel,

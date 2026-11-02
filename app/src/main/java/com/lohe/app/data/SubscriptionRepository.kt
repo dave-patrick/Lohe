@@ -13,7 +13,12 @@ import com.lohe.app.data.fetch.PodcastFetcher
 import com.lohe.app.data.fetch.RssPodcastFetcher
 import com.lohe.app.download.DownloadManager
 import com.lohe.app.ui.image.ArtworkLoader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import androidx.room.withTransaction
@@ -50,6 +55,13 @@ class SubscriptionRepository internal constructor(
     private val playlistMayAutoDownload: (String) -> Boolean = { false },
     private val playlistIncludesForAutoDownload: (String, EpisodeEntity) -> Boolean = { _, _ -> false },
     private val transaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
+    /**
+     * The whole-library episode stream. [ServiceLocator] passes one
+     * application-wide shared copy, so every screen watching the library reads
+     * the table once per change instead of once per watcher. Tests that build
+     * the repository from DAOs alone get a direct query.
+     */
+    private val allEpisodeSummaries: Flow<List<EpisodeSummary>> = episodes.observeAllSummaries(),
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
@@ -59,7 +71,7 @@ class SubscriptionRepository internal constructor(
 
     fun observePodcastStats() = episodes.observePodcastStats()
 
-    fun observeAllEpisodes(): Flow<List<EpisodeSummary>> = episodes.observeAllSummaries()
+    fun observeAllEpisodes(): Flow<List<EpisodeSummary>> = allEpisodeSummaries
 
     /**
      * Listening time recorded for episodes that have left the library.
@@ -516,7 +528,34 @@ object ServiceLocator {
                 playlistRepository().shouldAutoDownloadEpisode(podcastUuid, episode)
             },
             transaction = { block -> database().withTransaction { block() } },
+            allEpisodeSummaries = sharedEpisodeSummaries(),
         )
+
+    /** Long-lived scope for streams shared across the whole app. */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile private var episodeSummaries: Flow<List<EpisodeSummary>>? = null
+
+    /**
+     * One shared "every episode" query for the whole app.
+     *
+     * Several screens watch the full library at once. Each separate Room
+     * observer re-reads the entire episodes table on every write, and playback
+     * writes progress regularly, so unshared they multiplied that work. Shared,
+     * the table is read once per change. The query stops five seconds after the
+     * last watcher leaves, and the cached copy is dropped then so a later
+     * watcher never starts from a stale list.
+     */
+    private fun sharedEpisodeSummaries(): Flow<List<EpisodeSummary>> =
+        episodeSummaries ?: synchronized(this) {
+            episodeSummaries ?: database().episodeDao().observeAllSummaries()
+                .shareIn(
+                    appScope,
+                    SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+                    replay = 1,
+                )
+                .also { episodeSummaries = it }
+        }
 
     private val baseHttpClient by lazy { OkHttpClient() }
 
