@@ -117,6 +117,10 @@ class SubscriptionRepositoryTest {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesAtTop = atTop)
         }
+        override suspend fun setFeedValidators(uuid: String, etag: String?, lastModified: String?) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(feedEtag = etag, feedLastModified = lastModified)
+        }
         override fun observeSearchResults(query: String) =
             kotlinx.coroutines.flow.flowOf(
                 rows.filter {
@@ -713,5 +717,92 @@ class SubscriptionRepositoryTest {
         assertEquals(2, history.batchReads)
         assertEquals(0, history.singleReads)
         assertEquals(2, transactions)
+    }
+
+    // --- Conditional feed requests ---------------------------------------
+
+    private val conditionalFeed =
+        """<rss version="2.0"><channel><title>Show</title><item><guid>one</guid><title>One</title><enclosure url="https://example.com/audio.mp3" type="audio/mpeg"/><pubDate>Mon, 26 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>"""
+
+    /** Answers 304 when the request carries the matching ETag, else the full feed. */
+    private fun validatingClient(seen: MutableList<okhttp3.Request>, etag: String? = "\"v1\"") =
+        okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            seen += request
+            val builder = okhttp3.Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1)
+            if (etag != null && request.header("If-None-Match") == etag) {
+                builder.code(304).message("Not Modified").body("".toResponseBody()).build()
+            } else {
+                builder.code(200).message("OK").body(conditionalFeed.toResponseBody())
+                    .apply { if (etag != null) header("ETag", etag) }
+                    .header("Last-Modified", "Mon, 26 Oct 2026 10:00:00 GMT")
+                    .build()
+            }
+        }.build()
+
+    @Test
+    fun `a refresh of an unchanged feed downloads and writes nothing`() = runTest {
+        val url = "https://example.com/feed"
+        val seen = mutableListOf<okhttp3.Request>()
+        val podcasts = FakePodcastDao()
+        val episodes = FakeEpisodeDao()
+        val fetcher = com.lohe.app.data.fetch.RssPodcastFetcher(validatingClient(seen), podcasts, episodes, FakeHistoryDao())
+
+        assertTrue(fetcher.importFeed(url).isSuccess)
+        val stored = podcasts.allOnce().single()
+        assertEquals("\"v1\"", stored.feedEtag)
+        assertEquals("Mon, 26 Oct 2026 10:00:00 GMT", stored.feedLastModified)
+        val writesAfterImport = episodes.upsertCalls
+
+        val result = fetcher.refreshFeed(stored)
+        assertEquals(false, result.getOrThrow())
+        assertEquals("\"v1\"", seen.last().header("If-None-Match"))
+        assertEquals("Mon, 26 Oct 2026 10:00:00 GMT", seen.last().header("If-Modified-Since"))
+        assertEquals(2, seen.size)
+        assertEquals(writesAfterImport, episodes.upsertCalls)
+    }
+
+    @Test
+    fun `a first import never sends validators`() = runTest {
+        val seen = mutableListOf<okhttp3.Request>()
+        val fetcher = com.lohe.app.data.fetch.RssPodcastFetcher(
+            validatingClient(seen), FakePodcastDao(), FakeEpisodeDao(), FakeHistoryDao(),
+        )
+        assertTrue(fetcher.importFeed("https://example.com/feed").isSuccess)
+        assertEquals(null, seen.single().header("If-None-Match"))
+        assertEquals(null, seen.single().header("If-Modified-Since"))
+    }
+
+    @Test
+    fun `a feed with no validators is downloaded in full on refresh`() = runTest {
+        val seen = mutableListOf<okhttp3.Request>()
+        val podcasts = FakePodcastDao()
+        val fetcher = com.lohe.app.data.fetch.RssPodcastFetcher(
+            validatingClient(seen, etag = null), podcasts, FakeEpisodeDao(), FakeHistoryDao(),
+        )
+        assertTrue(fetcher.importFeed("https://example.com/feed").isSuccess)
+        val stored = podcasts.allOnce().single().copy(feedLastModified = null)
+        assertEquals(null, stored.feedEtag)
+        assertEquals(true, fetcher.refreshFeed(stored).getOrThrow())
+        assertEquals(null, seen.last().header("If-None-Match"))
+    }
+
+    @Test
+    fun `an unchanged feed counts as refreshed and triggers no auto-download`() = runTest {
+        val show = PodcastEntity(uuid = "s", title = "Show", feedUrl = "https://example.com/s", autoDownload = true)
+        val episodes = FakeEpisodeDao()
+        episodes.rows += EpisodeEntity(uuid = "old", podcastUuid = "s", title = "Old", audioUrl = "https://example.com/old.mp3", published = 1L)
+        val downloaded = mutableListOf<String>()
+        val unchanged = object : PodcastFetcher {
+            override suspend fun fetch(feedUrl: String) = error("not used")
+            override suspend fun fetchEpisodes(feedUrl: String) = emptyList<EpisodeEntity>()
+            override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> = error("refresh must ask first")
+            override suspend fun refreshFeed(podcast: PodcastEntity) = Result.success(false)
+        }
+        val summary = repository(unchanged, FakePodcastDao(mutableListOf(show)), episodes) { downloaded += it.uuid }
+            .refreshAllFeeds()
+        assertEquals(1, summary.refreshed)
+        assertEquals(0, summary.failed)
+        assertTrue(downloaded.isEmpty())
     }
 }

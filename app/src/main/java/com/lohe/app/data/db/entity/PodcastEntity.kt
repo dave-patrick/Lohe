@@ -34,4 +34,12 @@ data class PodcastEntity(
     /** Whether those new episodes go to the head instead of the tail. */
     @ColumnInfo(defaultValue = "0") val autoAddNewEpisodesAtTop: Boolean = false,
     @ColumnInfo(defaultValue = "1") val isSubscribed: Boolean = true,
+    /**
+     * The feed server's validators from the last successful download
+     * (`ETag` and `Last-Modified` response headers). A refresh sends them
+     * back, and an unchanged feed answers with a tiny 304 instead of the
+     * whole document. Null when the server sent none.
+     */
+    val feedEtag: String? = null,
+    val feedLastModified: String? = null,
 )

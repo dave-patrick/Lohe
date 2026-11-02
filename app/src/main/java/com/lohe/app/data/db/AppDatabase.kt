@@ -26,7 +26,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
         EpisodeEntity::class,
         ListeningHistoryEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = false,
 )
 @TypeConverters()
@@ -205,6 +205,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Feed validators, so refreshes can ask "has this changed?" first. */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN feedEtag TEXT")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN feedLastModified TEXT")
+            }
+        }
+
         /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
@@ -250,6 +258,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_11_12,
                         MIGRATION_12_13,
                         MIGRATION_13_14,
+                        MIGRATION_14_15,
                     )
                     .build()
                     .also { instance = it }

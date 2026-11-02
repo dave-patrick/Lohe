@@ -42,6 +42,12 @@ class DownloadManager(
     private val repository: SubscriptionRepository,
     private val client: OkHttpClient = OkHttpClient(),
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Whether automatic downloads must wait for an unmetered network (Wi-Fi). */
+    private val automaticNeedsWifi: suspend () -> Boolean = { false },
+    /** Hands an automatic download to the system to run once Wi-Fi is up. */
+    private val queueUntilWifi: (EpisodeSummary) -> Unit = {},
+    /** Drops a download still waiting for Wi-Fi. */
+    private val cancelQueued: (String) -> Unit = {},
 ) {
 
     private val job = SupervisorJob()
@@ -52,21 +58,58 @@ class DownloadManager(
     /** Downloaded episodes, newest first. */
     fun downloads() = repository.observeDownloads()
 
+    /** Starts a download the listener asked for. Runs now, on any network. */
     fun start(episode: EpisodeSummary) {
-        if (episode.isArchived) return
+        startTransfer(episode)
+    }
+
+    /**
+     * Starts a download the app decided on by itself: a new episode of an
+     * auto-download show, or an episode added to Up Next or an auto-download
+     * playlist.
+     *
+     * With the Wi-Fi-only setting on (the default) it is handed to the system
+     * to run once the phone is on an unmetered network, so automatic downloads
+     * never spend mobile data or keep the cellular radio awake. A download
+     * queued that way also survives the app being closed.
+     */
+    fun startAutomatic(episode: EpisodeSummary) {
+        if (episode.isArchived || episode.isDownloaded || episode.isDownloading) return
+        scope.launch {
+            val needsWifi = runCatching { automaticNeedsWifi() }.getOrDefault(true)
+            if (needsWifi) queueUntilWifi(episode) else startTransfer(episode)
+        }
+    }
+
+    /**
+     * Runs a download and waits for it, joining one already in progress.
+     *
+     * Used by the Wi-Fi-queued job. The transfer lives in this manager's scope,
+     * not the job's, so a manual tap and the job never download the same
+     * episode twice.
+     */
+    suspend fun downloadAndWait(episode: EpisodeSummary) {
+        val transfer = transfers[episode.uuid] ?: startTransfer(episode) ?: transfers[episode.uuid]
+        transfer?.join()
+    }
+
+    private fun startTransfer(episode: EpisodeSummary): Job? {
+        if (episode.isArchived) return null
         val transfer = scope.launch(start = CoroutineStart.LAZY) {
             runDownload(episode)
         }
         if (transfers.putIfAbsent(episode.uuid, transfer) != null) {
             transfer.cancel()
-            return
+            return null
         }
         transfer.invokeOnCompletion { transfers.remove(episode.uuid, transfer) }
         transfer.start()
+        return transfer
     }
 
     /** Removes the file and forgets the episode. */
     suspend fun delete(episode: EpisodeSummary) = withContext(io) {
+        runCatching { cancelQueued(episode.uuid) }
         calls.remove(episode.uuid)?.cancel()
         transfers[episode.uuid]?.cancelAndJoin()
         val current = repository.episodeOnce(episode.uuid)

@@ -11,6 +11,7 @@ import com.lohe.app.data.fetch.CatalogSearcher
 import com.lohe.app.data.fetch.OpmlCodec
 import com.lohe.app.data.fetch.PodcastFetcher
 import com.lohe.app.data.fetch.RssPodcastFetcher
+import com.lohe.app.download.AutoDownloadQueue
 import com.lohe.app.download.DownloadManager
 import com.lohe.app.ui.image.ArtworkLoader
 import kotlinx.coroutines.CoroutineScope
@@ -420,10 +421,12 @@ class SubscriptionRepository internal constructor(
                 null
             }
 
-            fetcher.importFeed(podcast.feedUrl)
-                .onSuccess {
+            // Asks the server whether the feed changed first; an unchanged feed
+            // costs a tiny 304 reply instead of the whole document.
+            fetcher.refreshFeed(podcast)
+                .onSuccess { changed ->
                     refreshed++
-                    if (known != null && known.isNotEmpty()) {
+                    if (changed && known != null && known.isNotEmpty()) {
                         val newlySeen = episodes.byPodcastOnce(podcast.uuid)
                             .filter { it.uuid !in known && !it.isPlayed && !it.isDeleted && !it.isArchived }
                         try {
@@ -511,7 +514,7 @@ object ServiceLocator {
             // Resolved lazily on first auto-download, never during construction.
             // Calling downloadManager() here instead would recurse: it builds a
             // DownloadManager that takes a repository, which would come back here.
-            autoDownload = { episode -> downloadManager().start(episode.toSummary()) },
+            autoDownload = { episode -> downloadManager().startAutomatic(episode.toSummary()) },
             onPlayed = { uuid ->
                 playlistRepository().removeEpisodeFromAll(uuid)
                 if (settingsStore().settings.first().autoArchiveHours == 0) {
@@ -615,10 +618,14 @@ object ServiceLocator {
 
     fun downloadManager(): DownloadManager =
         downloads ?: synchronized(this) {
+            val appContext = context ?: error("ServiceLocator not initialized")
             downloads ?: DownloadManager(
-                context = context ?: error("ServiceLocator not initialized"),
+                context = appContext,
                 repository = subscriptionRepository(),
                 client = baseHttpClient.newBuilder().readTimeout(30, TimeUnit.SECONDS).build(),
+                automaticNeedsWifi = { settingsStore().settings.first().autoDownloadWifiOnly },
+                queueUntilWifi = { episode -> AutoDownloadQueue.enqueue(appContext, episode.uuid) },
+                cancelQueued = { uuid -> AutoDownloadQueue.cancel(appContext, uuid) },
             ).also { downloads = it }
         }
 
