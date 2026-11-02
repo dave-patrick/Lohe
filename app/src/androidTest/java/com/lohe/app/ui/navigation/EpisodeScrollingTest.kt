@@ -147,13 +147,3 @@ class EpisodeScrollingTest {
         send(MotionEvent.ACTION_UP, endX.toFloat(), endY.toFloat())
     }
 }
-
-
-
-
-
-
-
-
-
-

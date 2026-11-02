@@ -22,7 +22,7 @@ Updated November 1, 2026. This is a phone/tablet submission plan, not a claim of
 
 - [ ] Name (30 characters maximum), short description (80), full description (4,000), category/tags, languages/translations. Draft copy: `play-store-listing.md`.
 - [ ] Support email **atomic22industries@gmail.com** (owner supplied), website/phone where appropriate or required.
-- [ ] Privacy URL: intended `https://dave-patrick.github.io/Lohe/privacy/`. **Not deployed or verified live.** After separately authorized publication, verify public HTTPS 200 access without login, geographic restriction, editing access or PDF.
+- [x] Privacy URL: `https://dave-patrick.github.io/Lohe/privacy/`. Published with the user's GitHub publication request and verified November 1, 2026: public HTTPS 200, no login or editing access, HTML policy with the supplied contact address.
 - [ ] Upload an actual **512 × 512** store icon, **1024 × 500** feature graphic and at least two genuine phone screenshots meeting current Console image/format requirements. Launcher density icons are not automatically store icons. Do not expose personal library data or claim car functionality; add tablet assets only for form factors claimed. Confirm promotional image/content rights.
 - [ ] Release name and localized release notes; no Google endorsement or unverified feature claims.
 
@@ -102,9 +102,12 @@ Sources: [target API](https://support.google.com/googleplay/android-developer/an
 
 Source: [new personal-account testing](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en).
 
-## Latest private build — background battery fix, build 51
+## Latest GitHub release — build 51
 
-- Source and private Debug build 2026.01.11.51 include the background library-subscription fix described in `battery-investigation.md`. Release remains 0.10.3. The build 50 Play bundle below does not include this newer fix; rebuild and validate a matching Play bundle before submission. No Play bundle was published.
+- Source, private Debug and signed public Release build 2026.01.11.51 include the background library-subscription fix described in `battery-investigation.md`. Release remains 0.10.3. The build 50 Play bundle below does not include this newer fix; rebuild and validate a matching Play bundle before submission. No Play bundle was published.
+- Published source commit `b909a0b683e60554ef5218bd04a590eb8ec953f7` and [GitHub release 0.10.3, build 51](https://github.com/dave-patrick/Lohe/releases/tag/v0.10.3-build-2026.01.11.51). Public assets contain the signed ordinary Release APK and SHA-256 file only, not private Debug or smoke APKs. APK SHA-256: `197f113b06c7171fd1ca6fe89c48e08a83c9e66a2ee9030875dfd5c006ca801c`; downloaded public bytes match. Signing certificate matches the preceding public release.
+- Minified public APK upgraded successfully from the prior published 0.10.1 release in an isolated API 36 emulator (4 KB pages), retained its saved Light appearance, displayed release/build 0.10.3 / 2026.01.11.51 and opened the offline privacy dialog with its contact address. No app crash was recorded. This does not establish actual 16 KB runtime, car head-unit behavior or long-term battery savings.
+- The public site and privacy page deployed successfully through GitHub Pages and both returned HTTP 200. The landing page shows the new build. Newly attached screenshots and local handoff/performance drafts were excluded from the source commit. The phone remains on private Debug.
 
 ## Background startup crash fix — November 1, 2026, build 50
 

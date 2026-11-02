@@ -292,4 +292,3 @@ class PlaylistEpisodeSortingTest {
         instrumentation.waitForIdleSync(); SystemClock.sleep(350)
     }
 }
-
