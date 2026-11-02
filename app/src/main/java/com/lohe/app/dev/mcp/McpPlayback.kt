@@ -63,6 +63,7 @@ class McpPlayback(private val context: Context) {
                 "positionMs" to c.currentPosition.coerceAtLeast(0L),
                 "durationMs" to (c.duration.takeIf { it > 0L } ?: 0L),
                 "playbackSpeed" to c.playbackParameters.speed,
+                "repeatMode" to c.repeatMode,
             )
         }
     }

@@ -16,11 +16,13 @@ ease. Each one names the files it touches so it can be picked up cold.
 - [ ] Let listeners choose played-episode archive delay, including the 24-hour option and downloaded-file deletion on archive.
 - [ ] Persist completion and declined optional steps; make permission denial, revocation, and interrupted setup safe and resumable.
 
-The wizard itself is not implemented. Floating-player and battery setup are currently available in Settings.
+The wizard itself is not implemented. Floating-player and battery setup are currently available in Settings. Settings and the player button share contextual overlay/optional notification setup with denial handling and a notification-settings recovery link.
 
 ---
 
 ## 0b. The in-car app is built but has never run on a head unit
+
+The first Google Play phone/tablet profile (`-PlohePlayStore=true`) omits car declarations until this validation is complete. Ordinary Release and private Debug keep the implementation. See `play-console-submission-checklist.md` for the distribution boundary; the historical notes below do not authorize claiming car approval.
 
 **Severity: medium. It compiles, installs and leaves the phone app untouched,
 but no head unit has rendered it yet.**

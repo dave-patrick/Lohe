@@ -46,7 +46,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,8 +112,8 @@ fun HomeScreen(
     appearance: Appearance,
     modifier: Modifier = Modifier,
 ) {
-    val inProgress by queueViewModel.continueListening.collectAsState()
-    val stats by queueViewModel.dashboardStats.collectAsState()
+    val inProgress by queueViewModel.continueListening.collectAsStateWithLifecycle()
+    val stats by queueViewModel.dashboardStats.collectAsStateWithLifecycle()
     val isLight = appearance == Appearance.LIGHT
 
     val currentEpisode: ContinueEntry? = inProgress.firstOrNull {

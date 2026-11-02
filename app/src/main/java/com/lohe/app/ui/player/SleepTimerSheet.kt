@@ -19,7 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,7 +63,7 @@ fun SleepTimerSheet(
     val store = remember { ServiceLocator.settingsStore() }
     val savedMinutes by remember(store) {
         store.settings.map { it.sleepTimerMinutes }
-    }.collectAsState(30)
+    }.collectAsStateWithLifecycle(30)
 
     LoheSheet(
         onDismiss = onDismiss,

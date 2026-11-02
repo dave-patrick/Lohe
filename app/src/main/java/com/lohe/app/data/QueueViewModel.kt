@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.flow
@@ -42,6 +43,7 @@ data class ResolvedPlaylist(
     val folder: String = "",
     val autoDownload: Boolean = true,
     val shows: List<String> = emptyList(),
+    val assignedPodcastUuids: List<String> = emptyList(),
     val snapshot: Boolean = false,
     /**
      * True for built-in playlists derived from episode state.
@@ -183,9 +185,8 @@ class QueueViewModel(
     /**
      * Moves listened episodes out of the playlists they were added to.
      *
-     * Driven by the library rather than by the individual "mark listened"
-     * actions, so an episode that finishes on its own during playback leaves
-     * the playlists just as a manual mark does.
+     * Reconcile legacy membership once. New completions are removed centrally
+     * by SubscriptionRepository.onPlayed, including background playback.
      */
     init {
         viewModelScope.launch {
@@ -199,15 +200,19 @@ class QueueViewModel(
             }
         }
         viewModelScope.launch {
-            repository.observeAllEpisodes().collect { episodes ->
+            repository.observeAllEpisodes().first().let { episodes ->
                 val playedUuids = episodes
                     .filter { it.isPlayed }
                     .mapTo(mutableSetOf()) { it.uuid }
-                if (playedUuids.isEmpty()) return@collect
+                if (playedUuids.isEmpty()) return@let
                 playlistRepository.playlists.value.forEach { pl ->
-                    pl.episodeUuids
-                        .filter { it in playedUuids }
-                        .forEach { playlistRepository.removeEpisode(pl.id, it) }
+                    pl.episodeUuids.filter { it in playedUuids }.forEach { uuid ->
+                        if (pl.assignedPodcastUuids.isNotEmpty()) {
+                            playlistRepository.removeExplicitEpisode(pl.id, uuid)
+                        } else {
+                            playlistRepository.removeEpisode(pl.id, uuid)
+                        }
+                    }
                 }
             }
         }
@@ -531,6 +536,12 @@ class QueueViewModel(
         }
     }
 
+    /** Load full notes on demand rather than in every playlist row. */
+    suspend fun episodeDescription(uuid: String): String? {
+        val episode = repository.episodeOnce(uuid) ?: return null
+        return episode.description ?: repository.getPodcast(episode.podcastUuid)?.description
+    }
+
     /** Persists the interrupted item before switching; downloads need not block playback. */
     suspend fun enqueueInterruptedEpisode(uuid: String) {
         repository.enqueue(uuid, toTop = true)
@@ -552,7 +563,7 @@ class QueueViewModel(
     fun addPlaylistToUpNext(playlistId: String, toTop: Boolean = false) = viewModelScope.launch {
         // Resolved through userPlaylists so the built-in Played and Downloaded
         // lists work the same way as the ones the user made.
-        val entries = userPlaylists.value.firstOrNull { it.id == playlistId }
+        val entries = resolvedPlaylists.first().firstOrNull { it.id == playlistId }
             ?.entries
             ?: return@launch
         val uuids = entries.map { it.episode.uuid }
@@ -602,10 +613,10 @@ class QueueViewModel(
      * are defined by the state of the library, so they cannot drift out of
      * date the way a stored list would.
      */
-    val userPlaylists: StateFlow<List<ResolvedPlaylist>> = combine(
+    private val resolvedPlaylists: Flow<List<ResolvedPlaylist>> = combine(
         playlistRepository.playlists,
         repository.observeAllEpisodes(),
-        podcasts,
+        repository.observePodcasts(),
         playlistRepository.podcastFolders,
         combine(
             (settingsStore?.settings ?: flowOf(com.lohe.app.ui.theme.PlaybackSettings()))
@@ -655,7 +666,9 @@ class QueueViewModel(
 
             val finishedFilter = if (pl.finished) { ep: com.lohe.app.data.db.entity.EpisodeSummary -> ep.isPlayed } else { ep: com.lohe.app.data.db.entity.EpisodeSummary -> !ep.isPlayed }
 
-            val resolvedEntries = if (pl.snapshot) {
+            val resolvedEntries = if (pl.assignedPodcastUuids.isNotEmpty()) {
+                pl.resolveAssignedEpisodes(allEpisodes).map(::resolve)
+            } else if (pl.snapshot) {
                 pl.resolveExplicitEpisodes(epMap).map(::resolve)
             } else if (followed.isNotEmpty()) {
                 // Following shows: they add their new episodes on their own,
@@ -704,6 +717,7 @@ class QueueViewModel(
                 folder = pl.folder,
                 autoDownload = pl.autoDownload,
                 shows = pl.shows,
+                assignedPodcastUuids = pl.assignedPodcastUuids,
                 snapshot = pl.snapshot,
                 pinned = pl.pinned,
             )
@@ -738,7 +752,9 @@ class QueueViewModel(
             )
         }
     }.flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val userPlaylists: StateFlow<List<ResolvedPlaylist>> = resolvedPlaylists
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Drops [uuid] from every user playlist — it has been listened to. */
     fun onEpisodePlayed(uuid: String) {
@@ -788,6 +804,9 @@ class QueueViewModel(
 
     fun setPlaylistShows(playlistId: String, shows: Collection<String>) =
         playlistRepository.setPlaylistShows(playlistId, shows)
+
+    fun assignPlaylistPodcasts(playlistId: String, shows: Collection<String>) =
+        playlistRepository.assignPodcastShows(playlistId, shows)
 
     fun archiveEpisode(uuid: String) = viewModelScope.launch {
         repository.setArchived(uuid, true)

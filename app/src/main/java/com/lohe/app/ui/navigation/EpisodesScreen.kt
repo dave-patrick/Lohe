@@ -1,9 +1,10 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -52,10 +54,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +74,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,10 +112,10 @@ fun EpisodesScreen(
     onOpenSettings: () -> Unit = {},
     onShowMessage: (String) -> Unit,
 ) {
-    val podcast by viewModel.podcast.collectAsState()
-    val episodes by viewModel.episodes.collectAsState()
-    val filter by viewModel.filter.collectAsState()
-    val order by viewModel.order.collectAsState()
+    val podcast by viewModel.podcast.collectAsStateWithLifecycle()
+    val episodes by viewModel.episodes.collectAsStateWithLifecycle()
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val order by viewModel.order.collectAsStateWithLifecycle()
     var sortOpen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -386,6 +392,48 @@ fun EpisodesScreen(
             }
         }
 
+        if (podcast != null && !inSelectionMode) item(key = "podcast-auto-queue") {
+            val show = podcast ?: return@item
+            GlassCard(contentPadding = 12.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                            .toggleable(
+                                value = show.autoAddNewEpisodesToUpNext,
+                                role = Role.Switch,
+                                onValueChange = { viewModel.setAutoAddNewEpisodesToUpNext(it) },
+                            )
+                            .semantics { contentDescription = "Automatically add to Up Next" },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Automatically add to Up Next", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Adds existing unplayed episodes now and new episodes on refresh.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = show.autoAddNewEpisodesToUpNext, onCheckedChange = null)
+                    }
+                    Text("Add episodes at", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = show.autoAddNewEpisodesAtTop,
+                            onClick = { viewModel.setAutoAddNewEpisodesAtTop(true) },
+                            label = { Text("Beginning") },
+                        )
+                        FilterChip(
+                            selected = !show.autoAddNewEpisodesAtTop,
+                            onClick = { viewModel.setAutoAddNewEpisodesAtTop(false) },
+                            label = { Text("End") },
+                        )
+                    }
+                }
+            }
+        }
+
         item(key = "episode-filters") {
         Row(
             modifier = Modifier
@@ -542,9 +590,9 @@ fun EpisodesScreen(
     // The show's own playback settings, which fall back to the global ones.
     if (showSettings && podcast != null) {
         val store = remember { ServiceLocator.settingsStore() }
-        val global by store.settings.collectAsState(initial = PlaybackSettings())
+        val global by store.settings.collectAsStateWithLifecycle(initialValue = PlaybackSettings())
         val overrides by store.showPlaybackOverrides(podcast!!.uuid)
-            .collectAsState(initial = ShowPlaybackOverrides())
+            .collectAsStateWithLifecycle(initialValue = ShowPlaybackOverrides())
         ShowSettingsSheet(
             showTitle = podcast!!.title,
             global = global,
@@ -643,42 +691,26 @@ private fun EpisodeRow(
     modifier: Modifier = Modifier,
 ) {
     val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
-    var upwardDistance by remember(episode.uuid) { mutableStateOf(0f) }
     var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
-    var notesOpenedBySwipe by remember(episode.uuid) { mutableStateOf(false) }
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
         onClick = onPlay,
         onLongClick = onLongPress,
         modifier = modifier.pointerInput(episode.uuid, swipeThreshold) {
-            detectDragGestures(
+            detectHorizontalDragGestures(
                 onDragStart = {
-                    upwardDistance = 0f
                     horizontalDistance = 0f
-                    notesOpenedBySwipe = false
                     onSwipeOffsetChanged(0f)
                 },
-                onDrag = { change, dragAmount ->
-                    horizontalDistance += dragAmount.x
-                    upwardDistance += dragAmount.y
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    horizontalDistance += dragAmount
                     onSwipeOffsetChanged(
                         horizontalDistance.coerceIn(-swipeThreshold * 1.6f, swipeThreshold * 1.6f),
                     )
-                    if (!notesOpenedBySwipe &&
-                        upwardDistance <= -swipeThreshold &&
-                        kotlin.math.abs(horizontalDistance) < swipeThreshold
-                    ) {
-                        notesOpenedBySwipe = true
-                        change.consume()
-                        onOpenNotes()
-                    }
-                    if (notesOpenedBySwipe) change.consume()
                 },
                 onDragEnd = {
-                    if (!notesOpenedBySwipe &&
-                        kotlin.math.abs(horizontalDistance) >= swipeThreshold &&
-                        kotlin.math.abs(horizontalDistance) > kotlin.math.abs(upwardDistance)
-                    ) {
+                    if (kotlin.math.abs(horizontalDistance) >= swipeThreshold) {
                         onSwipeActionRevealed(horizontalDistance > 0f)
                     } else {
                         onSwipeOffsetChanged(0f)

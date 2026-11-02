@@ -78,7 +78,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -139,16 +139,16 @@ fun PodcastsScreen(
     val resources = androidx.compose.ui.platform.LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val podcasts by viewModel.podcasts.collectAsState()
-    val totalPodcastCount by viewModel.totalPodcastCount.collectAsState()
-    val allEpisodes by viewModel.allEpisodes.collectAsState()
-    val podcastFolders by queueViewModel.podcastFolders.collectAsState()
-    val userPlaylists by queueViewModel.userPlaylists.collectAsState()
-    val query by viewModel.searchQueryState.collectAsState()
-    val import by viewModel.feedImport.collectAsState()
-    val opml by viewModel.opmlImport.collectAsState()
-    val replacement by viewModel.replacement.collectAsState()
-    val refresh by viewModel.refresh.collectAsState()
+    val podcasts by viewModel.podcasts.collectAsStateWithLifecycle()
+    val totalPodcastCount by viewModel.totalPodcastCount.collectAsStateWithLifecycle()
+    val allEpisodes by viewModel.allEpisodes.collectAsStateWithLifecycle()
+    val podcastFolders by queueViewModel.podcastFolders.collectAsStateWithLifecycle()
+    val userPlaylists by queueViewModel.userPlaylists.collectAsStateWithLifecycle()
+    val query by viewModel.searchQueryState.collectAsStateWithLifecycle()
+    val import by viewModel.feedImport.collectAsStateWithLifecycle()
+    val opml by viewModel.opmlImport.collectAsStateWithLifecycle()
+    val replacement by viewModel.replacement.collectAsStateWithLifecycle()
+    val refresh by viewModel.refresh.collectAsStateWithLifecycle()
     val refreshing = refresh is RefreshState.Running
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddFeed by remember { mutableStateOf(false) }
@@ -156,7 +156,7 @@ fun PodcastsScreen(
     var sortMenuOpen by remember { mutableStateOf(false) }
     var playlistMenuOpen by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
-    val podcastSort by queueViewModel.podcastSort.collectAsState()
+    val podcastSort by queueViewModel.podcastSort.collectAsStateWithLifecycle()
 
     var isGridView by rememberSaveable { mutableStateOf(false) }
     var selectedPlaylistId by rememberSaveable { mutableStateOf(ALL_PODCASTS) }
@@ -207,7 +207,7 @@ fun PodcastsScreen(
     // Counts and freshness per show. The counts are on every card, not only
     // in the two orders that sort by them: how much of a show is still waiting
     // is the first thing a library of this size has to answer.
-    val showStats by viewModel.showStats.collectAsState()
+    val showStats by viewModel.showStats.collectAsStateWithLifecycle()
 
     val visiblePodcasts = remember(podcasts, userPlaylists, selectedPlaylistId, podcastSort, showStats) {
         val playlistPodcastUuids = userPlaylists.firstOrNull { it.id == selectedPlaylistId }
@@ -1298,7 +1298,7 @@ private fun AddFeedDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeablePodcastCard(
+internal fun SwipeablePodcastCard(
     podcast: PodcastEntity,
     folderName: String,
     inSelectionMode: Boolean,
@@ -1326,8 +1326,10 @@ private fun SwipeablePodcastCard(
                 state.targetValue != SwipeToDismissBoxValue.Settled,
             onDismiss = { scope.launch { state.reset() } },
         ),
-        backgroundContent = {
+        backgroundContent = background@{
             val direction = state.dismissDirection
+            // Glass cards are translucent: never draw actions behind a settled card.
+            if (direction == SwipeToDismissBoxValue.Settled) return@background
             Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))

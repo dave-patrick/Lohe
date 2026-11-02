@@ -26,7 +26,7 @@ import com.lohe.app.data.db.entity.PodcastEntity
         EpisodeEntity::class,
         ListeningHistoryEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 @TypeConverters()
@@ -188,6 +188,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Repair legacy resume points that were stored with an unplayed status. */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Match playback's completion policy, without manufacturing listening time.
+                db.execSQL("""
+                    UPDATE episodes
+                    SET playingStatus = 2, playedUpToSeconds = 0,
+                        playedAt = COALESCE(playedAt, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+                        queuePosition = NULL
+                    WHERE playingStatus = 0 AND playedUpToSeconds > 0 AND durationSeconds > 0
+                        AND (CAST(playedUpToSeconds AS REAL) / durationSeconds >= ${com.lohe.app.data.EPISODE_COMPLETION_FRACTION}
+                            OR durationSeconds - playedUpToSeconds <= ${com.lohe.app.data.EPISODE_COMPLETION_TAIL_SECONDS})
+                """.trimIndent())
+                db.execSQL("UPDATE episodes SET playingStatus = 1 WHERE playingStatus = 0 AND playedUpToSeconds > 0")
+            }
+        }
+
         /**
          * Installs that predate the queue feature still exist in the wild, so
          * there has to be a path from the original schema too — otherwise Room
@@ -232,6 +249,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_10_11,
                         MIGRATION_11_12,
                         MIGRATION_12_13,
+                        MIGRATION_13_14,
                     )
                     .build()
                     .also { instance = it }

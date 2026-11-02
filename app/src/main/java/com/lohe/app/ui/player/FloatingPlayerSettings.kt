@@ -1,14 +1,10 @@
 package com.lohe.app.ui.player
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -57,7 +53,6 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
     var overlayAllowed by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var batteryUnrestricted by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
     var batteryPrompt by remember { mutableStateOf(false) }
-    var permissionPrompt by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var transparency by remember(opacity) { mutableFloatStateOf(1f - opacity) }
 
@@ -78,18 +73,8 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
             batteryPrompt = true
         }
     }
-    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { offerBatterySetup() }
-    val enablePlayer = {
-        message = null
-        scope.launch { settingsStore.setFloatingPlayerEnabled(true) }
-        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else offerBatterySetup()
-    }
-    val overlayPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        overlayAllowed = Settings.canDrawOverlays(context)
-        if (overlayAllowed) enablePlayer() else message = "Permission was not granted. Floating controls remain off."
-    }
+    val enablePlayer = rememberFloatingPlayerPermissionFlow(settingsStore,
+        onEnabled = offerBatterySetup, onMessage = { message = it })
 
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -99,13 +84,20 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
         }
         Switch(checked = enabled && overlayAllowed, onCheckedChange = { checked ->
             if (!checked) scope.launch { settingsStore.setFloatingPlayerEnabled(false) }
-            else if (overlayAllowed) enablePlayer()
-            else permissionPrompt = true
+            else {
+                message = null
+                enablePlayer()
+            }
         })
     }
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Text("Uses Display over other apps permission, not an accessibility service. The notification can hide controls without stopping your audio.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    TextButton(onClick = {
+        runCatching { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }
+            .onFailure { message = "Open Android Settings → Apps → Lohe → Notifications." }
+    }) { Text("Android notification settings") }
     Text("Control size", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(48 to "Small", 56 to "Medium", 72 to "Large", 88 to "Extra large").forEach { (size, label) ->
@@ -129,17 +121,6 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
         Text(if (batteryUnrestricted) "Battery optimization is off" else "Battery optimization setup")
     }
 
-    if (permissionPrompt) AlertDialog(
-        onDismissRequest = { permissionPrompt = false },
-        title = { Text("Show controls over other apps?") },
-        text = { Text("Allow Lohe under Display over other apps. This only displays your playback buttons; it does not read or control other apps.") },
-        confirmButton = { Button(onClick = {
-            permissionPrompt = false
-            runCatching { overlayPermission.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) }
-                .onFailure { message = "Open Android Settings → Apps → Special access → Display over other apps → Lohe." }
-        }) { Text("Open permission settings") } },
-        dismissButton = { TextButton(onClick = { permissionPrompt = false }) { Text("Not now") } },
-    )
     if (batteryPrompt) AlertDialog(
         onDismissRequest = { batteryPrompt = false },
         title = { Text("Keep floating controls available") },

@@ -1,10 +1,5 @@
 package com.lohe.app.ui.player
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -17,21 +12,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
@@ -45,25 +32,15 @@ fun FloatingPlayerToggleButton(
     settingsStore: SettingsStore,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var permissionPrompt by remember { mutableStateOf(false) }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        if (Settings.canDrawOverlays(context)) {
-            scope.launch { settingsStore.setFloatingPlayerEnabled(true) }
-        }
-    }
+    val enablePlayer = rememberFloatingPlayerPermissionFlow(settingsStore)
 
     IconButton(
         onClick = {
             if (enabled) {
                 scope.launch { settingsStore.setFloatingPlayerEnabled(false) }
-            } else if (Settings.canDrawOverlays(context)) {
-                scope.launch { settingsStore.setFloatingPlayerEnabled(true) }
             } else {
-                permissionPrompt = true
+                enablePlayer()
             }
         },
         modifier = modifier.size(48.dp),
@@ -107,27 +84,4 @@ fun FloatingPlayerToggleButton(
         }
     }
 
-    if (permissionPrompt) {
-        AlertDialog(
-            onDismissRequest = { permissionPrompt = false },
-            title = { Text(stringResource(R.string.floating_player_permission_title)) },
-            text = { Text(stringResource(R.string.floating_player_permission_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    permissionPrompt = false
-                    permissionLauncher.launch(
-                        Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}"),
-                        ),
-                    )
-                }) { Text(stringResource(R.string.floating_player_permission_open)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { permissionPrompt = false }) {
-                    Text(stringResource(R.string.floating_player_permission_not_now))
-                }
-            },
-        )
-    }
 }

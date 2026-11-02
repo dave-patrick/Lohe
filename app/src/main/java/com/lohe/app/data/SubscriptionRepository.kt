@@ -49,6 +49,7 @@ class SubscriptionRepository internal constructor(
     private val onArchived: suspend (EpisodeEntity) -> Unit = {},
     private val playlistMayAutoDownload: (String) -> Boolean = { false },
     private val playlistIncludesForAutoDownload: (String, EpisodeEntity) -> Boolean = { _, _ -> false },
+    private val transaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
 ) {
     fun observePodcasts(): Flow<List<PodcastEntity>> = podcasts.observeAll()
 
@@ -184,8 +185,19 @@ class SubscriptionRepository internal constructor(
      * Used when an episode's state is copied in from elsewhere: the position
      * is the listener's, but the listening happened somewhere else.
      */
-    suspend fun applyProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) =
-        episodes.applyProgress(uuid, positionSeconds, durationSeconds)
+    suspend fun applyProgress(uuid: String, positionSeconds: Long, durationSeconds: Long) {
+        if (isEpisodeComplete(positionSeconds, durationSeconds)) {
+            transaction {
+                // Keep a duration learned during import, without counting it as listening.
+                episodes.applyProgress(uuid, positionSeconds, durationSeconds)
+                episodes.markPlayedAndClearProgress(uuid)
+                episodes.dequeue(uuid)
+            }
+            onPlayed(uuid)
+        } else {
+            episodes.applyProgress(uuid, positionSeconds, durationSeconds)
+        }
+    }
 
     /** Puts an episode back to unplayed without erasing the listening total. */
     suspend fun applyUnplayed(uuid: String) = episodes.applyUnplayed(uuid)
@@ -266,18 +278,24 @@ class SubscriptionRepository internal constructor(
         podcasts.setAutoDownload(uuid, enabled)
 
     /** Per-podcast setting: append episodes discovered by the next feed refresh to Up Next. */
-    suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean) {
-        podcasts.get(uuid)?.let {
-            podcasts.update(it.copy(autoAddNewEpisodesToUpNext = enabled))
+    suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean) =
+        podcasts.setAutoAddNewEpisodesToUpNext(uuid, enabled)
+
+    /** Enables future additions and adds eligible existing episodes on the first enable. */
+    suspend fun setPodcastAutoQueueWithExisting(uuid: String, enabled: Boolean) = transaction {
+        val current = podcasts.get(uuid) ?: return@transaction
+        podcasts.setAutoAddNewEpisodesToUpNext(uuid, enabled)
+        if (!enabled || current.autoAddNewEpisodesToUpNext) return@transaction
+        val missing = episodes.byPodcastOnce(uuid).filter {
+            it.playingStatus != EpisodeEntity.PLAYED && !it.isArchived && !it.isDeleted &&
+                it.queuePosition == null
         }
+        enqueueNewEpisodes(current, missing)
     }
 
     /** Per-podcast placement for episodes discovered by a feed refresh. */
-    suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean) {
-        podcasts.get(uuid)?.let {
-            podcasts.update(it.copy(autoAddNewEpisodesAtTop = atTop))
-        }
-    }
+    suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean) =
+        podcasts.setAutoAddNewEpisodesAtTop(uuid, atTop)
 
     /** Convenience: fresh UUID for callers that mint one. */
     fun newUuid(): String = UUID.randomUUID().toString()
@@ -497,6 +515,7 @@ object ServiceLocator {
             playlistIncludesForAutoDownload = { podcastUuid, episode ->
                 playlistRepository().shouldAutoDownloadEpisode(podcastUuid, episode)
             },
+            transaction = { block -> database().withTransaction { block() } },
         )
 
     private val baseHttpClient by lazy { OkHttpClient() }

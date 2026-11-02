@@ -6,6 +6,8 @@ import androidx.media3.common.MediaMetadata
 import com.lohe.app.data.PlaylistRepository
 import com.lohe.app.data.SubscriptionRepository
 import com.lohe.app.data.db.entity.EpisodeEntity
+import com.lohe.app.data.db.entity.EpisodeSummary
+import com.lohe.app.data.db.entity.toSummary
 import com.lohe.app.data.db.entity.PodcastEntity
 import kotlinx.coroutines.flow.first
 
@@ -134,10 +136,16 @@ class LibraryCatalog(
             val shows = showsByUuid()
             val playlist = playlistRepository.playlists.value
                 .firstOrNull { it.id == MediaLibrary.playlistIdOf(parentId) }
-            playlist?.episodeUuids
-                ?.let { repository.episodesOnce(it) }
-                ?.map { playable(it, shows) }
-                .orEmpty()
+            if (playlist == null) {
+                emptyList()
+            } else {
+                if (playlist.assignedPodcastUuids.isNotEmpty()) {
+                    playlist.resolveAssignedEpisodes(repository.observeAllEpisodes().first())
+                        .map { playable(it, shows) }
+                } else {
+                    repository.episodesOnce(playlist.episodeUuids).map { playable(it, shows) }
+                }
+            }
         }
 
         else -> emptyList()
@@ -216,7 +224,10 @@ class LibraryCatalog(
         return matchingShows + matchingEpisodes
     }
 
-    private fun playable(episode: EpisodeEntity, shows: Map<String, PodcastEntity>): MediaItem {
+    private fun playable(episode: EpisodeEntity, shows: Map<String, PodcastEntity>): MediaItem =
+        playable(episode.toSummary(), shows)
+
+    private fun playable(episode: EpisodeSummary, shows: Map<String, PodcastEntity>): MediaItem {
         val show = shows[episode.podcastUuid]
         val artwork = episode.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
         // fromUri, not setUri: the request metadata is what carries the

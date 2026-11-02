@@ -96,6 +96,14 @@ class PocketCastsImporterTest {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(autoDownload = autoDownload)
         }
+        override suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesToUpNext = enabled)
+        }
+        override suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesAtTop = atTop)
+        }
 
         override fun observeSearchResults(query: String) = flowOf(rows.toList())
         override suspend fun upsertWithEpisodes(

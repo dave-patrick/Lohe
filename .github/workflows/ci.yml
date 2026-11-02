@@ -56,11 +56,19 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --console=plain
 
+      - name: Check privacy policy copies
+        shell: pwsh
+        run: ./tools/prepare-privacy-policy.ps1 -Check
+
       - name: Android lint
-        run: ./gradlew lintRelease --console=plain
+        run: ./gradlew -PlohePlayStore=true lintRelease --console=plain
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --console=plain
+
+      - name: Validate unsigned Play bundle build
+        # Signing credentials are deliberately absent in this CI workflow.
+        run: ./gradlew -PlohePlayStore=true bundleRelease --console=plain
 
       - name: Upload test reports
         # Only on failure — a green run does not need its XML, and these are
@@ -81,11 +89,13 @@ jobs:
           echo "build_id=$(sed -n 's/^val loheBuildId = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
           echo "release=$(sed -n 's/^val loheReleaseVersion = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK
+      - name: Upload unsigned Play build and R8 mapping
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-play-UNSIGNED
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
           retention-days: 14
   dependency-review:

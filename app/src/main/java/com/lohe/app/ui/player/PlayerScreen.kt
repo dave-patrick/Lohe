@@ -48,7 +48,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -72,6 +72,7 @@ import com.lohe.app.R
 import com.lohe.app.playback.Playback
 import com.lohe.app.playback.PlaybackService
 import com.lohe.app.playback.PlayerConnection
+import com.lohe.app.playback.pauseInterruptedPlayback
 import com.lohe.app.playback.rememberTransportState
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.ui.theme.Appearance
@@ -126,6 +127,8 @@ fun PlayerScreen(
     mediaUri: String? = null,
     /** Library row this media belongs to, used to persist resume position. */
     mediaEpisodeId: String? = null,
+    /** Consume explicit play requests so reopening the screen cannot replay them. */
+    onMediaRequestHandled: (String) -> Unit = {},
     /** Artwork for the current episode. */
     mediaArtworkUrl: String? = null,
     /** Shown under the artwork; falls back to the loaded item's title. */
@@ -153,9 +156,9 @@ fun PlayerScreen(
 ) {
     val transport by rememberTransportState(connection)
     val sleepTimer = Playback.sleepTimer
-    val sleepTimerState by Playback.sleepState.collectAsState()
-    val playbackSpeed by Playback.playbackSpeed.collectAsState()
-    val skipSilence by Playback.skipSilence.collectAsState()
+    val sleepTimerState by Playback.sleepState.collectAsStateWithLifecycle()
+    val playbackSpeed by Playback.playbackSpeed.collectAsStateWithLifecycle()
+    val skipSilence by Playback.skipSilence.collectAsStateWithLifecycle()
     var sleepRemainingMs by remember { mutableLongStateOf(0L) }
     var volumeBoostEnabled by rememberSaveable { mutableStateOf(volumeBoostDefault) }
     var lastVolumeBoostDefault by rememberSaveable { mutableStateOf(volumeBoostDefault) }
@@ -187,8 +190,8 @@ fun PlayerScreen(
     }
 
     val currentEpisodeDetails = activeEpisodeDetails?.takeIf { it.episodeId == transport.mediaId }
-    val metadataMatchesSelection = mediaEpisodeId.isNullOrBlank() ||
-        transport.mediaId.isBlank() || transport.mediaId == mediaEpisodeId
+    val metadataMatchesSelection = !mediaEpisodeId.isNullOrBlank() &&
+        (transport.mediaId.isBlank() || transport.mediaId == mediaEpisodeId)
 
     val resolvedArtworkUrl = if (metadataMatchesSelection) {
         mediaArtworkUrl?.takeIf { it.isNotBlank() }
@@ -226,8 +229,10 @@ fun PlayerScreen(
         val controller = connection.controller
         if (controller != null &&
             controller.mediaItemCount > 0 &&
+            controller.playbackState != androidx.media3.common.Player.STATE_ENDED &&
             controller.currentMediaItem?.mediaId == itemId
         ) {
+            onMediaRequestHandled(itemId)
             return@LaunchedEffect
         }
 
@@ -235,9 +240,8 @@ fun PlayerScreen(
             ?.takeIf { it.isNotBlank() && it != itemId }
         if (interruptedEpisodeId != null) {
             // Stop the old audio as soon as a different episode is selected,
-            // before waiting for its queue position to be persisted.
-            controller?.pause()
-            onBeforeSwitchEpisode(interruptedEpisodeId)
+            // before saving its live resume point and queue position.
+            pauseInterruptedPlayback(controller!!, interruptedEpisodeId, onBeforeSwitchEpisode)
         }
 
         connection.play(
@@ -249,6 +253,7 @@ fun PlayerScreen(
                 artworkUrl = resolvedArtworkUrl,
             ),
         )
+        onMediaRequestHandled(itemId)
     }
 
     LaunchedEffect(volumeBoostEnabled) {
@@ -383,10 +388,10 @@ fun PlayerScreen(
     }
 
     if (notesSheetOpen) {
-        val totalDurSecs = ((transport.durationMs.takeIf { it > 0L } ?: knownDurationMs ?: 0L) / 1_000L).toInt()
+        val totalDurSecs = ((transport.durationMs.takeIf { it > 0L } ?: displayedKnownDurationMs ?: 0L) / 1_000L).toInt()
         EpisodeNotesSheet(
             title = shownTitle,
-            showTitle = mediaShowTitle.ifBlank { transport.showTitle },
+            showTitle = shownShowTitle,
             artworkUrl = resolvedArtworkUrl,
             description = shownDescription,
             durationSeconds = totalDurSecs.takeIf { it > 0 },

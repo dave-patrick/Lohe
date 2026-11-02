@@ -109,6 +109,12 @@ interface PodcastDao {
     @Query("UPDATE podcasts SET autoDownload = :autoDownload WHERE uuid = :uuid")
     suspend fun setAutoDownload(uuid: String, autoDownload: Boolean)
 
+    @Query("UPDATE podcasts SET autoAddNewEpisodesToUpNext = :enabled WHERE uuid = :uuid")
+    suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean)
+
+    @Query("UPDATE podcasts SET autoAddNewEpisodesAtTop = :atTop WHERE uuid = :uuid")
+    suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean)
+
     @Transaction
     suspend fun upsertWithEpisodes(podcast: PodcastEntity, episodes: List<com.lohe.app.data.db.entity.EpisodeEntity>) {
         upsert(podcast)

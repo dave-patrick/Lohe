@@ -21,8 +21,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,6 +62,8 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val isLight = backgroundIsLight()
+    var showPrivacy by remember { mutableStateOf(false) }
+    if (showPrivacy) PrivacyPolicyDialog(onDismiss = { showPrivacy = false })
 
     // Read from the installed package rather than a baked-in constant, so the
     // page cannot drift from the APK it ships in.
@@ -160,6 +166,9 @@ fun AboutScreen(
         }
 
         Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { showPrivacy = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Privacy policy")
+        }
         HorizontalDivider()
         Spacer(Modifier.height(4.dp))
 

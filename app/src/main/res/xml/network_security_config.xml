@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lohe fetches podcast feeds and episode audio from arbitrary user-provided
+  URLs, including plain-HTTP feeds that some publishers still serve. Cleartext
+  is therefore permitted by default.
+
+  This remains a blanket cleartext allowance, not a domain allowlist and not a
+  guarantee of Play approval or encryption. A fixed allowlist cannot represent
+  arbitrary podcast publishers. Catalog search uses HTTPS; public feeds may
+  use HTTP. This limitation is disclosed in the privacy policy and Data Safety
+  submission guidance. See docs/google-play-compliance.md.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -148,6 +148,39 @@ data class ShowPlaybackOverrides(
  */
 class SettingsStore(private val context: Context) {
 
+    fun podcastEpisodeFilter(id: String): Flow<com.lohe.app.data.EpisodeFilter.Filter> =
+        context.settingsStore.data.map { prefs ->
+            com.lohe.app.data.EpisodeFilter.Filter.entries.firstOrNull {
+                it.name == prefs[podcastEpisodeFilterKey(id)]
+            } ?: com.lohe.app.data.EpisodeFilter.Filter.ALL
+        }
+
+    suspend fun setPodcastEpisodeFilter(id: String, value: com.lohe.app.data.EpisodeFilter.Filter) =
+        edit { it[podcastEpisodeFilterKey(id)] = value.name }
+
+    fun podcastEpisodeOrder(id: String): Flow<com.lohe.app.data.EpisodeFilter.Order> =
+        context.settingsStore.data.map { prefs ->
+            com.lohe.app.data.EpisodeFilter.Order.entries.firstOrNull {
+                it.name == prefs[podcastEpisodeOrderKey(id)]
+            } ?: com.lohe.app.data.EpisodeFilter.Order.NEWEST_FIRST
+        }
+
+    suspend fun setPodcastEpisodeOrder(id: String, value: com.lohe.app.data.EpisodeFilter.Order) =
+        edit { it[podcastEpisodeOrderKey(id)] = value.name }
+
+    private fun podcastEpisodeFilterKey(id: String) = stringPreferencesKey("podcast_episode_filter_$id")
+    private fun podcastEpisodeOrderKey(id: String) = stringPreferencesKey("podcast_episode_order_$id")
+
+    fun playlistEpisodeSort(id: String): Flow<com.lohe.app.data.PlaylistEpisodeSort> =
+        context.settingsStore.data.map { prefs ->
+            com.lohe.app.data.PlaylistEpisodeSort.decode(prefs[playlistEpisodeSortKey(id)])
+        }
+
+    suspend fun setPlaylistEpisodeSort(id: String, value: com.lohe.app.data.PlaylistEpisodeSort) =
+        edit { it[playlistEpisodeSortKey(id)] = value.encode() }
+
+    private fun playlistEpisodeSortKey(id: String) = stringPreferencesKey("playlist_episode_sort_$id")
+
     private object Keys {
         val appearance = stringPreferencesKey("appearance")
         val volumeBoost = booleanPreferencesKey("volume_boost")

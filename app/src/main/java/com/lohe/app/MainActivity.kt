@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,8 +63,8 @@ class MainActivity : ComponentActivity() {
             // screen at once, and written through so it survives process death
             // rather than only rotation.
             var appearance by remember { mutableStateOf(Appearance.DARK) }
-            val persisted by settings.appearance.collectAsState(initial = Appearance.DARK)
-            val playbackSettings by settings.settings.collectAsState(initial = com.lohe.app.ui.theme.PlaybackSettings())
+            val persisted by settings.appearance.collectAsStateWithLifecycle(initialValue = Appearance.DARK)
+            val playbackSettings by settings.settings.collectAsStateWithLifecycle(initialValue = com.lohe.app.ui.theme.PlaybackSettings())
 
             // Show the branded splash screen briefly before the main app.
             // rememberSaveable (not remember) so the "already shown" flag

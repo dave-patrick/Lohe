@@ -12,6 +12,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -19,8 +20,11 @@ import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import com.lohe.app.MainActivity
+import com.lohe.app.R
 import com.lohe.app.data.ServiceLocator
 import com.lohe.app.dev.DevDiagnostics
 import com.lohe.app.ui.theme.ShowPlaybackSettings
@@ -68,6 +72,8 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Android can recreate this service before any activity after process death.
+        ServiceLocator.init(applicationContext)
 
         player = ExoPlayer.Builder(this)
             .setAudioAttributes(
@@ -86,7 +92,14 @@ class PlaybackService : MediaLibraryService() {
         // rather than a second one.
         PlaybackService.player = player
 
+        val seekBack = CommandButton.Builder(CommandButton.ICON_SKIP_BACK)
+            .setDisplayName(getString(R.string.settings_skip_back))
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK).build()
+        val seekForward = CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD)
+            .setDisplayName(getString(R.string.settings_skip_forward))
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD).build()
         session = MediaLibrarySession.Builder(this, player, LibraryCallback())
+            .setMediaButtonPreferences(listOf(seekBack, seekForward))
             .setSessionActivity(openAppIntent())
             .build()
 
@@ -96,6 +109,7 @@ class PlaybackService : MediaLibraryService() {
 
         player.addListener(EndOfEpisodeWatcher())
         startVolumeBoostObserver()
+        startSeekIncrementObserver()
         startVoiceEnhancementObserver()
         startSleepTimerPolling()
         startProgressReporting()
@@ -148,6 +162,15 @@ class PlaybackService : MediaLibraryService() {
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+
+        override fun onConnectAsync(session: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaSession.ConnectionResult> =
+            Futures.transform(super.onConnectAsync(session, controller), { defaultResult ->
+                val result = checkNotNull(defaultResult)
+                // Use the controller-aware async defaults, not legacy onConnect's sentinel.
+                // Up Next owns advancement; repeat on its one-item player bypasses STATE_ENDED.
+                if (!result.isAccepted) result else MediaSession.ConnectionResult.accept(result.availableSessionCommands,
+                    result.availablePlayerCommands.buildUpon().remove(Player.COMMAND_SET_REPEAT_MODE).build())
+            }, MoreExecutors.directExecutor())
 
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
@@ -312,6 +335,13 @@ class PlaybackService : MediaLibraryService() {
         private var observedMediaId: String? = null
         private var completingMediaId: String? = null
 
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            if (repeatMode != Player.REPEAT_MODE_OFF) {
+                DevDiagnostics.log("PLAYBACK_REPEAT", "Disabled repeat mode $repeatMode so Up Next can advance")
+                player.repeatMode = Player.REPEAT_MODE_OFF
+            }
+        }
+
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             if (!playWhenReady && player.playbackState != Player.STATE_IDLE &&
                 player.playbackState != Player.STATE_ENDED
@@ -403,12 +433,12 @@ class PlaybackService : MediaLibraryService() {
                         .onFailure { DevDiagnostics.log("PLAYBACK_COMPLETE", "Failed to remove $finishedId from Up Next", it) }
                 }
 
-                if (stopAfterCompletion) {
-                    withContext(Dispatchers.Main) { player.pause() }
+                if (stopAfterCompletion || repository == null) {
+                    clearFinishedItem(finishedId)
                     return@launch
                 }
 
-                if (repository != null) advanceQueue(repository)
+                advanceQueue(repository, finishedId)
             }
         }
 
@@ -418,10 +448,19 @@ class PlaybackService : MediaLibraryService() {
          * The finished episode is dequeued first, so failing to load the next
          * one cannot leave it stuck at the head and wedge the queue.
          */
-        private suspend fun advanceQueue(repository: com.lohe.app.data.SubscriptionRepository) {
+        private suspend fun clearFinishedItem(finishedId: String?) = withContext(Dispatchers.Main) {
+            if (finishedId != null && player.currentMediaItem?.mediaId == finishedId &&
+                player.playbackState == Player.STATE_ENDED
+            ) {
+                player.stop()
+                player.clearMediaItems()
+            }
+        }
+
+        private suspend fun advanceQueue(repository: com.lohe.app.data.SubscriptionRepository, finishedId: String?) {
             val next = repository.queueSnapshot().firstOrNull()
             if (next == null) {
-                withContext(Dispatchers.Main) { player.stop() }
+                clearFinishedItem(finishedId)
                 return
             }
 
@@ -432,6 +471,10 @@ class PlaybackService : MediaLibraryService() {
             val artworkUrl = next.artworkUrl?.takeIf { it.isNotBlank() } ?: show?.artworkUrl
 
             withContext(Dispatchers.Main) {
+                // A manual selection may have replaced the finished item while the queue was read.
+                if (finishedId == null || player.currentMediaItem?.mediaId != finishedId ||
+                    player.playbackState != Player.STATE_ENDED
+                ) return@withContext
                 player.setMediaItem(
                     mediaItemFor(
                         episodeUuid = next.uuid,
@@ -443,6 +486,7 @@ class PlaybackService : MediaLibraryService() {
                     playbackStartPositionMs(next.playedUpToSeconds, (next.durationSeconds?.toLong() ?: 0L) * 1_000L),
                 )
                 applyShowSettings(next.podcastUuid)
+                if (player.currentMediaItem?.mediaId != next.uuid) return@withContext
                 applyCrossfade(next.uuid)
                 player.prepare()
                 player.play()
@@ -507,6 +551,15 @@ class PlaybackService : MediaLibraryService() {
                     val insideIntro = _currentSkipIntroMs > 0L && initialPositionMs < _currentSkipIntroMs
                     onEpisodeStarted(mediaId, startingAtTheTop = initialPositionMs <= 0L || insideIntro)
                 }
+            }
+        }
+    }
+
+    private fun startSeekIncrementObserver() {
+        scope.launch {
+            ServiceLocator.settingsStore().settings.collect { settings ->
+                player.setSeekBackIncrementMs(settings.skipBackSeconds.coerceAtLeast(1) * 1_000L)
+                player.setSeekForwardIncrementMs(settings.skipForwardSeconds.coerceAtLeast(1) * 1_000L)
             }
         }
     }
@@ -744,10 +797,10 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         /** Past this fraction an episode counts as finished, not part-finished. */
-        const val PLAYED_THRESHOLD = 0.95
+        const val PLAYED_THRESHOLD = com.lohe.app.data.EPISODE_COMPLETION_FRACTION
 
         /** Never auto-skip the final few seconds; treat the tail as played. */
-        const val PLAYED_TAIL_SECONDS = 10L
+        const val PLAYED_TAIL_SECONDS = com.lohe.app.data.EPISODE_COMPLETION_TAIL_SECONDS
 
         /**
          * Episodes shorter than this are left alone: the head scan alone would

@@ -5,10 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
+import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class EpisodesViewModel(
     private val repository: SubscriptionRepository,
     private val podcastUuid: String,
+    private val settingsStore: SettingsStore? = null,
 ) : ViewModel() {
 
     val podcast: StateFlow<PodcastEntity?> = repository
@@ -29,8 +30,12 @@ class EpisodesViewModel(
     private val _order = MutableStateFlow(EpisodeFilter.Order.NEWEST_FIRST)
     private val _query = MutableStateFlow("")
 
-    val filter: StateFlow<EpisodeFilter.Filter> = _filter.asStateFlow()
-    val order: StateFlow<EpisodeFilter.Order> = _order.asStateFlow()
+    val filter: StateFlow<EpisodeFilter.Filter> =
+        (settingsStore?.podcastEpisodeFilter(podcastUuid) ?: _filter)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpisodeFilter.Filter.ALL)
+    val order: StateFlow<EpisodeFilter.Order> =
+        (settingsStore?.podcastEpisodeOrder(podcastUuid) ?: _order)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpisodeFilter.Order.NEWEST_FIRST)
 
     /**
      * Episodes for this show, filtered and ordered.
@@ -42,8 +47,8 @@ class EpisodesViewModel(
         combine(
             repository.observeEpisodesFor(podcastUuid),
             podcast,
-            _filter,
-            _order,
+            filter,
+            order,
             _query,
         ) { all, show, filter, order, query ->
             val fallbackArt = show?.artworkUrl?.takeIf { it.isNotBlank() }
@@ -58,15 +63,25 @@ class EpisodesViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setFilter(value: EpisodeFilter.Filter) {
-        _filter.value = value
+        if (settingsStore == null) _filter.value = value
+        else viewModelScope.launch { settingsStore.setPodcastEpisodeFilter(podcastUuid, value) }
     }
 
     fun setOrder(value: EpisodeFilter.Order) {
-        _order.value = value
+        if (settingsStore == null) _order.value = value
+        else viewModelScope.launch { settingsStore.setPodcastEpisodeOrder(podcastUuid, value) }
     }
 
     fun setQuery(value: String) {
         _query.value = value
+    }
+
+    fun setAutoAddNewEpisodesToUpNext(enabled: Boolean) = viewModelScope.launch {
+        repository.setPodcastAutoQueueWithExisting(podcastUuid, enabled)
+    }
+
+    fun setAutoAddNewEpisodesAtTop(atTop: Boolean) = viewModelScope.launch {
+        repository.setAutoAddNewEpisodesAtTop(podcastUuid, atTop)
     }
 
     fun setStarred(uuid: String, starred: Boolean) = viewModelScope.launch {
@@ -115,5 +130,5 @@ class EpisodesViewModelFactory(
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        EpisodesViewModel(ServiceLocator.subscriptionRepository(), podcastUuid) as T
+        EpisodesViewModel(ServiceLocator.subscriptionRepository(), podcastUuid, ServiceLocator.settingsStore()) as T
 }

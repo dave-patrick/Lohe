@@ -8,9 +8,10 @@ plugins {
 
 // Release version changes only when requested. The final component of the
 // custom build ID increases for each distinct build, even within one release.
-val loheReleaseVersion = "0.10.1"
+val loheReleaseVersion = "0.10.3"
 // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
-val loheBuildId = "2026.26.10.27"
+val loheBuildId = "2026.01.11.51"
+val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
     "Lohe release version must be major.minor.patch with each component from 0 to 99"
@@ -45,21 +46,34 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.create("release") {
-                val props = Properties()
-                rootProject.file("local.properties")
-                    .takeIf { it.exists() }
-                    ?.inputStream()
-                    ?.use { props.load(it) }
-                val path = props.getProperty("keystore.path", "")
-                if (path.isNotEmpty()) {
+            val props = Properties()
+            rootProject.file("local.properties")
+                .takeIf { it.exists() }
+                ?.inputStream()
+                ?.use { props.load(it) }
+            val path = props.getProperty("keystore.path", "")
+            // CI can validate an unsigned bundle. Never silently sign Play builds with Debug.
+            if (path.isNotEmpty()) {
+                signingConfig = signingConfigs.create("release") {
                     storeFile = file(path)
+                    storePassword = props.getProperty("keystore.password", "")
+                    keyAlias = props.getProperty("keystore.alias", "")
+                    keyPassword = props.getProperty("keystore.key.password", "")
                 }
-                storePassword = props.getProperty("keystore.password", "")
-                keyAlias = props.getProperty("keystore.alias", "")
-                keyPassword = props.getProperty("keystore.key.password", "")
             }
         }
+        create("smokeRelease") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".releaseaudit"
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+        }
+    }
+
+    if (lohePlayStore) {
+        // A phone/tablet Play submission defers car review; other distributions keep it.
+        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
+        sourceSets.getByName("smokeRelease").manifest.srcFile("src/play/AndroidManifest.xml")
     }
 
     compileOptions {
@@ -79,6 +93,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
 implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.androidx.compose.bom))

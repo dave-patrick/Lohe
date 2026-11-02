@@ -25,6 +25,18 @@ import okhttp3.ResponseBody.Companion.toResponseBody
  */
 class SubscriptionRepositoryTest {
 
+    @Test fun `imported completed positions use normal played lifecycle`() = runTest {
+        val completed = mutableListOf<String>()
+        val repo = SubscriptionRepository(FakePodcastDao(), FakeEpisodeDao(), FakeHistoryDao(),
+            ScriptedFetcher(emptySet()), onPlayed = { completed += it })
+        repo.applyProgress("coat", 3530, 3545)
+        repo.applyProgress("systems", 2580, 2435)
+        repo.applyProgress("future", 3903, 3928)
+        repo.applyProgress("unfinished", 600, 3600)
+        repo.applyProgress("unknown", 600, 0)
+        assertEquals(listOf("coat", "systems", "future"), completed)
+    }
+
     // --- Fakes --------------------------------------------------------------
 
     private class FakePodcastDao(
@@ -96,6 +108,14 @@ class SubscriptionRepositoryTest {
         override suspend fun setAutoDownload(uuid: String, autoDownload: Boolean) {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(autoDownload = autoDownload)
+        }
+        override suspend fun setAutoAddNewEpisodesToUpNext(uuid: String, enabled: Boolean) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesToUpNext = enabled)
+        }
+        override suspend fun setAutoAddNewEpisodesAtTop(uuid: String, atTop: Boolean) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesAtTop = atTop)
         }
         override fun observeSearchResults(query: String) =
             kotlinx.coroutines.flow.flowOf(

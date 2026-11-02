@@ -25,7 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,9 +56,9 @@ fun StorageManagementScreen(
     viewModel: SubscriptionsViewModel,
     onBack: () -> Unit,
 ) {
-    val episodes by viewModel.allEpisodes.collectAsState()
-    val importedBytes by viewModel.localFilesStorageSize.collectAsState()
-    val downloads by ServiceLocator.downloadManager().downloads().collectAsState(initial = emptyList())
+    val episodes by viewModel.allEpisodes.collectAsStateWithLifecycle()
+    val importedBytes by viewModel.localFilesStorageSize.collectAsStateWithLifecycle()
+    val downloads by ServiceLocator.downloadManager().downloads().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
     val importedCount = episodes.count { it.audioUrl.startsWith(CONTENT_SCHEME) }

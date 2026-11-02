@@ -118,6 +118,42 @@ class MediaLibraryBrowseTest {
     }
 
     @Test
+    fun assignedPodcastPlaylistBrowsesManualAndAllVisibleAssignedEpisodes() {
+        val showId = "audit-assigned-browse-show"
+        val repository = ServiceLocator.playlistRepository()
+        val playlist = repository.createPlaylist(
+            "Audit assigned browse", listOf("audit-manual-second", "audit-manual-first"),
+            autoDownload = false,
+        )
+        try {
+            runBlocking {
+                ServiceLocator.database().podcastDao().upsert(PodcastEntity(
+                    showId, "Audit assigned show", feedUrl = "https://example.invalid/assigned-feed"))
+                fun fixture(id: String, published: Long) = EpisodeEntity(
+                    id, showId, id, "https://example.invalid/$id.mp3", published)
+                ServiceLocator.database().episodeDao().upsertAll(listOf(
+                    fixture("audit-manual-first", 100),
+                    fixture("audit-manual-second", 10),
+                    fixture("audit-assigned-played", 90).copy(playingStatus = EpisodeEntity.PLAYED),
+                    fixture("audit-assigned-archived", 80).copy(isArchived = true),
+                    fixture("audit-assigned-hidden", 70),
+                    fixture("audit-assigned-deleted", 60).copy(isDeleted = true),
+                ))
+            }
+            repository.assignPodcastShows(playlist.id, listOf(showId))
+            repository.removeEpisode(playlist.id, "audit-assigned-hidden")
+
+            assertEquals(
+                listOf("audit-manual-second", "audit-manual-first", "audit-assigned-played", "audit-assigned-archived"),
+                childrenOf(MediaLibrary.playlistId(playlist.id)).map { it.mediaId },
+            )
+        } finally {
+            repository.deletePlaylist(playlist.id)
+            runBlocking { ServiceLocator.database().podcastDao().deleteByUuid(showId) }
+        }
+    }
+
+    @Test
     fun tappingAnEpisodeInACarResolvesItToSomethingPlayable() {
         val shows = childrenOf(MediaLibrary.SHOWS)
         val show = shows.first { it.mediaId == MediaLibrary.showId("audit-browse-show") }

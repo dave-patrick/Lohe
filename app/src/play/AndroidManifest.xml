@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Selected only by -PlohePlayStore=true. The car implementation stays available
+     in ordinary Release and Debug; submit a separately verified car build later. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" tools:node="remove" />
+    <uses-feature android:name="android.hardware.type.automotive" tools:node="remove" />
+    <uses-feature android:name="android.software.car.templates_host.media" tools:node="remove" />
+    <application>
+        <meta-data android:name="androidx.car.app.TintableAttributionIcon" tools:node="remove" />
+        <meta-data android:name="com.google.android.gms.car.application" tools:node="remove" />
+        <meta-data android:name="com.android.automotive" tools:node="remove" />
+        <activity android:name="androidx.car.app.activity.CarAppActivity" tools:node="remove" />
+        <service android:name="com.lohe.app.playback.CarPlaybackService" tools:node="remove" />
+        <service android:name="com.lohe.app.playback.PlaybackService">
+            <meta-data android:name="androidx.car.app.media.CalMediaActivityComponent" tools:node="remove" />
+        </service>
+    </application>
+</manifest>

@@ -39,6 +39,7 @@ class DragReorderState internal constructor(
     private val listState: LazyListState,
     private val onMove: (from: Int, to: Int) -> Unit,
     private val onDrop: () -> Unit,
+    private val firstDraggableIndex: Int = 0,
 ) {
     /** The row currently being carried, or null when nothing is. */
     var draggedIndex by mutableStateOf<Int?>(null)
@@ -51,6 +52,7 @@ class DragReorderState internal constructor(
     val isDragging: Boolean get() = draggedIndex != null
 
     fun onDragStart(index: Int) {
+        if (index < firstDraggableIndex) return
         draggedIndex = index
         draggedOffset = 0f
     }
@@ -66,7 +68,7 @@ class DragReorderState internal constructor(
         val proposedCentre = proposedTop + carried.size / 2
 
         val target = info.visibleItemsInfo.firstOrNull { candidate ->
-            candidate.index != current &&
+            candidate.index >= firstDraggableIndex && candidate.index != current &&
                 proposedCentre >= candidate.offset &&
                 proposedCentre < candidate.offset + candidate.size
         }
@@ -125,8 +127,9 @@ internal fun rememberDragReorderState(
     listState: LazyListState,
     onMove: (from: Int, to: Int) -> Unit,
     onDrop: () -> Unit = {},
+    firstDraggableIndex: Int = 0,
 ): DragReorderState {
-    val state = remember(listState) { DragReorderState(listState, onMove, onDrop) }
+    val state = remember(listState, firstDraggableIndex) { DragReorderState(listState, onMove, onDrop, firstDraggableIndex) }
     val edgeSize = with(LocalDensity.current) { 64.dp.toPx() }
     val maxSpeed = with(LocalDensity.current) { 600.dp.toPx() }
     LaunchedEffect(state.isDragging) {

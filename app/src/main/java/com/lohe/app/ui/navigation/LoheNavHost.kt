@@ -26,7 +26,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -214,8 +214,8 @@ private fun LoheNavigationContent(
     // Shared by Home, Episodes, and Queue so a "queue" action from any of them
     // is reflected in all of them immediately.
     val queueViewModel: QueueViewModel = viewModel(factory = QueueViewModelFactory())
-    val inProgress by queueViewModel.continueListening.collectAsState()
-    val upNext by queueViewModel.queue.collectAsState()
+    val inProgress by queueViewModel.continueListening.collectAsStateWithLifecycle()
+    val upNext by queueViewModel.queue.collectAsStateWithLifecycle()
     val discoveryViewModel: DiscoveryViewModel = viewModel(
         factory = DiscoveryViewModelFactory(),
     )
@@ -249,7 +249,7 @@ private fun LoheNavigationContent(
                 SharingStarted.Eagerly,
                 PlaybackSettings(appearance = appearance),
             )
-    }.collectAsState()
+    }.collectAsStateWithLifecycle()
 
     LaunchedEffect(
         playbackSettings.defaultPlaybackSpeed,
@@ -407,7 +407,7 @@ private fun LoheNavigationContent(
                             // Nothing loaded and nothing in progress: open the
                             // episode that is ready to play rather than an empty
                             // player.
-                            if (nowPlaying == null) {
+                            if (nowPlaying == null && !transport.value.hasMedia) {
                                 val episode = fallbackEntry?.episode?.toSummary() ?: nextUp?.episode
                                 val showTitle = fallbackEntry?.showTitle ?: nextUp?.showTitle.orEmpty()
                                 if (episode != null) {
@@ -527,7 +527,7 @@ private fun LoheNavigationContent(
                     factory = EpisodesViewModelFactory(uuid),
                     key = "episodes-$uuid",
                 )
-                val show by vm.podcast.collectAsState()
+                val show by vm.podcast.collectAsStateWithLifecycle()
                 val queueTitle = show?.title.orEmpty()
                 EpisodesScreen(
                     viewModel = vm,
@@ -584,7 +584,7 @@ private fun LoheNavigationContent(
             }
 
             composable(Dest.PLAYLISTS.route) {
-                val refreshState by podcastsViewModel.refresh.collectAsState()
+                val refreshState by podcastsViewModel.refresh.collectAsStateWithLifecycle()
                 PlaylistsScreen(
                     viewModel = queueViewModel,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
@@ -652,6 +652,9 @@ private fun LoheNavigationContent(
                     onShrink = { navController.popBackStack() },
                     mediaUri = nowPlaying?.uri,
                     mediaEpisodeId = nowPlaying?.episodeId,
+                    onMediaRequestHandled = { episodeId ->
+                        if (nowPlaying?.episodeId == episodeId) nowPlaying = null
+                    },
                     mediaTitle = nowPlaying?.title.orEmpty(),
                     mediaShowTitle = nowPlaying?.showTitle.orEmpty(),
                     mediaArtworkUrl = nowPlaying?.artworkUrl,

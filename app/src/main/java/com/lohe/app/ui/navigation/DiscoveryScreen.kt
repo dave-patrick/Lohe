@@ -25,7 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,12 +64,12 @@ fun DiscoveryScreen(
     onOpenSubscribed: (String) -> Unit = {},
     onOpenSettings: () -> Unit = {},
 ) {
-    val query by viewModel.query.collectAsState()
-    val state by viewModel.state.collectAsState()
-    val subscriptions by viewModel.subscriptions.collectAsState()
-    val previews by viewModel.previews.collectAsState()
-    val previewEpisodes by viewModel.previewEpisodes.collectAsState()
-    val action by viewModel.action.collectAsState()
+    val query by viewModel.query.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val previews by viewModel.previews.collectAsStateWithLifecycle()
+    val previewEpisodes by viewModel.previewEpisodes.collectAsStateWithLifecycle()
+    val action by viewModel.action.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Which catalog result is open, if any. Held by feed URL + title rather

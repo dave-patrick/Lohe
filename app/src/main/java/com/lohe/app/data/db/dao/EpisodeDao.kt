@@ -172,7 +172,9 @@ interface EpisodeDao {
         uuids.forEachIndexed { index, uuid -> renumber(uuid, index) }
     }
 
-    @Query("UPDATE episodes SET queuePosition = :position WHERE uuid = :uuid")
+    // A stale drag snapshot may contain an episode already removed on completion.
+    // Reordering must not act as enqueue; explicit enqueue remains the insertion path.
+    @Query("UPDATE episodes SET queuePosition = :position WHERE uuid = :uuid AND queuePosition IS NOT NULL")
     suspend fun renumber(uuid: String, position: Int)
 
     // --- Offline downloads --------------------------------------------------

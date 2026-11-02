@@ -46,12 +46,27 @@ data class UserPlaylist(
     val pinned: Boolean = false,
     /** Episode UUIDs hidden from this dynamic playlist by the listener. */
     val excludedUuids: List<String> = emptyList(),
+    /** Podcasts explicitly assigned to this playlist, separate from legacy show rules. */
+    val assignedPodcastUuids: List<String> = emptyList(),
 ) {
     fun resolveExplicitEpisodes(episodes: Map<String, EpisodeSummary>): List<EpisodeSummary> =
         episodeUuids.mapNotNull { episodeUuid ->
             val episode = episodes[episodeUuid] ?: return@mapNotNull null
             episode.takeIf { !it.isArchived && it.isPlayed == finished }
         }
+
+    /** Explicit entries first, followed by the current library of assigned podcasts. */
+    fun resolveAssignedEpisodes(episodes: List<EpisodeSummary>): List<EpisodeSummary> {
+        val excluded = excludedUuids.toSet()
+        val explicit = resolveExplicitEpisodes(episodes.associateBy { it.uuid })
+            .filter { !it.isDeleted && it.uuid !in excluded }
+        val assigned = assignedPodcastUuids.toSet()
+        val automatic = episodes.asSequence()
+            .filter { it.podcastUuid in assigned && !it.isDeleted && it.uuid !in excluded }
+            .sortedWith(compareByDescending<EpisodeSummary> { it.published }.thenBy { it.uuid })
+            .toList()
+        return (explicit + automatic).distinctBy { it.uuid }
+    }
 }
 
 /**
@@ -184,7 +199,9 @@ class PlaylistRepository(
     fun shouldAutoDownloadPodcast(podcastUuid: String): Boolean {
         val folder = _podcastFolders.value[podcastUuid]
         return _playlists.value.any { playlist ->
-            playlist.autoDownload && !playlist.snapshot && !playlist.finished &&
+            if (playlist.assignedPodcastUuids.isNotEmpty()) {
+                playlist.autoDownload && podcastUuid in playlist.assignedPodcastUuids
+            } else playlist.autoDownload && !playlist.snapshot && !playlist.finished &&
                 (podcastUuid in playlist.shows ||
                     playlist.minDurationMinutes > 0 || playlist.maxDurationMinutes > 0 ||
                     (playlist.folder.isNotBlank() && folder == playlist.folder))
@@ -195,7 +212,11 @@ class PlaylistRepository(
     fun shouldAutoDownloadEpisode(podcastUuid: String, episode: EpisodeEntity): Boolean {
         val folder = _podcastFolders.value[podcastUuid]
         return _playlists.value.any { playlist ->
-            if (!playlist.autoDownload || playlist.snapshot || episode.uuid in playlist.excludedUuids) {
+            if (playlist.assignedPodcastUuids.isNotEmpty()) {
+                playlist.autoDownload && podcastUuid in playlist.assignedPodcastUuids &&
+                    !episode.isPlayed && !episode.isArchived && !episode.isDeleted &&
+                    episode.uuid !in playlist.excludedUuids
+            } else if (!playlist.autoDownload || playlist.snapshot || episode.uuid in playlist.excludedUuids) {
                 false
             } else {
                 val hasShowRule = playlist.shows.isNotEmpty()
@@ -232,9 +253,19 @@ class PlaylistRepository(
                     val selected = shows.distinct()
                     pl.copy(
                         shows = selected,
-                        excludedUuids = if (selected.isEmpty()) emptyList() else pl.excludedUuids,
                     )
                 } else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    /** Assigns podcasts without overwriting any legacy playlist rules. */
+    fun assignPodcastShows(playlistId: String, shows: Collection<String>) {
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id == playlistId) pl.copy(assignedPodcastUuids = shows.filter { it.isNotBlank() }.distinct()) else pl
             }
             _playlists.value = next
             saveToDisk(next)
@@ -317,16 +348,29 @@ class PlaylistRepository(
                 if (pl.id != playlistId) {
                     pl
                 } else {
-                    val dynamic = !pl.snapshot && (
+                    val dynamic = pl.assignedPodcastUuids.isNotEmpty() || (!pl.snapshot && (
                         pl.shows.isNotEmpty() || pl.folder.isNotBlank() ||
                             pl.minDurationMinutes > 0 || pl.maxDurationMinutes > 0
-                        )
+                        ))
                     pl.copy(
                         episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid },
                         excludedUuids = if (dynamic) (pl.excludedUuids + episodeUuid).distinct()
                             else pl.excludedUuids,
                     )
                 }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    /** Removes an explicit entry during automatic cleanup without creating an exclusion. */
+    fun removeExplicitEpisode(playlistId: String, episodeUuid: String) {
+        synchronized(lock) {
+            val current = _playlists.value
+            if (current.none { it.id == playlistId && episodeUuid in it.episodeUuids }) return
+            val next = current.map { pl ->
+                if (pl.id == playlistId) pl.copy(episodeUuids = pl.episodeUuids.filterNot { it == episodeUuid }) else pl
             }
             _playlists.value = next
             saveToDisk(next)
@@ -440,6 +484,8 @@ class PlaylistRepository(
                         ?.split(',')
                         ?.filter { it.isNotBlank() }
                         ?: emptyList()
+                    val assigned = parts.getOrNull(13)?.takeIf { it.isNotBlank() }
+                        ?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
                     UserPlaylist(
                         id = id,
                         name = name,
@@ -454,6 +500,7 @@ class PlaylistRepository(
                         snapshot = snapshot,
                         pinned = pinned,
                         excludedUuids = excluded,
+                        assignedPodcastUuids = assigned,
                     )
                 }
             val cleaned = loaded.filterNot { playlist ->
@@ -479,7 +526,8 @@ class PlaylistRepository(
                 val snapshot = if (pl.snapshot) "1" else "0"
                 val pinned = if (pl.pinned) "1" else "0"
                 val excluded = pl.excludedUuids.joinToString(",")
-                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished\t$snapshot\t$pinned\t$excluded"
+                val assigned = pl.assignedPodcastUuids.joinToString(",")
+                "${pl.id}\t${pl.createdAt}\t$encodedName\t$eps\t$encodedFolder\t$autoDl\t$shows\t${pl.minDurationMinutes}\t${pl.maxDurationMinutes}\t$finished\t$snapshot\t$pinned\t$excluded\t$assigned"
             }
             target.writeText(text)
         }
