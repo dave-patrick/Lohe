@@ -87,6 +87,10 @@ import kotlin.math.roundToInt
 import com.lohe.app.R
 import com.lohe.app.data.EpisodeFilter
 import com.lohe.app.data.EpisodesViewModel
+import com.lohe.app.data.PodcastUnsubscribeState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.toSummary
@@ -118,6 +122,23 @@ fun EpisodesScreen(
     val order by viewModel.order.collectAsStateWithLifecycle()
     var sortOpen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    val unsubscribeState by viewModel.unsubscribeState.collectAsStateWithLifecycle()
+    var confirmUnsubscribe by remember { mutableStateOf<PodcastEntity?>(null) }
+    var unsubscribeTitle by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(unsubscribeState) {
+        when (unsubscribeState) {
+            PodcastUnsubscribeState.SUCCESS -> {
+                onShowMessage("Unsubscribed from $unsubscribeTitle")
+                onBack()
+            }
+            PodcastUnsubscribeState.ERROR -> {
+                onShowMessage("Couldn't unsubscribe. Please try again.")
+                viewModel.acknowledgeUnsubscribeError()
+            }
+            else -> Unit
+        }
+    }
 
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
     val inSelectionMode = selectedUuids.isNotEmpty()
@@ -353,38 +374,54 @@ fun EpisodesScreen(
         if (podcast != null) item(key = "podcast-details") {
             val show = podcast ?: return@item
             GlassCard(contentPadding = 16.dp) {
-                Row(verticalAlignment = Alignment.Top) {
-                    RemoteImage(
-                        url = show.artworkUrl,
-                        contentDescription = null,
-                        size = 92.dp,
-                        fallbackLabel = show.title,
-                        cornerRadius = 14.dp,
-                        modifier = Modifier.size(92.dp),
-                    )
-                    Spacer(Modifier.size(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = show.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                Column {
+                    Row(verticalAlignment = Alignment.Top) {
+                        RemoteImage(
+                            url = show.artworkUrl,
+                            contentDescription = null,
+                            size = 92.dp,
+                            fallbackLabel = show.title,
+                            cornerRadius = 14.dp,
+                            modifier = Modifier.size(92.dp),
                         )
-                        if (!show.author.isNullOrBlank()) {
+                        Spacer(Modifier.size(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = show.author,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = show.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
+                            if (!show.author.isNullOrBlank()) {
+                                Text(
+                                    text = show.author,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            val blurb = show.description
+                            if (!blurb.isNullOrBlank()) {
+                                Spacer(Modifier.size(8.dp))
+                                Text(
+                                    text = blurb,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 6,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                        val blurb = show.description
-                        if (!blurb.isNullOrBlank()) {
-                            Spacer(Modifier.size(8.dp))
+                    }
+                    if (show.isSubscribed && !inSelectionMode) {
+                        TextButton(
+                            onClick = { confirmUnsubscribe = show },
+                            enabled = unsubscribeState != PodcastUnsubscribeState.WORKING,
+                        ) {
+                            Icon(Icons.Filled.DeleteOutline, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text(
-                                text = blurb,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 6,
-                                overflow = TextOverflow.Ellipsis,
+                                if (unsubscribeState == PodcastUnsubscribeState.WORKING) "Unsubscribing…" else "Unsubscribe",
+                                color = MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -572,6 +609,22 @@ fun EpisodesScreen(
                 }
             }
         }
+    }
+
+    confirmUnsubscribe?.let { target ->
+        LoheDialog(
+            onDismiss = { confirmUnsubscribe = null },
+            title = "Unsubscribe from \"${target.title}\"?",
+            icon = Icons.Filled.DeleteOutline,
+            destructive = true,
+            body = { Text("Removes this podcast and its episode list from your library. Recorded listening time is kept.") },
+            confirmLabel = "Unsubscribe",
+            onConfirm = {
+                unsubscribeTitle = target.title
+                confirmUnsubscribe = null
+                viewModel.unsubscribe()
+            },
+        )
     }
 
     notesEpisode?.let { ep ->

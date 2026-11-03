@@ -119,6 +119,7 @@ class PodcastAutoQueueTest {
         release.recycle()
         waitFor("1 selected")
         await { find(toggle) == null }
+        assertNull("Unsubscribe must be hidden while selecting episodes", find("Unsubscribe"))
         runBlocking { assertFalse(db.podcastDao().get("show")!!.autoAddNewEpisodesToUpNext) }
     }
 

@@ -13,6 +13,8 @@ Native Android podcast client using Kotlin, Jetpack Compose, Room, and a debug M
 
 ## Current feature additions
 
+- Podcast detail exposes Unsubscribe beneath its description, outside episode selection. Confirming uses the existing repository unsubscribe/history behavior, then returns to the previous screen. EpisodesViewModel owns the in-flight request and its lifecycle-aware outcome state; duplicate requests are ignored, cancellation is propagated, and failures remain on the page with retry feedback.
+
 - Manual in-app playback switches capture and save the interrupted item's live position before persisting it at the head of Up Next and replacing media on the shared player. Save explicitly even when already paused; a second pause emits no event. Queue auto-download checks read only the requested episodes and do not block the switch. Media-session play requests resolve only the selected episode and its show, rather than reading every show.
 - Resume positions are supplied by `onSetMediaItems` before preparation, and by the service when advancing Up Next. Never restore position with a delayed seek after `STATE_READY`; that plays the beginning and can overwrite stored progress. Explicit pauses save progress immediately in addition to the periodic saves.
 - Player-screen episode selections are consumed once; the active session is authoritative after queue advancement. Finishing with no next episode or an end-of-episode sleep timer clears the completed player item. Media session seek buttons use the saved skip intervals.

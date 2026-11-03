@@ -7,12 +7,16 @@ import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+
+enum class PodcastUnsubscribeState { IDLE, WORKING, SUCCESS, ERROR }
 
 /** Episodes for one podcast, plus the podcast row itself. */
 class EpisodesViewModel(
@@ -20,6 +24,28 @@ class EpisodesViewModel(
     private val podcastUuid: String,
     private val settingsStore: SettingsStore? = null,
 ) : ViewModel() {
+
+    private val _unsubscribeState = MutableStateFlow(PodcastUnsubscribeState.IDLE)
+    val unsubscribeState: StateFlow<PodcastUnsubscribeState> = _unsubscribeState.asStateFlow()
+
+    fun unsubscribe() {
+        if (!_unsubscribeState.compareAndSet(PodcastUnsubscribeState.IDLE, PodcastUnsubscribeState.WORKING)) return
+        viewModelScope.launch {
+            try {
+                repository.unsubscribe(podcastUuid)
+                _unsubscribeState.value = PodcastUnsubscribeState.SUCCESS
+            } catch (cancelled: CancellationException) {
+                _unsubscribeState.value = PodcastUnsubscribeState.IDLE
+                throw cancelled
+            } catch (_: Exception) {
+                _unsubscribeState.value = PodcastUnsubscribeState.ERROR
+            }
+        }
+    }
+
+    fun acknowledgeUnsubscribeError() {
+        _unsubscribeState.compareAndSet(PodcastUnsubscribeState.ERROR, PodcastUnsubscribeState.IDLE)
+    }
 
     val podcast: StateFlow<PodcastEntity?> = repository
         .observePodcasts()
