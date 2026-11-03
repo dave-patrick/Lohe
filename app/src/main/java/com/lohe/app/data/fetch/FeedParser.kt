@@ -235,7 +235,7 @@ class FeedParser(
                             durationSeconds = parseDuration(parser.nextTextOrNull()) ?: durationSeconds
                         "author", "creator" -> author = author ?: parser.nextTextOrNull()
                         "description", "summary", "subtitle", "encoded", "content" ->
-                            itemDescription = itemDescription ?: parser.nextMarkupTextOrNull()
+                            itemDescription = itemDescription ?: parser.nextMarkupTextOrNull(preserveMarkup = true)
 
                         "image", "thumbnail" -> {
                             itemArtwork = parser.getAttributeValue(null, "href")
@@ -275,7 +275,8 @@ class FeedParser(
             fileType = mimeType,
             author = author?.trim()?.takeIf { it.isNotEmpty() },
             artworkUrl = itemArtwork?.trim()?.takeIf { it.isNotEmpty() },
-            description = itemDescription?.let { plainText(it, limit = 2_000) }?.takeIf { it.isNotEmpty() },
+            // Episode notes render as rich text on demand; retain link destinations.
+            description = itemDescription?.trim()?.take(128_000)?.takeIf { it.isNotEmpty() },
         )
     }
 
@@ -452,7 +453,7 @@ private val XmlPullParser.localName: String
  */
 internal fun XmlPullParser.nextTextOrNull(): String? = runCatching { nextText() }.getOrNull()
 
-internal fun XmlPullParser.nextMarkupTextOrNull(): String? = runCatching {
+internal fun XmlPullParser.nextMarkupTextOrNull(preserveMarkup: Boolean = false): String? = runCatching {
     val startDepth = depth
     val content = StringBuilder()
     var event = next()
@@ -460,11 +461,27 @@ internal fun XmlPullParser.nextMarkupTextOrNull(): String? = runCatching {
         !(event == XmlPullParser.END_TAG && depth == startDepth)
     ) {
         when (event) {
-            XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF ->
-                content.append(this.text ?: this.name.orEmpty())
-            XmlPullParser.START_TAG, XmlPullParser.END_TAG -> content.append(' ')
+            XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF -> {
+                val value = this.text ?: this.name.orEmpty()
+                content.append(if (preserveMarkup && depth > startDepth) value.escapeMarkup() else value)
+            }
+            XmlPullParser.START_TAG -> if (preserveMarkup) {
+                content.append('<').append(localName)
+                for (index in 0 until attributeCount) {
+                    content.append(' ').append(getAttributeName(index)).append("=\"")
+                        .append(getAttributeValue(index).escapeMarkup()).append('"')
+                }
+                content.append('>')
+            } else content.append(' ')
+            XmlPullParser.END_TAG -> if (preserveMarkup) {
+                content.append("</").append(localName).append('>')
+            } else content.append(' ')
         }
         event = next()
     }
     content.toString()
 }.getOrNull()
+
+/** Escape text/attributes while reconstructing nested Atom XHTML. */
+private fun String.escapeMarkup(): String =
+    replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

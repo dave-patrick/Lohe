@@ -78,6 +78,14 @@ object EpisodeMeta {
         return if (year(ms) == year(now)) "$day $month" else "$day $month ${year(ms)}"
     }
 
+    /** Full localized publication date, accepting imported seconds or feed milliseconds. */
+    fun fullPublishedDate(epoch: Long): String {
+        val ms = toEpochMillis(epoch)
+        if (ms <= 0L) return ""
+        return java.text.DateFormat.getDateInstance(java.text.DateFormat.LONG)
+            .format(java.util.Date(ms))
+    }
+
     /** The "09:45" portion of a publication timestamp. */
     fun timeOfDay(epochMillis: Long): String {
         val ms = toEpochMillis(epochMillis)

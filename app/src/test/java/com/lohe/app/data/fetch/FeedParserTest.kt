@@ -15,6 +15,20 @@ import org.junit.Test
  */
 class FeedParserTest {
 
+    @Test fun `episode notes preserve anchor destinations and full content`() {
+        val notes = "<p>" + "More notes. ".repeat(220) +
+            "<a href=\"https://example.com/details?one=1&amp;two=2\">Read more</a></p>"
+        for (body in listOf("<![CDATA[$notes]]>", notes.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), notes)) {
+            val xml = """<rss><channel><title>Show</title><item><guid>notes</guid>
+                <description>$body</description><enclosure url="https://example.com/audio.mp3"/>
+                </item></channel></rss>"""
+            val stored = FeedParser().parse("https://example.com/feed", xml).episodes.single().description!!
+            assertTrue("Anchor destination must survive ingestion", stored.contains("href="))
+            assertTrue("Notes beyond 2000 characters must survive", stored.contains("Read more"))
+            assertTrue(stored.contains("https://example.com/details?one=1&amp;two=2"))
+        }
+    }
+
     private val parser = FeedParser()
     private val feedUrl = "https://example.com/feed.xml"
 

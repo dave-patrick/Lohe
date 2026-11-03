@@ -1601,6 +1601,8 @@ fun PlaylistsScreen(
             artworkUrl = entry.episode.artworkUrl,
             description = description,
             durationSeconds = entry.episode.durationSeconds,
+            published = entry.episode.published,
+            sizeBytes = entry.episode.sizeBytes,
             onPlay = { onPlay(entry) },
             onAddToUpNext = {
                 viewModel.enqueue(entry.episode.uuid)

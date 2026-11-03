@@ -9,6 +9,23 @@ import java.time.ZoneOffset
 
 class EpisodeMetaTest {
 
+    @Test fun `full publishing dates normalize seconds and include year`() {
+        val locale = java.util.Locale.getDefault()
+        val zone = java.util.TimeZone.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.US)
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Phoenix"))
+            val millis = java.time.Instant.parse("2026-11-03T02:00:00Z").toEpochMilli()
+            assertEquals("November 2, 2026", EpisodeMeta.fullPublishedDate(millis))
+            assertEquals("November 2, 2026", EpisodeMeta.fullPublishedDate(millis / 1000))
+            assertEquals("", EpisodeMeta.fullPublishedDate(0))
+            assertEquals("", EpisodeMeta.fullPublishedDate(-1))
+        } finally {
+            java.util.Locale.setDefault(locale)
+            java.util.TimeZone.setDefault(zone)
+        }
+    }
+
     private val now = 1_760_000_000_000L
 
     private fun epochOf(value: String): Long =

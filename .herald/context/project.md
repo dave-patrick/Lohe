@@ -68,3 +68,7 @@ Native Android podcast client using Kotlin, Jetpack Compose, Room, and a debug M
 - Transport controls update from player events while idle; position updates remain periodic during playback. The sleep timer waits for its deadline; the overlay updates play state from events and checks permission separately.
 - For isolated device testing, pass -PloheDebugApplicationIdSuffix=.audit. This installs a separate debug package and must not replace or clear the user's com.lohe.app data.
 - CI pins action revisions, runs lint, reviews dependency changes, and configures weekly Dependabot updates. Release shrinking relies on upstream Room/Media3 rules rather than blanket keeps.
+
+- The shared episode notes sheet shows a localized full publishing date, duration, and file size when positive metadata is available. Podcast, playlist, and player entry points supply stored metadata; the player retains its current-media ID guard.
+
+- Show notes render feed HTML through Compose AnnotatedString.fromHtml, preserving formatting and tappable accent-colored underlined links. Plain-text descriptions retain their original line breaks. Feed ingestion retains episode anchors and up to 128,000 characters of rich notes, including nested XHTML; podcast summary blurbs stay plain text.

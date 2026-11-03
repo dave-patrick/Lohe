@@ -581,6 +581,8 @@ fun EpisodesScreen(
             artworkUrl = ep.artworkUrl ?: podcast?.artworkUrl,
             description = ep.description ?: podcast?.description,
             durationSeconds = ep.durationSeconds,
+            published = ep.published,
+            sizeBytes = ep.sizeBytes,
             onPlay = { onPlay(ep) },
             onAddToUpNext = { onQueue(ep) },
             onDismiss = { notesEpisode = null },

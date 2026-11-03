@@ -97,6 +97,8 @@ private data class PlayerEpisodeDetails(
     val artworkUrl: String?,
     val description: String?,
     val durationMs: Long?,
+    val published: Long,
+    val sizeBytes: Long?,
 )
 
 /**
@@ -183,6 +185,8 @@ fun PlayerScreen(
                     artworkUrl = it.artworkUrl?.takeIf(String::isNotBlank)
                         ?: show?.artworkUrl?.takeIf(String::isNotBlank),
                     description = it.description,
+                    published = it.published,
+                    sizeBytes = it.sizeBytes,
                     durationMs = it.durationSeconds?.toLong()?.times(1_000L),
                 )
             }
@@ -395,6 +399,8 @@ fun PlayerScreen(
             artworkUrl = resolvedArtworkUrl,
             description = shownDescription,
             durationSeconds = totalDurSecs.takeIf { it > 0 },
+            published = currentEpisodeDetails?.published,
+            sizeBytes = currentEpisodeDetails?.sizeBytes,
             onDismiss = { notesSheetOpen = false },
         )
     }

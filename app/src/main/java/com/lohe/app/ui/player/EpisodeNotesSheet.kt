@@ -26,16 +26,24 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.fromHtml
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.LoheSheet
 import com.lohe.app.ui.formatDuration
 import com.lohe.app.ui.image.RemoteImage
+import com.lohe.app.ui.navigation.formatBytes
+import com.lohe.app.ui.navigation.EpisodeMeta
 
 /**
  * Modal bottom sheet presenting an episode's show notes, artwork, and metadata.
@@ -48,10 +56,33 @@ fun EpisodeNotesSheet(
     artworkUrl: String?,
     description: String?,
     durationSeconds: Int? = null,
+    published: Long? = null,
+    sizeBytes: Long? = null,
     onPlay: (() -> Unit)? = null,
     onAddToUpNext: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
+    val notes = description?.takeIf { it.isNotBlank() }
+        ?: "No show notes available for this episode yet. Use \"Check for new episodes\" in My Podcasts to refresh feed descriptions."
+    val linkColor = MaterialTheme.colorScheme.primary
+    val renderedNotes = remember(notes, linkColor) {
+        val html = when {
+            Regex("<\\s*/?\\s*[a-zA-Z][^>]*>").containsMatchIn(notes) -> notes
+            Regex("&(?:#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]+);").containsMatchIn(notes) ->
+                notes.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+            else -> null
+        }
+        if (html != null) {
+            AnnotatedString.fromHtml(
+                htmlString = html,
+                linkStyles = TextLinkStyles(
+                    style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                ),
+            )
+        } else {
+            AnnotatedString(notes)
+        }
+    }
     LoheSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -90,14 +121,34 @@ fun EpisodeNotesSheet(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    durationSeconds?.takeIf { it > 0 }?.let { secs ->
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "Duration · ${formatDuration(secs.toLong())}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
+
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                published?.takeIf { it > 0 }?.let {
+                    Text(
+                        text = "Published · ${EpisodeMeta.fullPublishedDate(it)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                durationSeconds?.takeIf { it > 0 }?.let {
+                    Text(
+                        text = "Duration · ${formatDuration(it.toLong())}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                sizeBytes?.takeIf { it > 0 }?.let {
+                    Text(
+                        text = "File size · ${formatBytes(it)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
@@ -162,8 +213,7 @@ fun EpisodeNotesSheet(
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    text = description?.takeIf { it.isNotBlank() }
-                        ?: "No show notes available for this episode yet. Use \"Check for new episodes\" in My Podcasts to refresh feed descriptions.",
+                    text = renderedNotes,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
