@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
@@ -749,7 +750,7 @@ private fun EpisodeRow(
     var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
-        onClick = onPlay,
+        onClick = if (inSelectionMode) onPlay else onOpenNotes,
         onLongClick = onLongPress,
         modifier = modifier.pointerInput(episode.uuid, swipeThreshold) {
             detectHorizontalDragGestures(
@@ -823,6 +824,13 @@ private fun EpisodeRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
+
+                    if (!inSelectionMode) {
+                        IconButton(onClick = onPlay, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play episode",
+                                tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
 
                     if (episode.isPlayed) {
                         Box(

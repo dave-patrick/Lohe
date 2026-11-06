@@ -100,7 +100,8 @@ class PlaylistPodcastAssignmentTest {
             runBlocking { db.episodeDao().queueSnapshot().map { it.uuid }.toSet() == setOf("manual", "unplayed") }
         }
         tap("Show all episodes")
-        waitFor("Assigned played fixture")
+        assertNull("Played episodes must stay out of assigned playlists even with Show all", find("Assigned played fixture"))
+        scrollToTop()
         tap("Back to Playlists")
         waitForCondition("playlist overview after Back") { find("Back to Playlists") == null }
         tap("Assignment fixture playlist")
@@ -146,7 +147,7 @@ class PlaylistPodcastAssignmentTest {
         waitForEpisode("Assigned unplayed fixture")
         assertNull("Assignment must respect the unplayed default", find("Assigned played fixture"))
         tap("Show all episodes")
-        waitForEpisode("Assigned played fixture")
+        assertNull("Played episodes must stay out of assigned playlists even with Show all", find("Assigned played fixture"))
 
         scrollToTop()
         screenshot("playlist-detail.png")
@@ -249,26 +250,19 @@ class PlaylistPodcastAssignmentTest {
         assertEquals(0, played)
     }
 
-    @Test fun archivedPlaylistRowDisablesLeftSwipeAndStillQueuesRight() {
+    @Test fun assignedPlaylistExcludesArchivedEpisodes() {
         runBlocking { db.episodeDao().archive("manual", System.currentTimeMillis()) }
-        queue.assignPlaylistPodcasts(playlistId, setOf("manual-show"))
-        waitForCondition("assigned podcast to retain the archived fixture") {
-            playlists.playlists.value.single { it.id == playlistId }.assignedPodcastUuids == listOf("manual-show")
-        }
+        queue.assignPlaylistPodcasts(playlistId, setOf("manual-show", "assigned-show"))
         tap("Assignment fixture playlist")
+        waitForEpisode("Assigned unplayed fixture")
         tap("Show all episodes")
-        waitForEpisode("Manual fixture episode")
-        val original = episode("manual")
-        swipeEpisode("Manual fixture episode", right = false)
-        assertNull(find("Cancel"))
-        assertEquals(original, episode("manual"))
-        swipeEpisode("Manual fixture episode", right = true)
-        assertTray("Up Next", "Archive", "Played", "Remove from queue")
-        tapTrayAction("Up Next")
-        waitForCondition("archived row to enqueue") { queuedIds() == listOf("manual") }
+        waitForEpisode("Assigned unplayed fixture")
+        assertNull("Archived episodes must stay out even with Show all", find("Manual fixture episode"))
+        assertNull("Played episodes must stay out even with Show all", find("Assigned played fixture"))
+        assertTrue(episode("manual").isArchived)
+        assertTrue(queuedIds().isEmpty())
         assertEquals(0, played)
     }
-
     @Test fun smartUnplayedSwipeArchivesOnlyAfterConfirmation() {
         tap("Unplayed")
         waitForEpisode("Manual fixture episode")

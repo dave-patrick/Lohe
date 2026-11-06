@@ -513,6 +513,8 @@ class QueueViewModel(
 
     fun promote(uuid: String) = viewModelScope.launch { repository.promote(uuid) }
 
+    fun moveToEndInQueue(uuid: String) = viewModelScope.launch { repository.moveToEndInQueue(uuid) }
+
     fun promoteBatch(uuids: List<String>) = viewModelScope.launch { repository.promoteBatch(uuids) }
 
     fun moveInQueue(uuid: String, delta: Int) = viewModelScope.launch {

@@ -14,7 +14,7 @@ class PlaylistAssignedPodcastsTest {
     )
 
     @Test
-    fun `assigned episodes include played and archived while explicit entries retain their filters`() {
+    fun `assigned episodes exclude played and archived like explicit entries`() {
         val playlist = UserPlaylist(
             "id", "Mix", listOf("manual", "manual-played", "manual-archived", "missing", "duplicate"),
             assignedPodcastUuids = listOf("assigned"), excludedUuids = listOf("excluded"),
@@ -31,9 +31,22 @@ class PlaylistAssignedPodcastsTest {
             episode("other", "other", 100),
         )
         assertEquals(
-            listOf("manual", "duplicate", "archived", "played"),
+            listOf("manual", "duplicate"),
             playlist.resolveAssignedEpisodes(episodes).map { it.uuid },
         )
+    }
+
+    @Test
+    fun `assigned membership updates on completion archive and reopening`() {
+        val playlist = UserPlaylist("id", "Mix", emptyList(), assignedPodcastUuids = listOf("assigned"))
+        val original = episode("episode")
+        val played = original.copy(playingStatus = EpisodeSummary.PLAYED)
+        assertEquals(listOf(original), playlist.resolveAssignedEpisodes(listOf(original)))
+        assertTrue(playlist.resolveAssignedEpisodes(listOf(played)).isEmpty())
+        assertTrue(playlist.resolveAssignedEpisodes(listOf(played.copy(isArchived = true))).isEmpty())
+        assertEquals(listOf(original), playlist.resolveAssignedEpisodes(listOf(original)))
+        assertEquals(listOf(played), playlist.copy(finished = true).resolveAssignedEpisodes(listOf(played)))
+        assertTrue(playlist.copy(finished = true).resolveAssignedEpisodes(listOf(played.copy(isArchived = true))).isEmpty())
     }
 
     @Test

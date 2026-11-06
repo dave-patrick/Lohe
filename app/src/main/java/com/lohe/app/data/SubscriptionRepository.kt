@@ -114,6 +114,8 @@ class SubscriptionRepository internal constructor(
     /** Moves a queued episode to the front of the queue. */
     suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
 
+    suspend fun moveToEndInQueue(uuid: String) = episodes.moveToEndInQueue(uuid)
+
     /** Moves a selected group to the front while preserving its current queue order. */
     suspend fun promoteBatch(uuids: List<String>) = episodes.promoteBatchInQueue(uuids)
 

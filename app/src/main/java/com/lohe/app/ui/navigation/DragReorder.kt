@@ -40,6 +40,7 @@ class DragReorderState internal constructor(
     private val onMove: (from: Int, to: Int) -> Unit,
     private val onDrop: () -> Unit,
     private val firstDraggableIndex: Int = 0,
+    private val canMove: (from: Int, to: Int) -> Boolean = { _, _ -> true },
 ) {
     /** The row currently being carried, or null when nothing is. */
     var draggedIndex by mutableStateOf<Int?>(null)
@@ -51,42 +52,67 @@ class DragReorderState internal constructor(
 
     val isDragging: Boolean get() = draggedIndex != null
 
+    private var draggedKey: Any? = null
+    private var draggedTop = 0f
+    private var draggedSize = 0
+    private var awaitingMoveLayout = false
+
     fun onDragStart(index: Int) {
-        if (index < firstDraggableIndex) return
+        if (isDragging || index < firstDraggableIndex) return
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+        draggedKey = item.key
+        draggedTop = item.offset.toFloat()
+        draggedSize = item.size
+        awaitingMoveLayout = false
         draggedIndex = index
         draggedOffset = 0f
     }
 
     fun onDrag(delta: Float) {
+        if (!isDragging) return
+        draggedTop += delta
+        updateDragPosition()
+    }
+
+    private fun updateDragPosition() {
         val current = draggedIndex ?: return
         val info = listState.layoutInfo
-        val carried = info.visibleItemsInfo.firstOrNull { it.index == current } ?: return
-
-        // Where the carried row's centre would be if the finger moved by
-        // another `delta`.
-        val proposedTop = carried.offset + draggedOffset + delta
-        val proposedCentre = proposedTop + carried.size / 2
-
-        val target = info.visibleItemsInfo.firstOrNull { candidate ->
-            candidate.index >= firstDraggableIndex && candidate.index != current &&
-                proposedCentre >= candidate.offset &&
-                proposedCentre < candidate.offset + candidate.size
-        }
-        if (target == null) {
-            draggedOffset += delta
-            return
-        }
-
-        onMove(current, target.index)
+        val carried = info.visibleItemsInfo.firstOrNull { it.key == draggedKey } ?: return
+        // A move updates composition before LazyColumn measures its new order.
+        // Never move the different item now occupying the old slot.
+        if (awaitingMoveLayout && carried.index != current) return
+        awaitingMoveLayout = false
+        draggedOffset = draggedTop - carried.offset
+        draggedIndex = carried.index
+        draggedSize = carried.size
+        val center = draggedTop + draggedSize / 2f
+        val target = info.visibleItemsInfo.filter { candidate ->
+            candidate.index >= firstDraggableIndex && candidate.key != draggedKey &&
+                canMove(carried.index, candidate.index) &&
+                if (candidate.index < carried.index) {
+                    center < candidate.offset + candidate.size / 2f
+                } else {
+                    center > candidate.offset + candidate.size / 2f
+                }
+        }.minByOrNull { kotlin.math.abs(center - (it.offset + it.size / 2f)) } ?: return
+        awaitingMoveLayout = true
         draggedIndex = target.index
-        // The list has just moved the row, so the offset has to be corrected
-        // by however far the new slot is from the old one. Without this the
-        // row jumps out from under the finger on every swap.
-        draggedOffset = proposedTop - target.offset
+        draggedOffset = draggedTop - target.offset
+        val firstVisible = listState.firstVisibleItemIndex
+        if (carried.index <= firstVisible || target.index <= firstVisible) {
+            // LazyColumn normally follows its first visible item's key. A
+            // reorder at that slot must retain the numeric viewport instead,
+            // or the carried key can be measured offscreen and lose its gesture.
+            listState.requestScrollToItem(minOf(firstVisible, target.index), listState.firstVisibleItemScrollOffset)
+        }
+        onMove(carried.index, target.index)
     }
 
     fun onDragEnd() {
+        if (!isDragging) return
         draggedIndex = null
+        draggedKey = null
+        awaitingMoveLayout = false
         draggedOffset = 0f
         onDrop()
     }
@@ -98,9 +124,11 @@ class DragReorderState internal constructor(
             val seconds = ((frame - previousFrame) / 1_000_000_000f).coerceAtMost(0.05f)
             previousFrame = frame
             val info = listState.layoutInfo
-            val index = draggedIndex ?: break
-            val dragged = info.visibleItemsInfo.firstOrNull { it.index == index } ?: continue
-            val center = dragged.offset + draggedOffset + dragged.size / 2f
+            updateDragPosition()
+            if (!isDragging) break
+            // Pause until the carried row is measured in its new slot.
+            if (awaitingMoveLayout) continue
+            val center = draggedTop + draggedSize / 2f
             val topProximity =
                 ((info.viewportStartOffset + edgeSize - center) / edgeSize).coerceIn(0f, 1f)
             val bottomProximity =
@@ -111,12 +139,18 @@ class DragReorderState internal constructor(
                 else -> 0f
             }
             if (distance != 0f) {
-                // LazyListState can consume less than requested at the ends
-                // of the list. Keep the dragged row aligned only with the
-                // distance the list actually scrolled, or it will drift off
-                // screen and drop at index zero or the last index.
-                val consumed = listState.scrollBy(distance)
-                draggedOffset += consumed
+                val visible = listState.layoutInfo.visibleItemsInfo
+                val carried = visible.firstOrNull { it.key == draggedKey } ?: continue
+                val edge = if (distance < 0f) {
+                    visible.firstOrNull { it.index >= firstDraggableIndex }
+                } else visible.lastOrNull()
+                // A pinned-group boundary can reject a swap. Keep the gesture
+                // alive there rather than scrolling its keyed row out of composition.
+                if (edge != null && !canMove(carried.index, edge.index)) continue
+                listState.scrollBy(distance)
+                // Stationary holds produce no pointer deltas; newly exposed
+                // rows must still participate in reordering every frame.
+                if (isDragging) updateDragPosition()
             }
         }
     }
@@ -128,8 +162,15 @@ internal fun rememberDragReorderState(
     onMove: (from: Int, to: Int) -> Unit,
     onDrop: () -> Unit = {},
     firstDraggableIndex: Int = 0,
+    canMove: (from: Int, to: Int) -> Boolean = { _, _ -> true },
 ): DragReorderState {
-    val state = remember(listState, firstDraggableIndex) { DragReorderState(listState, onMove, onDrop, firstDraggableIndex) }
+    val currentOnMove by rememberUpdatedState(onMove)
+    val currentOnDrop by rememberUpdatedState(onDrop)
+    val currentCanMove by rememberUpdatedState(canMove)
+    val state = remember(listState, firstDraggableIndex) {
+        DragReorderState(listState, { from, to -> currentOnMove(from, to) }, { currentOnDrop() }, firstDraggableIndex,
+            { from, to -> currentCanMove(from, to) })
+    }
     val edgeSize = with(LocalDensity.current) { 64.dp.toPx() }
     val maxSpeed = with(LocalDensity.current) { 600.dp.toPx() }
     LaunchedEffect(state.isDragging) {

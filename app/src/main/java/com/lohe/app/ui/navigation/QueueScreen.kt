@@ -462,6 +462,12 @@ fun QueueScreen(
                         }
                     },
                     onRemove = { viewModel.dequeue(entry.episode.uuid) },
+                    onMoveToTop = if (index > 0) {
+                        { viewModel.promote(entry.episode.uuid) }
+                    } else null,
+                    onMoveToEnd = if (index < items.lastIndex) {
+                        { viewModel.moveToEndInQueue(entry.episode.uuid) }
+                    } else null,
                 )
             }
         }
@@ -784,6 +790,7 @@ fun PlaylistsScreen(
             val dragState = rememberDragReorderState(
                 listState = listState,
                 firstDraggableIndex = 1,
+                canMove = { from, to -> reorderAllowed && from - 1 in items.indices && to - 1 in items.indices },
                 onMove = { from, to ->
                     val source = from - 1
                     val target = to - 1
@@ -1522,6 +1529,7 @@ fun PlaylistsScreen(
                 val listState = rememberLazyListState()
                 val dragState = rememberDragReorderState(
                     listState = listState,
+                    canMove = { from, to -> items[from].pinned == items[to].pinned },
                     onMove = { from, to ->
                         if (items[from].pinned == items[to].pinned) {
                             items = items.toMutableList().apply { add(to, removeAt(from)) }
@@ -2544,6 +2552,8 @@ private fun QueueRow(
     playlistSelection: Boolean = false,
     onOpen: (() -> Unit)? = null,
     onAddToUpNext: (() -> Unit)? = null,
+    onMoveToTop: (() -> Unit)? = null,
+    onMoveToEnd: (() -> Unit)? = null,
 ) {
     val ep = entry.episode
 
@@ -2639,60 +2649,78 @@ private fun QueueRow(
                     }
                 } else if (direction == SwipeToDismissBoxValue.StartToEnd) {
                     Row(
-                        modifier = Modifier.align(Alignment.CenterStart),
+                        modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        if (onMoveUp != null) {
-                            SwipeActionButton(
-                                icon = Icons.Filled.KeyboardArrowUp,
-                                label = "Up",
-                                tint = MaterialTheme.colorScheme.primary,
-                                onClick = {
-                                    onMoveUp()
-                                    scope.launch { dismissState.reset() }
-                                },
-                            )
-                        }
-                        if (onMoveDown != null) {
-                            SwipeActionButton(
-                                icon = Icons.Filled.KeyboardArrowDown,
-                                label = "Down",
-                                tint = MaterialTheme.colorScheme.primary,
-                                onClick = {
-                                    onMoveDown()
-                                    scope.launch { dismissState.reset() }
-                                },
-                            )
-                        }
-                        if (onTogglePlayed != null) {
-                            SwipeActionButton(
-                                icon = Icons.Filled.CheckCircle,
-                                label = if (ep.isPlayed) "Unplayed" else "Played",
-                                tint = MaterialTheme.colorScheme.primary,
-                                onClick = {
-                                    onTogglePlayed()
-                                    scope.launch { dismissState.reset() }
-                                },
-                            )
-                        }
-                        if (onArchive != null && !ep.isArchived) {
-                            SwipeActionButton(
-                                icon = Icons.Filled.Archive,
-                                label = "Archive",
-                                tint = MaterialTheme.colorScheme.primary,
-                                onClick = {
-                                    onArchive()
-                                    scope.launch { dismissState.reset() }
-                                },
-                            )
-                        }
                         SwipeActionButton(
                             icon = Icons.Filled.Close,
                             label = "Cancel",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick = { scope.launch { dismissState.reset() } },
                         )
+                        Row(
+                            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            if (onMoveToTop != null) {
+                                SwipeActionButton(Icons.Filled.VerticalAlignTop, "Top", MaterialTheme.colorScheme.primary, onClick = {
+                                    onMoveToTop()
+                                    scope.launch { dismissState.reset() }
+                                })
+                            }
+                            if (onMoveToEnd != null) {
+                                SwipeActionButton(Icons.Filled.VerticalAlignBottom, "End", MaterialTheme.colorScheme.primary, onClick = {
+                                    onMoveToEnd()
+                                    scope.launch { dismissState.reset() }
+                                })
+                            }
+                            if (onMoveUp != null) {
+                                SwipeActionButton(
+                                    icon = Icons.Filled.KeyboardArrowUp,
+                                    label = "Up",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    onClick = {
+                                        onMoveUp()
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                )
+                            }
+                            if (onMoveDown != null) {
+                                SwipeActionButton(
+                                    icon = Icons.Filled.KeyboardArrowDown,
+                                    label = "Down",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    onClick = {
+                                        onMoveDown()
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                )
+                            }
+                            if (onTogglePlayed != null) {
+                                SwipeActionButton(
+                                    icon = Icons.Filled.CheckCircle,
+                                    label = if (ep.isPlayed) "Unplayed" else "Played",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    onClick = {
+                                        onTogglePlayed()
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                )
+                            }
+                            if (onArchive != null && !ep.isArchived) {
+                                SwipeActionButton(
+                                    icon = Icons.Filled.Archive,
+                                    label = "Archive",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    onClick = {
+                                        onArchive()
+                                        scope.launch { dismissState.reset() }
+                                    },
+                                )
+                            }
+                        }
                     }
                 } else if (direction == SwipeToDismissBoxValue.EndToStart && onRemove != null) {
                     Row(

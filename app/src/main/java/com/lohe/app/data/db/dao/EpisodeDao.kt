@@ -133,6 +133,14 @@ interface EpisodeDao {
         rewriteQueue(listOf(target) + queued.filterNot { it.uuid == uuid })
     }
 
+    /** Moves an existing queued episode to the end, preserving the other entries. */
+    @Transaction
+    suspend fun moveToEndInQueue(uuid: String) {
+        val queued = queueSnapshot()
+        val target = queued.firstOrNull { it.uuid == uuid } ?: return
+        rewriteQueue(queued.filterNot { it.uuid == uuid } + target)
+    }
+
     /** Moves the selected queued episodes to the front without changing their queue order. */
     @Transaction
     suspend fun promoteBatchInQueue(uuids: List<String>) {

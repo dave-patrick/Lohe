@@ -62,7 +62,8 @@ data class UserPlaylist(
             .filter { !it.isDeleted && it.uuid !in excluded }
         val assigned = assignedPodcastUuids.toSet()
         val automatic = episodes.asSequence()
-            .filter { it.podcastUuid in assigned && !it.isDeleted && it.uuid !in excluded }
+            .filter { it.podcastUuid in assigned && !it.isDeleted && !it.isArchived &&
+                it.isPlayed == finished && it.uuid !in excluded }
             .sortedWith(compareByDescending<EpisodeSummary> { it.published }.thenBy { it.uuid })
             .toList()
         return (explicit + automatic).distinctBy { it.uuid }
