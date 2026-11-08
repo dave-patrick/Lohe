@@ -1,6 +1,8 @@
 package com.lohe.app.ui.navigation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -102,6 +104,9 @@ fun ShowSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Taller than the screen once every setting is listed, so it
+                // scrolls or the bottom is unreachable.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),

@@ -172,6 +172,10 @@ private fun LoheNavigationContent(
     val resources = androidx.compose.ui.platform.LocalResources.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Episode details opened by swiping up on the Now Playing bar.
+    var barDetails by remember {
+        mutableStateOf<Pair<com.lohe.app.data.db.entity.EpisodeEntity, com.lohe.app.data.db.entity.PodcastEntity?>?>(null)
+    }
 
     // Picks and exports flow through state rather than being handled inside the
     // activity-result callbacks: the ViewModel owns the import, and suspend
@@ -437,6 +441,31 @@ private fun LoheNavigationContent(
                             }
                             navController.navigate(Dest.PLAYER.route)
                         },
+                        onSwipeUp = {
+                            val id = currentEpisodeId ?: fallbackEntry?.episode?.uuid ?: nextUp?.episode?.uuid
+                            if (id != null) {
+                                scope.launch {
+                                    val repo = ServiceLocator.subscriptionRepository()
+                                    val episode = repo.episodeOnce(id) ?: return@launch
+                                    barDetails = episode to repo.getPodcast(episode.podcastUuid)
+                                }
+                            }
+                        },
+                    )
+                }
+
+                barDetails?.let { (ep, show) ->
+                    com.lohe.app.ui.player.EpisodeNotesSheet(
+                        title = ep.title,
+                        showTitle = show?.title.orEmpty(),
+                        artworkUrl = ep.artworkUrl ?: show?.artworkUrl,
+                        description = ep.description ?: show?.description,
+                        durationSeconds = ep.durationSeconds,
+                        published = ep.published,
+                        sizeBytes = ep.sizeBytes,
+                        onAddToUpNext = if (ep.isQueued) null else ({ queueViewModel.enqueue(ep.uuid); Unit }),
+                        onArchive = if (ep.isArchived) null else ({ archiveEpisode(ep.uuid) }),
+                        onDismiss = { barDetails = null },
                     )
                 }
 

@@ -6,8 +6,13 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 import java.nio.charset.Charset
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
 import java.util.Locale
 import java.util.UUID
 
@@ -411,14 +416,65 @@ class FeedParser(
          * falling back to RFC-1123 and a loose RFC-822 form. Returns the
          * epoch second, the same representation stored in the database.
          */
-        internal fun parseDate(raw: String?): Long? = raw?.let { s ->
-            listOf(
-                { ZonedDateTime.parse(s) },
-                { ZonedDateTime.parse(s, RFC_822) },
-                { ZonedDateTime.parse(s, RFC_1123) },
-            ).firstNotNullOfOrNull { runCatching(it).getOrNull() }
-                ?.toEpochSecond()
+        internal fun parseDate(raw: String?): Long? = raw?.trim()?.takeIf { it.isNotEmpty() }?.let { original ->
+            // Publishers routinely get the weekday wrong ("Tue, 5 Mar" when the
+            // 5th is a Monday), which java.time treats as a conflict and rejects
+            // the whole date. The weekday adds nothing, so it is dropped first.
+            val s = LEADING_WEEKDAY.replaceFirst(original, "")
+
+            runCatching { ZonedDateTime.parse(s).toEpochSecond() }.getOrNull()
+                ?: runCatching { ZonedDateTime.parse(original, RFC_822).toEpochSecond() }.getOrNull()
+                ?: runCatching { ZonedDateTime.parse(original, RFC_1123).toEpochSecond() }.getOrNull()
+                ?: LOOSE_FORMATS.firstNotNullOfOrNull { formatter ->
+                    runCatching {
+                        when (val parsed = formatter.parseBest(
+                            s,
+                            ZonedDateTime::from,
+                            OffsetDateTime::from,
+                            LocalDateTime::from,
+                            LocalDate::from,
+                        )) {
+                            is ZonedDateTime -> parsed.toEpochSecond()
+                            is OffsetDateTime -> parsed.toEpochSecond()
+                            // No zone given: UTC is the least surprising reading.
+                            is LocalDateTime -> parsed.toEpochSecond(ZoneOffset.UTC)
+                            is LocalDate -> parsed.atStartOfDay().toEpochSecond(ZoneOffset.UTC)
+                            else -> null
+                        }
+                    }.getOrNull()
+                }
         }
+
+        private val LEADING_WEEKDAY = Regex("""^[A-Za-z]{3,9}\.?,?\s+(?=\d)|^[A-Za-z]{3,9},\s*""")
+
+        private fun loose(pattern: String): DateTimeFormatter =
+            DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendPattern(pattern)
+                .toFormatter(Locale.US)
+
+        /**
+         * RFC-822 variants seen in the wild: one- or two-digit day and hour,
+         * optional seconds, two- or four-digit year, and a zone written as a
+         * name (`GMT`, `EST`), an offset (`+0000`, `+00:00`), or not at all.
+         */
+        private val LOOSE_FORMATS: List<DateTimeFormatter> = listOf(
+            "d MMM yyyy H:mm[:ss] zzz",
+            "d MMM yyyy H:mm[:ss] xx",
+            "d MMM yyyy H:mm[:ss] xxx",
+            "d MMM yy H:mm[:ss] zzz",
+            "d MMM yy H:mm[:ss] xx",
+            "d MMM yyyy H:mm[:ss]",
+            "d MMMM yyyy H:mm[:ss] zzz",
+            "d MMMM yyyy H:mm[:ss] xx",
+            "yyyy-MM-dd H:mm[:ss] zzz",
+            "yyyy-MM-dd H:mm[:ss] xx",
+            "yyyy-MM-dd H:mm[:ss] xxx",
+            "yyyy-MM-dd H:mm[:ss]",
+            "yyyy-MM-dd'T'H:mm[:ss][.SSS]",
+            "yyyy-MM-dd",
+            "d MMM yyyy",
+        ).map(::loose)
 
         /** Parses an iTunes `duration` value (seconds, `mm:ss`, or `hh:mm:ss`). */
         internal fun parseDuration(raw: String?): Int? = raw?.let { s ->

@@ -403,6 +403,21 @@ class FeedParserTest {
     }
 
     @Test
+    fun `parseDate reads the sloppy formats publishers actually emit`() {
+        val expected = FeedParser.parseDate("2024-03-11T09:00:00Z")
+        // Numeric offset, wrong weekday, no seconds, no weekday, no zone.
+        assertEquals(expected, FeedParser.parseDate("Mon, 11 Mar 2024 09:00:00 +0000"))
+        assertEquals(expected, FeedParser.parseDate("Tue, 11 Mar 2024 09:00:00 GMT"))
+        assertEquals(expected, FeedParser.parseDate("11 Mar 2024 09:00 GMT"))
+        assertEquals(expected, FeedParser.parseDate("2024-03-11 09:00:00"))
+        assertEquals(
+            FeedParser.parseDate("2024-03-05T09:00:00Z"),
+            FeedParser.parseDate("Mon, 5 Mar 2024 9:00:00 +0000"),
+        )
+        assertNotNull(FeedParser.parseDate("2024-03-11"))
+    }
+
+    @Test
     fun `stableUuid returns a fresh uuid for a blank seed`() {
         assertNotEquals(
             FeedParser.stableUuid("feed", null),

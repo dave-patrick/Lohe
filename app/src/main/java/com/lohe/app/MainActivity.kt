@@ -25,6 +25,7 @@ import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -37,6 +38,21 @@ class MainActivity : ComponentActivity() {
         DevDiagnostics.init(this)
         ServiceLocator.init(this)
         com.lohe.app.dev.DevApi.start(this)
+        // Check for new episodes when the app comes to the front, at most once
+        // every 15 minutes, and not at all when updates are set to Never.
+        // Unchanged feeds cost a tiny "not modified" reply.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                if (ServiceLocator.settingsStore().settings.first().refreshIntervalMinutes <= 0) return@repeatOnLifecycle
+                val prefs = getSharedPreferences("feed_refresh", MODE_PRIVATE)
+                val now = System.currentTimeMillis()
+                val last = prefs.getLong("last_open_refresh", 0L)
+                if (now - last >= 15 * 60_000L || now < last) {
+                    prefs.edit().putLong("last_open_refresh", now).apply()
+                    runCatching { ServiceLocator.subscriptionRepository().refreshAllFeeds() }
+                }
+            }
+        }
         lifecycleScope.launch {
             ServiceLocator.settingsStore().settings.map { it.debugButtonEnabled }.distinctUntilChanged().collect {
                 DevDiagnostics.recordingEnabled = BuildConfig.DEBUG || it
