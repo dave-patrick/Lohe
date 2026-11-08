@@ -88,6 +88,10 @@ interface PodcastDao {
         }
     }
 
+    /** Stores the validators from the last successful feed download. */
+    @Query("UPDATE podcasts SET feedEtag = :etag, feedLastModified = :lastModified WHERE uuid = :uuid")
+    suspend fun setFeedValidators(uuid: String, etag: String?, lastModified: String?)
+
     @Update
     suspend fun update(podcast: PodcastEntity)
 

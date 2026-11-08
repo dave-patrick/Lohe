@@ -250,6 +250,12 @@ fun SettingsScreen(
                 checked = settings.autoDownloadQueue,
                 onChange = { scope.launch { settingsStore.setAutoDownloadQueue(it) } },
             )
+            ToggleRow(
+                label = "Auto-download on Wi-Fi only",
+                hint = "Automatic downloads wait for Wi-Fi to save mobile data and battery. Downloads you start yourself still work on mobile data.",
+                checked = settings.autoDownloadWifiOnly,
+                onChange = { scope.launch { settingsStore.setAutoDownloadWifiOnly(it) } },
+            )
         }
 
         if (category == SettingsCategory.PODCAST_UPDATES) {

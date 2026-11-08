@@ -104,6 +104,10 @@ class PocketCastsImporterTest {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index >= 0) rows[index] = rows[index].copy(autoAddNewEpisodesAtTop = atTop)
         }
+        override suspend fun setFeedValidators(uuid: String, etag: String?, lastModified: String?) {
+            val index = rows.indexOfFirst { it.uuid == uuid }
+            if (index >= 0) rows[index] = rows[index].copy(feedEtag = etag, feedLastModified = lastModified)
+        }
 
         override fun observeSearchResults(query: String) = flowOf(rows.toList())
         override suspend fun upsertWithEpisodes(

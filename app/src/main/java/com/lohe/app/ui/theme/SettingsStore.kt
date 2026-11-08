@@ -51,6 +51,8 @@ data class PlaybackSettings(
      * as a chip on the queue's own header.
      */
     val autoDownloadQueue: Boolean = true,
+    /** Automatic downloads wait for Wi-Fi; ones the listener starts do not. */
+    val autoDownloadWifiOnly: Boolean = true,
     /**
      * Whether voice enhancement (mid-frequency boost) is on by default.
      */
@@ -197,6 +199,7 @@ class SettingsStore(private val context: Context) {
         val floatingPlayerSize = intPreferencesKey("floating_player_size_dp")
         val floatingPlayerOpacity = floatPreferencesKey("floating_player_opacity")
         val autoDownloadQueue = booleanPreferencesKey("auto_download_queue")
+        val autoDownloadWifiOnly = booleanPreferencesKey("auto_download_wifi_only")
     val voiceEnhancement = booleanPreferencesKey("voice_enhancement")
         val sleepTimerMinutes = intPreferencesKey("sleep_timer_minutes")
         val podcastSort = stringPreferencesKey("podcast_sort")
@@ -248,6 +251,7 @@ class SettingsStore(private val context: Context) {
             floatingPlayerSizeDp = (prefs[Keys.floatingPlayerSize] ?: 56).takeIf { it in listOf(48, 56, 72, 88) } ?: 56,
             floatingPlayerOpacity = com.lohe.app.playback.safeFloatingPlayerOpacity(prefs[Keys.floatingPlayerOpacity] ?: 1f),
             autoDownloadQueue = prefs[Keys.autoDownloadQueue] ?: true,
+            autoDownloadWifiOnly = prefs[Keys.autoDownloadWifiOnly] ?: true,
             voiceEnhancementByDefault = prefs[Keys.voiceEnhancement] ?: false,
             sleepTimerMinutes = (prefs[Keys.sleepTimerMinutes] ?: 30)
                 .coerceIn(1, 24 * 60),
@@ -330,6 +334,9 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setAutoDownloadQueue(value: Boolean) =
         edit { it[Keys.autoDownloadQueue] = value }
+
+    suspend fun setAutoDownloadWifiOnly(value: Boolean) =
+        edit { it[Keys.autoDownloadWifiOnly] = value }
 
     suspend fun setVoiceEnhancementDefault(value: Boolean) =
         edit { it[Keys.voiceEnhancement] = value }

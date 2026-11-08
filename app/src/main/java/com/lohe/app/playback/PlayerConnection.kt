@@ -7,6 +7,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaController
@@ -203,48 +206,59 @@ fun rememberPlayerConnection(): PlayerConnection {
     return connection
 }
 
-/** Polls [connection] and returns a transport snapshot the caller can read. */
+/**
+ * Polls [connection] and returns a transport snapshot the caller can read.
+ *
+ * Polling runs only while the screen is visible (lifecycle STARTED). Compose
+ * keeps effects running when the app is in the background, so without this
+ * the position was still read five times a second behind a locked screen.
+ * Coming back to the app refreshes the snapshot straight away.
+ */
 @Composable
-fun rememberTransportState(connection: PlayerConnection): State<TransportState> =
-    produceState(initialValue = TransportState(), connection) {
-        connection.controllers.collectLatest { c ->
-            if (c == null) {
-                value = TransportState()
-                return@collectLatest
-            }
-            val events = Channel<Unit>(Channel.CONFLATED)
-            fun update() {
-                value = TransportState(
-                    connected = true,
-                    isPlaying = c.isPlaying,
-                    hasMedia = c.mediaItemCount > 0,
-                    positionMs = c.currentPosition.coerceAtLeast(0L),
-                    durationMs = c.duration.takeIf { it > 0L } ?: 0L,
-                    bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
-                    title = c.mediaMetadata.title?.toString().orEmpty(),
-                    showTitle = c.mediaMetadata.artist?.toString().orEmpty(),
-                    artworkUrl = c.mediaMetadata.artworkUri?.toString().orEmpty(),
-                    playbackSpeed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
-                    mediaId = c.currentMediaItem?.mediaId.orEmpty(),
-                )
-            }
-            val listener = object : Player.Listener {
-                override fun onEvents(player: Player, changed: Player.Events) {
-                    update()
-                    events.trySend(Unit)
+fun rememberTransportState(connection: PlayerConnection): State<TransportState> {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    return produceState(initialValue = TransportState(), connection, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            connection.controllers.collectLatest { c ->
+                if (c == null) {
+                    value = TransportState()
+                    return@collectLatest
                 }
-            }
-            c.addListener(listener)
-            try {
-                while (isActive) {
-                    update()
-                    if (c.isPlaying) delay(POLL_MS) else events.receive()
+                val events = Channel<Unit>(Channel.CONFLATED)
+                fun update() {
+                    value = TransportState(
+                        connected = true,
+                        isPlaying = c.isPlaying,
+                        hasMedia = c.mediaItemCount > 0,
+                        positionMs = c.currentPosition.coerceAtLeast(0L),
+                        durationMs = c.duration.takeIf { it > 0L } ?: 0L,
+                        bufferedMs = c.bufferedPosition.coerceAtLeast(0L),
+                        title = c.mediaMetadata.title?.toString().orEmpty(),
+                        showTitle = c.mediaMetadata.artist?.toString().orEmpty(),
+                        artworkUrl = c.mediaMetadata.artworkUri?.toString().orEmpty(),
+                        playbackSpeed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
+                        mediaId = c.currentMediaItem?.mediaId.orEmpty(),
+                    )
                 }
-            } finally {
-                c.removeListener(listener)
-                events.close()
+                val listener = object : Player.Listener {
+                    override fun onEvents(player: Player, changed: Player.Events) {
+                        update()
+                        events.trySend(Unit)
+                    }
+                }
+                c.addListener(listener)
+                try {
+                    while (isActive) {
+                        update()
+                        if (c.isPlaying) delay(POLL_MS) else events.receive()
+                    }
+                } finally {
+                    c.removeListener(listener)
+                    events.close()
+                }
             }
         }
     }
+}
 
 private const val POLL_MS = 200L

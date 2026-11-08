@@ -32,6 +32,25 @@ interface PodcastFetcher {
 
     /** Fetches and upserts both the podcast metadata and its episodes. */
     suspend fun importFeed(feedUrl: String): Result<PodcastEntity>
+
+    /**
+     * Refreshes an existing subscription, asking the server first whether the
+     * feed changed since the last download.
+     *
+     * Succeeds with `true` when a new copy was downloaded and saved, and with
+     * `false` when the server said nothing changed (nothing was written).
+     */
+    suspend fun refreshFeed(podcast: PodcastEntity): Result<Boolean> =
+        importFeed(podcast.feedUrl).map { true }
+}
+
+/** What a conditional feed download came back with. */
+internal sealed interface FeedDownload {
+    /** The server confirmed the copy we already hold is current (HTTP 304). */
+    data object NotModified : FeedDownload
+
+    /** A full feed, with any validators to send next time. */
+    class Body(val bytes: ByteArray, val etag: String?, val lastModified: String?) : FeedDownload
 }
 
 /**
@@ -66,47 +85,69 @@ class RssPodcastFetcher(
 ) : PodcastFetcher {
 
     override suspend fun fetch(feedUrl: String): PodcastEntity = withContext(io) {
-        parser.parse(feedUrl, download(feedUrl)).podcast
+        parser.parse(feedUrl, downloadBody(feedUrl).bytes).podcast
     }
 
     override suspend fun fetchEpisodes(feedUrl: String): List<EpisodeEntity> = withContext(io) {
-        parser.parse(feedUrl, download(feedUrl)).episodes
+        parser.parse(feedUrl, downloadBody(feedUrl).bytes).episodes
     }
 
     override suspend fun importFeed(feedUrl: String): Result<PodcastEntity> = runCatching {
+        withContext(io) { save(feedUrl, downloadBody(feedUrl)) }
+    }
+
+    override suspend fun refreshFeed(podcast: PodcastEntity): Result<Boolean> = runCatching {
         withContext(io) {
-            val parsed = parser.parse(feedUrl, download(feedUrl))
-            transaction {
-                podcastDao.upsert(parsed.podcast)
-                // Keep each batch below SQLite's bind limit and merge under the write transaction.
-                for (batch in parsed.episodes.chunked(400)) {
-                    val ids = batch.map { it.uuid }
-                    val existing = episodeDao.getMany(ids).associateBy { it.uuid }
-                    val history = historyDao.getMany(ids).associateBy { it.episodeUuid }
-                    val changed = batch.map { ep ->
-                        val old = existing[ep.uuid]
-                        val restored = if (old == null) ep else ep.copy(
-                            playingStatus = old.playingStatus,
-                            playedAt = old.playedAt,
-                            playedUpToSeconds = old.playedUpToSeconds,
-                            listenedSeconds = old.listenedSeconds,
-                            starred = old.starred,
-                            queuePosition = old.queuePosition,
-                            lastPlayedAt = old.lastPlayedAt,
-                            localPath = old.localPath,
-                            downloadState = old.downloadState,
-                            isDeleted = old.isDeleted,
-                            isArchived = old.isArchived,
-                            archivedAt = old.archivedAt,
-                        )
-                        restored.copy(listenedSeconds = maxOf(restored.listenedSeconds, history[ep.uuid]?.listenedSeconds ?: 0))
-                    }.filter { it != existing[it.uuid] }
-                    if (changed.isNotEmpty()) episodeDao.upsertAll(changed)
-                    if (history.isNotEmpty()) historyDao.deleteMany(history.keys.toList())
+            when (val result = download(podcast.feedUrl, podcast.feedEtag, podcast.feedLastModified)) {
+                FeedDownload.NotModified -> false
+                is FeedDownload.Body -> {
+                    save(podcast.feedUrl, result)
+                    true
                 }
             }
-            parsed.podcast
         }
+    }
+
+    /** An unconditional download: always the full feed. */
+    private fun downloadBody(url: String): FeedDownload.Body =
+        download(url, etag = null, lastModified = null) as FeedDownload.Body
+
+    /** Parses [body] and merges it into the library, with its validators. */
+    private suspend fun save(feedUrl: String, body: FeedDownload.Body): PodcastEntity {
+        val parsed = parser.parse(feedUrl, body.bytes)
+        transaction {
+            podcastDao.upsert(parsed.podcast)
+            // Stored in the same transaction as the episodes, so a 304 can
+            // only ever vouch for a copy that was fully saved.
+            podcastDao.setFeedValidators(parsed.podcast.uuid, body.etag, body.lastModified)
+            // Keep each batch below SQLite's bind limit and merge under the write transaction.
+            for (batch in parsed.episodes.chunked(400)) {
+                val ids = batch.map { it.uuid }
+                val existing = episodeDao.getMany(ids).associateBy { it.uuid }
+                val history = historyDao.getMany(ids).associateBy { it.episodeUuid }
+                val changed = batch.map { ep ->
+                    val old = existing[ep.uuid]
+                    val restored = if (old == null) ep else ep.copy(
+                        playingStatus = old.playingStatus,
+                        playedAt = old.playedAt,
+                        playedUpToSeconds = old.playedUpToSeconds,
+                        listenedSeconds = old.listenedSeconds,
+                        starred = old.starred,
+                        queuePosition = old.queuePosition,
+                        lastPlayedAt = old.lastPlayedAt,
+                        localPath = old.localPath,
+                        downloadState = old.downloadState,
+                        isDeleted = old.isDeleted,
+                        isArchived = old.isArchived,
+                        archivedAt = old.archivedAt,
+                    )
+                    restored.copy(listenedSeconds = maxOf(restored.listenedSeconds, history[ep.uuid]?.listenedSeconds ?: 0))
+                }.filter { it != existing[it.uuid] }
+                if (changed.isNotEmpty()) episodeDao.upsertAll(changed)
+                if (history.isNotEmpty()) historyDao.deleteMany(history.keys.toList())
+            }
+        }
+        return parsed.podcast
     }
 
     /**
@@ -115,8 +156,9 @@ class RssPodcastFetcher(
      * Three things get a second attempt, because all three are common and
      * none of them mean the feed is gone:
      *
-     * - 304 means "the copy you already hold is still good", which only
-     *   makes sense to a client that sent a validator, and we send none. Some
+     * - 304 means "the copy you already hold is still good". When [etag] or
+     *   [lastModified] were sent, that is the answer to our question and
+     *   nothing more is downloaded. Without them it makes no sense, but some
      *   hosts answer a plain GET that way anyway, so the request is repeated
      *   with the caches bypassed.
      * - 403 is either a host that wants https and refuses the old scheme, or
@@ -126,8 +168,13 @@ class RssPodcastFetcher(
      * - A Libsyn feed that still refuses everything is retried at the
      *   per-show address, which is where Libsyn actually serves it.
      */
-    private fun download(url: String): ByteArray {
-        val first = execute(url, bustCache = false, asBrowser = false)
+    private fun download(url: String, etag: String?, lastModified: String?): FeedDownload {
+        val conditional = etag != null || lastModified != null
+        val first = execute(url, bustCache = false, asBrowser = false, etag = etag, lastModified = lastModified)
+        if (conditional && first.code == 304) {
+            first.close()
+            return FeedDownload.NotModified
+        }
         val response = when {
             first.code == 304 -> {
                 first.close()
@@ -154,15 +201,22 @@ class RssPodcastFetcher(
 
         if (response.isSuccessful) {
             return response.use {
-                it.body?.readBoundedBytes(16 * 1024 * 1024)
+                val bytes = it.body?.readBoundedBytes(16 * 1024 * 1024)
                     ?: throw IllegalStateException("Feed returned an empty body")
+                FeedDownload.Body(
+                    bytes = bytes,
+                    etag = it.header("ETag")?.takeIf { value -> value.isNotBlank() },
+                    lastModified = it.header("Last-Modified")?.takeIf { value -> value.isNotBlank() },
+                )
             }
         }
 
         val status = response.code
         val recovered = recoverLibsyn(response)
         response.close()
-        if (recovered != null) return recovered
+        // A recovered Libsyn feed came from a different address, so its
+        // validators would not apply to this one; none are kept.
+        if (recovered != null) return FeedDownload.Body(recovered, etag = null, lastModified = null)
 
         throw feedError(status)
     }
@@ -192,7 +246,13 @@ class RssPodcastFetcher(
         }
     }
 
-    private fun execute(url: String, bustCache: Boolean, asBrowser: Boolean): Response {
+    private fun execute(
+        url: String,
+        bustCache: Boolean,
+        asBrowser: Boolean,
+        etag: String? = null,
+        lastModified: String? = null,
+    ): Response {
         val builder = Request.Builder()
             .url(url)
             .header(
@@ -208,6 +268,8 @@ class RssPodcastFetcher(
                     "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"
                 },
             )
+        etag?.let { builder.header("If-None-Match", it) }
+        lastModified?.let { builder.header("If-Modified-Since", it) }
         if (bustCache) {
             builder.header("Cache-Control", "no-cache")
             builder.header("Pragma", "no-cache")

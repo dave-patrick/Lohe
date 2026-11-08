@@ -39,12 +39,17 @@ class ProgressConsistencyTest {
             )
             db.episodeDao().upsertAll(originals)
             db.close()
-            // Schema 13 has the same columns; reopen through the production migration path.
+            // Schema 13 has the same episode columns; reopen through the production migration path.
             SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use {
                 it.version = 13
             }
+            // The file was created at the current schema, so it already has the
+            // feed-validator columns MIGRATION_14_15 adds; step over that one.
+            val alreadyAt15 = object : androidx.room.migration.Migration(14, 15) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+            }
             db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_13_14).build()
+                .addMigrations(AppDatabase.MIGRATION_13_14, alreadyAt15).build()
             for (original in originals) {
                 val actual = db.episodeDao().get(original.uuid)!!
                 when (original.uuid) {

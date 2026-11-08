@@ -499,9 +499,10 @@ class QueueViewModel(
             .forEach { triggerDownloadIfNeeded(it.toSummary()) }
     }
 
+    /** Automatic: follows the Wi-Fi-only setting for automatic downloads. */
     private fun triggerDownloadIfNeeded(ep: EpisodeSummary) {
         if (!ep.isDownloaded && !ep.isDownloading) {
-            runCatching { ServiceLocator.downloadManager().start(ep) }
+            runCatching { ServiceLocator.downloadManager().startAutomatic(ep) }
         }
     }
 
