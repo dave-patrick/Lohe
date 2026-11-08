@@ -128,7 +128,7 @@ class SubscriptionRepository internal constructor(
 
     /** Appends [uuid] to the queue; a no-op if it is already queued. */
     suspend fun enqueue(uuid: String, toTop: Boolean = false) {
-        episodes.enqueue(uuid, System.currentTimeMillis())
+        episodes.enqueue(uuid)
         if (toTop) {
             episodes.promoteInQueue(uuid)
         }
@@ -138,6 +138,7 @@ class SubscriptionRepository internal constructor(
 
     /** A single episode, looked up by uuid. */
     suspend fun episodeOnce(uuid: String): EpisodeEntity? = episodes.get(uuid)
+    suspend fun lastPlaybackEpisode(): EpisodeEntity? = episodes.lastPlaybackEpisode()
 
     /** Several episodes by uuid, in the order asked for. */
     suspend fun episodesOnce(uuids: Collection<String>): List<EpisodeEntity> =
@@ -491,7 +492,7 @@ class SubscriptionRepository internal constructor(
         newlySeen: List<EpisodeEntity>,
     ) {
         if (newlySeen.isEmpty()) return
-        newlySeen.forEach { episodes.enqueue(it.uuid, System.currentTimeMillis()) }
+        newlySeen.forEach { episodes.enqueue(it.uuid) }
         if (podcast.autoAddNewEpisodesAtTop) {
             episodes.promoteBatchInQueue(newlySeen.map { it.uuid })
         }

@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import com.lohe.app.ui.theme.QueueIndicatorSettings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -156,6 +157,8 @@ fun QueueScreen(
     currentEpisodeId: String? = null,
     onShowMessage: (String) -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    queueIndicator: QueueIndicatorSettings = QueueIndicatorSettings(),
+    onArchiveEpisode: (String) -> Unit = { viewModel.archiveEpisode(it) },
 ) {
     val queue by viewModel.queue.collectAsStateWithLifecycle()
     val userPlaylists by viewModel.userPlaylists.collectAsStateWithLifecycle()
@@ -172,6 +175,7 @@ fun QueueScreen(
     var playlistToAdd by remember { mutableStateOf<ResolvedPlaylist?>(null) }
     var selectedUuids by remember { mutableStateOf(emptySet<String>()) }
     var actionEpisode by remember { mutableStateOf<QueueEntry?>(null) }
+    var notesEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     var addToPlaylistEpisode by remember { mutableStateOf<QueueEntry?>(null) }
     val inSelectionMode = selectedUuids.isNotEmpty()
 
@@ -391,6 +395,7 @@ fun QueueScreen(
                     positionNumber = index + 1,
                     showPositionNumber = false,
                     entry = entry,
+                    queueIndicator = queueIndicator,
                     isHead = index == 0,
                     inSelectionMode = inSelectionMode,
                     isSelected = isSelected,
@@ -429,6 +434,17 @@ fun QueueScreen(
                                 viewModel.reorderQueue(items.map { it.episode.uuid }).join()
                                 onPlay(entry)
                             }
+                        }
+                    },
+                    onOpen = {
+                        if (inSelectionMode) {
+                            selectedUuids = if (isSelected) {
+                                selectedUuids - entry.episode.uuid
+                            } else {
+                                selectedUuids + entry.episode.uuid
+                            }
+                        } else {
+                            notesEpisode = entry
                         }
                     },
                     onLongPress = {
@@ -471,6 +487,30 @@ fun QueueScreen(
                 )
             }
         }
+    }
+
+    notesEpisode?.let { entry ->
+        var description by remember(entry.episode.uuid) { mutableStateOf<String?>(null) }
+        LaunchedEffect(entry.episode.uuid) {
+            description = viewModel.episodeDescription(entry.episode.uuid)
+        }
+        EpisodeNotesSheet(
+            title = entry.episode.title,
+            showTitle = entry.showTitle,
+            artworkUrl = entry.episode.artworkUrl,
+            description = description,
+            durationSeconds = entry.episode.durationSeconds,
+            published = entry.episode.published,
+            sizeBytes = entry.episode.sizeBytes,
+            onArchive = if (entry.episode.isArchived) null else ({ onArchiveEpisode(entry.episode.uuid) }),
+            onPlay = {
+                scope.launch {
+                    viewModel.promote(entry.episode.uuid).join()
+                    onPlay(entry)
+                }
+            },
+            onDismiss = { notesEpisode = null },
+        )
     }
 
     actionEpisode?.let { entry ->
@@ -657,6 +697,8 @@ fun PlaylistsScreen(
     onOpenSettings: () -> Unit = {},
     refreshing: Boolean = false,
     onRefresh: () -> Unit = {},
+    queueIndicator: QueueIndicatorSettings = QueueIndicatorSettings(),
+    onArchiveEpisode: (String) -> Unit = { viewModel.archiveEpisode(it) },
 ) {
     val now = remember { System.currentTimeMillis() }
     val userPlaylists by viewModel.userPlaylists.collectAsStateWithLifecycle()
@@ -1165,6 +1207,7 @@ fun PlaylistsScreen(
                         QueueRow(
                             positionNumber = index + 1,
                             entry = entry,
+                            queueIndicator = queueIndicator,
                             isHead = index == 0,
                             inSelectionMode = playlistSelectionMode,
                             isSelected = isSelected,
@@ -1612,6 +1655,7 @@ fun PlaylistsScreen(
             published = entry.episode.published,
             sizeBytes = entry.episode.sizeBytes,
             onPlay = { onPlay(entry) },
+            onArchive = if (entry.episode.isArchived) null else ({ onArchiveEpisode(entry.episode.uuid) }),
             onAddToUpNext = {
                 viewModel.enqueue(entry.episode.uuid)
                 onShowMessage("Added to Up Next")
@@ -2535,6 +2579,7 @@ private fun QueueRow(
     positionNumber: Int,
     showPositionNumber: Boolean = true,
     entry: QueueEntry,
+    queueIndicator: QueueIndicatorSettings,
     isHead: Boolean,
     inSelectionMode: Boolean,
     isSelected: Boolean,
@@ -2568,7 +2613,20 @@ private fun QueueRow(
             state.isNotEmpty() -> state
             else -> show
         }
-        if (ep.isArchived && base.isNotEmpty()) "Archived · $base" else base
+        buildAnnotatedString {
+            if (ep.isArchived && base.isNotEmpty()) append("Archived · ")
+            val stateStart = length
+            append(base)
+            val runtime = EpisodeMeta.duration(ep.durationSeconds)
+            val durationStyle = SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)
+            if (runtime.isNotEmpty() && state.endsWith(runtime)) {
+                addStyle(durationStyle, stateStart + state.length - runtime.length, stateStart + state.length)
+            }
+            val remainingEnd = state.indexOf(" left")
+            if (ep.isInProgress && remainingEnd > 0) {
+                addStyle(durationStyle, stateStart, stateStart + remainingEnd)
+            }
+        }
     }
 
     val dismissState = rememberSwipeToDismissBoxState(
@@ -2755,7 +2813,7 @@ private fun QueueRow(
                 isSelected -> ElectricBlue
                 else -> null
             },
-            onClick = if (dragHandleAtStart && !inSelectionMode) null else (onOpen ?: onPlay),
+            onClick = onOpen ?: if (dragHandleAtStart && !inSelectionMode) null else onPlay,
             onLongClick = onLongPress,
         ) {
             Column {
@@ -2813,13 +2871,17 @@ private fun QueueRow(
                     )
 
                     Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        QueueMembershipIndicator(ep.isQueued, queueIndicator)
                         Text(
                             text = ep.title,
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        }
                         if (metaLine.isNotBlank()) {
                             Text(
                                 text = metaLine,

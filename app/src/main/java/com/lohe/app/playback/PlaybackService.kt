@@ -59,6 +59,7 @@ class PlaybackService : MediaLibraryService() {
 
     private var session: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
+    private val resumptionStore by lazy { PlaybackResumptionStore(applicationContext) }
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var loudnessSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var voiceEqualizer: Equalizer? = null
@@ -186,7 +187,8 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
-            val root = catalog()?.rootItem()
+            val catalog = catalog()
+            val root = if (params?.isRecent == true) catalog?.recentRootItem() else catalog?.rootItem()
             if (root == null) {
                 LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE)
             } else {
@@ -202,7 +204,10 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-            val all = catalog()?.children(parentId).orEmpty()
+            val all = if (parentId == MediaLibrary.RECENT) {
+                val episode = playbackResumptionEpisode(ServiceLocator.subscriptionRepository(), resumptionStore)
+                listOfNotNull(episode?.let { catalog()?.playable(it.uuid) })
+            } else catalog()?.children(parentId).orEmpty()
             val from = page.toLong() * pageSize
             val slice = if (page < 0 || pageSize <= 0 || from >= all.size) {
                 emptyList()
@@ -276,6 +281,21 @@ class PlaybackService : MediaLibraryService() {
             resolved.toMutableList()
         }
 
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+            val episode = playbackResumptionEpisode(ServiceLocator.subscriptionRepository(), resumptionStore)
+            val item = episode?.let { catalog()?.playable(it.uuid) }
+            if (item == null) {
+                MediaSession.MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, C.TIME_UNSET)
+            } else {
+                MediaSession.MediaItemsWithStartPosition(listOf(item), 0,
+                    playbackStartPositionMs(episode.playedUpToSeconds, (episode.durationSeconds?.toLong() ?: 0L) * 1_000L))
+            }
+        }
+
         override fun onSetMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -343,6 +363,12 @@ class PlaybackService : MediaLibraryService() {
         private var resumedForMediaId: String? = null
         private var observedMediaId: String? = null
         private var completingMediaId: String? = null
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                player.currentMediaItem?.mediaId?.let(resumptionStore::rememberPlaying)
+            }
+        }
 
         override fun onRepeatModeChanged(repeatMode: Int) {
             if (repeatMode != Player.REPEAT_MODE_OFF) {
@@ -413,6 +439,7 @@ class PlaybackService : MediaLibraryService() {
                     scope.launch(Dispatchers.IO) { writeProgress(previousId, position, duration) }
                 }
             }
+            if (nextId != null && player.isPlaying) resumptionStore.rememberPlaying(nextId)
             if (nextId != previousId) {
                 completingMediaId = null
                 resumedForMediaId = null

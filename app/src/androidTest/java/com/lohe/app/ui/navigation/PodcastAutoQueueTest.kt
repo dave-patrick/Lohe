@@ -161,8 +161,8 @@ class PodcastAutoQueueTest {
         val before = repository.queueSnapshot()
         var failOnce = true
         val interruptedEpisodes = object : com.lohe.app.data.db.dao.EpisodeDao by db.episodeDao() {
-            override suspend fun enqueue(uuid: String, now: Long) {
-                db.episodeDao().enqueue(uuid, now)
+            override suspend fun enqueue(uuid: String) {
+                db.episodeDao().enqueue(uuid)
                 if (uuid == "older" && failOnce) {
                     failOnce = false
                     throw CancellationException("Interrupted existing episode backfill")

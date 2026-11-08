@@ -101,6 +101,7 @@ import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.LoheDialog
 import com.lohe.app.ui.theme.PlaybackSettings
+import com.lohe.app.ui.theme.QueueIndicatorSettings
 import com.lohe.app.ui.theme.ShowPlaybackOverrides
 import com.lohe.app.data.ServiceLocator
 
@@ -116,6 +117,8 @@ fun EpisodesScreen(
     onRemoveDownloads: (Collection<EpisodeEntity>) -> Unit,
     onOpenSettings: () -> Unit = {},
     onShowMessage: (String) -> Unit,
+    queueIndicator: QueueIndicatorSettings = QueueIndicatorSettings(),
+    onArchiveEpisode: (String) -> Unit = { viewModel.toggleArchived(it, false) },
 ) {
     val podcast by viewModel.podcast.collectAsStateWithLifecycle()
     val episodes by viewModel.episodes.collectAsStateWithLifecycle()
@@ -558,6 +561,7 @@ fun EpisodesScreen(
                         }
                     }
                     EpisodeRow(
+                        queueIndicator = queueIndicator,
                         modifier = Modifier.offset { IntOffset(swipeOffset.roundToInt(), 0) },
                         episode = episode,
                         now = now,
@@ -639,6 +643,7 @@ fun EpisodesScreen(
             sizeBytes = ep.sizeBytes,
             onPlay = { onPlay(ep) },
             onAddToUpNext = { onQueue(ep) },
+            onArchive = if (ep.isArchived) null else ({ onArchiveEpisode(ep.uuid) }),
             onDismiss = { notesEpisode = null },
         )
     }
@@ -728,6 +733,7 @@ fun EpisodesScreen(
 
 @Composable
 private fun EpisodeRow(
+    queueIndicator: QueueIndicatorSettings,
     episode: EpisodeEntity,
     now: Long,
     inSelectionMode: Boolean,
@@ -812,6 +818,7 @@ private fun EpisodeRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    QueueMembershipIndicator(episode.isQueued, queueIndicator)
                     Text(
                         text = episode.title,
                         style = MaterialTheme.typography.titleSmall,

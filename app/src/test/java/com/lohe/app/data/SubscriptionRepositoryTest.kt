@@ -138,6 +138,9 @@ class SubscriptionRepositoryTest {
     private class FakeEpisodeDao : com.lohe.app.data.db.dao.EpisodeDao {
         var upsertCalls = 0
         val rows = mutableListOf<EpisodeEntity>()
+        override suspend fun lastPlaybackEpisode() = rows
+            .filter { (it.lastPlayedAt ?: 0L) > 0L && it.playingStatus != EpisodeEntity.UNPLAYED }
+            .sortedWith(compareByDescending<EpisodeEntity> { it.lastPlayedAt }.thenBy { it.uuid }).firstOrNull()
         override fun observePodcastStats() = kotlinx.coroutines.flow.flowOf(
             rows.groupBy { it.podcastUuid }.map { (uuid, episodes) ->
                 com.lohe.app.data.db.dao.PodcastEpisodeStats(uuid, episodes.count { !it.isDeleted },
@@ -179,12 +182,12 @@ class SubscriptionRepositoryTest {
         override suspend fun queueSnapshot() =
             rows.filter { it.isQueued }.sortedBy { it.queuePosition }
 
-        override suspend fun enqueue(uuid: String, now: Long) {
+        override suspend fun enqueue(uuid: String) {
             val index = rows.indexOfFirst { it.uuid == uuid }
             if (index < 0) return
             if (rows[index].isQueued) return
             val next = (rows.mapNotNull { it.queuePosition }.maxOrNull() ?: -1) + 1
-            rows[index] = rows[index].copy(queuePosition = next, lastPlayedAt = now)
+            rows[index] = rows[index].copy(queuePosition = next)
         }
 
         override suspend fun dequeue(uuid: String) {

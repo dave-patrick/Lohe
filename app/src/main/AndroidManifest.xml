@@ -133,6 +133,14 @@
                 android:value="true" />
         </activity>
 
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Android Automotive OS car app service. -->
         <service
             android:name=".playback.CarPlaybackService"

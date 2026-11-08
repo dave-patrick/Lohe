@@ -5,6 +5,9 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
@@ -70,7 +73,7 @@ class PodcastEpisodePreferencesTest {
         if (::db.isInitialized) db.close()
     }
 
-    @Test fun uiChoicesSurviveClosingAndReopeningWithNewViewModelAndStore() {
+    @Test fun reopeningStartsUnplayedButPreservesSortOrder() {
         val first = openScreen()
         tap("Played")
         tap("Change sort order")
@@ -81,18 +84,51 @@ class PodcastEpisodePreferencesTest {
         scenario = null
         instrumentation.runOnMainSync { stores.last().clear() }
         val reopened = openScreen()
-        waitUntil { reopened.filter.value == EpisodeFilter.Filter.PLAYED && reopened.order.value == EpisodeFilter.Order.OLDEST_FIRST }
-        waitUntil { reopened.episodes.value.map { it.uuid } == listOf("$show-old", "$show-new") }
-        waitForText("Played")
+        waitUntil { reopened.filter.value == EpisodeFilter.Filter.UNPLAYED && reopened.order.value == EpisodeFilter.Order.OLDEST_FIRST }
+        waitUntil { reopened.episodes.value.map { it.uuid } == listOf("$show-unplayed") }
+        assertNull(find("Older played fixture"))
+        assertNull(find("Newer played fixture"))
+        tap("All")
+        waitUntil { reopened.episodes.value.size == 3 }
         tap("Change sort order")
         waitForText("Oldest")
         val otherId = "other-${UUID.randomUUID()}"
         val other = observedViewModel(otherId, SettingsStore(context))
-        waitUntil { other.filter.value == EpisodeFilter.Filter.ALL && other.order.value == EpisodeFilter.Order.NEWEST_FIRST }
+        waitUntil { other.filter.value == EpisodeFilter.Filter.UNPLAYED && other.order.value == EpisodeFilter.Order.NEWEST_FIRST }
         runBlocking {
-            assertEquals(EpisodeFilter.Filter.ALL, SettingsStore(context).podcastEpisodeFilter(otherId).first())
+            assertEquals(EpisodeFilter.Filter.UNPLAYED, SettingsStore(context).podcastEpisodeFilter(otherId).first())
             assertEquals(EpisodeFilter.Order.NEWEST_FIRST, SettingsStore(context).podcastEpisodeOrder(otherId).first())
         }
+    }
+
+    @Test fun savedPlayedFilterDoesNotOverrideNewVisitDefault() {
+        runBlocking { SettingsStore(context).setPodcastEpisodeFilter(show, EpisodeFilter.Filter.PLAYED) }
+        val vm = observedViewModel(show, SettingsStore(context))
+        waitUntil { vm.episodes.value.isNotEmpty() }
+        assertEquals(EpisodeFilter.Filter.UNPLAYED, vm.filter.value)
+        assertEquals(listOf("$show-unplayed"), vm.episodes.value.map { it.uuid })
+    }
+
+    @Test fun noStoreStartsUnplayedImmediately() {
+        lateinit var vm: EpisodesViewModel
+        instrumentation.runOnMainSync {
+            vm = EpisodesViewModel(repository, show)
+            stores.add(ViewModelStore().also { it.put("episodes", vm) })
+        }
+        assertEquals(EpisodeFilter.Filter.UNPLAYED, vm.filter.value)
+    }
+
+    @Test fun allPlayedPodcastCanSwitchFromEmptyUnplayedToAll() {
+        runBlocking {
+            val episode = db.episodeDao().get("$show-unplayed")!!
+            db.episodeDao().upsertAll(listOf(episode.copy(playingStatus = EpisodeEntity.PLAYED)))
+        }
+        val vm = openScreen()
+        waitUntil { vm.podcast.value?.uuid == show && vm.filter.value == EpisodeFilter.Filter.UNPLAYED }
+        assertTrue(vm.episodes.value.isEmpty())
+        tap("All")
+        waitUntil { vm.episodes.value.size == 3 }
+        waitForText("Older played fixture")
     }
 
     @Test fun everyFilterAndOrderRoundTripsAcrossStoreInstances() = runBlocking {
@@ -125,10 +161,12 @@ class PodcastEpisodePreferencesTest {
         val queue = QueueViewModel(repository)
         scenario = ActivityScenario.launch(MainActivity::class.java)
         scenario!!.onActivity { activity ->
+            assertFalse("Unlock phone for UI checks", context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
+            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.setContent {
-                LoheTheme { SwipeActionsHost {
+                LoheTheme { Box(Modifier.safeDrawingPadding()) { SwipeActionsHost {
                     EpisodesScreen(vm, queue, {}, {}, {}, {}, {}, {}, {})
-                } }
+                } } }
             }
         }
         waitForText("Preference fixture")
@@ -161,8 +199,12 @@ class PodcastEpisodePreferencesTest {
         val down = SystemClock.uptimeMillis()
         for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
             val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 0)
-            instrumentation.uiAutomation.injectInputEvent(event, true)
+            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            instrumentation.sendPointerSync(event)
             event.recycle()
+            if (action == MotionEvent.ACTION_DOWN) SystemClock.sleep(80)
         }
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(300)
     }
 }

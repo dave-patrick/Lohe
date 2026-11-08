@@ -145,6 +145,16 @@ class PlayerConnection internal constructor(
         controller?.pause()
     }
 
+    /** Archiving one episode must not interrupt another or leave a deferred play behind. */
+    fun stopAndClearEpisode(episodeId: String) {
+        if (pendingPlay?.first?.mediaId == episodeId) pendingPlay = null
+        val c = controller ?: return
+        if (c.currentMediaItem?.mediaId != episodeId) return
+        c.pause()
+        c.stop()
+        c.clearMediaItems()
+    }
+
     fun seekToFraction(fraction: Float) {
         val c = controller ?: return
         val duration = c.duration

@@ -116,7 +116,7 @@ class PodcastUpsertCascadeTest {
         dao.upsert(podcast())
         episodes.upsertAll(listOf(episode()))
         episodes.markPlayedAndClearProgress("episode-1")
-        episodes.enqueue("episode-1", 1_700_000_000L)
+        episodes.enqueue("episode-1")
 
         // A refresh writes the show back with new metadata from the feed.
         dao.upsert(podcast(title = "Test Show (renamed)"))

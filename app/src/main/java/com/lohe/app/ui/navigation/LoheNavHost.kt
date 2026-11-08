@@ -225,6 +225,11 @@ private fun LoheNavigationContent(
     // observe the same controller, or the bar would sit idle while the player
     // screen plays.
     val playerConnection = rememberPlayerConnection()
+    fun archiveEpisode(episodeId: String) {
+        playerConnection.stopAndClearEpisode(episodeId)
+        if (nowPlaying?.episodeId == episodeId) nowPlaying = null
+        queueViewModel.archiveEpisode(episodeId)
+    }
     val transport = rememberTransportState(playerConnection)
     // The transport snapshot changes several times a second while audio plays
     // (the position moves). Reading it directly here would recompose the whole
@@ -539,6 +544,8 @@ private fun LoheNavigationContent(
                 val show by vm.podcast.collectAsStateWithLifecycle()
                 val queueTitle = show?.title.orEmpty()
                 EpisodesScreen(
+                    onArchiveEpisode = ::archiveEpisode,
+                    queueIndicator = playbackSettings.queueIndicator,
                     viewModel = vm,
                     queueViewModel = queueViewModel,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
@@ -595,6 +602,8 @@ private fun LoheNavigationContent(
             composable(Dest.PLAYLISTS.route) {
                 val refreshState by podcastsViewModel.refresh.collectAsStateWithLifecycle()
                 PlaylistsScreen(
+                    onArchiveEpisode = ::archiveEpisode,
+                    queueIndicator = playbackSettings.queueIndicator,
                     viewModel = queueViewModel,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
                     refreshing = refreshState is RefreshState.Running,
@@ -623,6 +632,8 @@ private fun LoheNavigationContent(
                     transportHasMedia && it.isNotBlank()
                 }
                 QueueScreen(
+                    onArchiveEpisode = ::archiveEpisode,
+                    queueIndicator = playbackSettings.queueIndicator,
                     viewModel = queueViewModel,
                     currentEpisodeId = currentQueueEpisodeId,
                     onOpenSettings = { navController.navigate(Dest.SETTINGS.route) },
@@ -647,6 +658,7 @@ private fun LoheNavigationContent(
 
             composable(Dest.PLAYER.route) {
                 PlayerScreen(
+                    onArchiveEpisode = ::archiveEpisode,
                     connection = playerConnection,
                     appearance = appearance,
                     floatingPlayerEnabled = playbackSettings.floatingPlayerEnabled,

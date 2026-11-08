@@ -52,13 +52,12 @@ class EpisodesViewModel(
         .map { list -> list.firstOrNull { it.uuid == podcastUuid } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _filter = MutableStateFlow(EpisodeFilter.Filter.ALL)
+    private val _filter = MutableStateFlow(EpisodeFilter.Filter.UNPLAYED)
     private val _order = MutableStateFlow(EpisodeFilter.Order.NEWEST_FIRST)
     private val _query = MutableStateFlow("")
 
-    val filter: StateFlow<EpisodeFilter.Filter> =
-        (settingsStore?.podcastEpisodeFilter(podcastUuid) ?: _filter)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpisodeFilter.Filter.ALL)
+    // A new podcast visit always starts unplayed; choices remain local to that visit.
+    val filter: StateFlow<EpisodeFilter.Filter> = _filter.asStateFlow()
     val order: StateFlow<EpisodeFilter.Order> =
         (settingsStore?.podcastEpisodeOrder(podcastUuid) ?: _order)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpisodeFilter.Order.NEWEST_FIRST)
@@ -89,8 +88,7 @@ class EpisodesViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setFilter(value: EpisodeFilter.Filter) {
-        if (settingsStore == null) _filter.value = value
-        else viewModelScope.launch { settingsStore.setPodcastEpisodeFilter(podcastUuid, value) }
+        _filter.value = value
     }
 
     fun setOrder(value: EpisodeFilter.Order) {

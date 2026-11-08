@@ -74,7 +74,7 @@ data class EpisodeEntity(
      * ordered list rather than a set.
      */
     val queuePosition: Int? = null,
-    /** When the episode last sat at the head of the queue. Drives "continue". */
+    /** Last playback or completion time. Queue edits leave it unchanged. */
     val lastPlayedAt: Long? = null,
     /** Absolute path to a downloaded copy, or null when streaming only. */
     val localPath: String? = null,

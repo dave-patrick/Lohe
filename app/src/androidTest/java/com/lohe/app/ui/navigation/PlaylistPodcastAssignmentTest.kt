@@ -295,7 +295,7 @@ class PlaylistPodcastAssignmentTest {
     }
 
     @Test fun genericQueueKeepsPlayedAndRemoveSwipeActions() {
-        runBlocking { db.episodeDao().enqueue("manual", System.currentTimeMillis()) }
+        runBlocking { db.episodeDao().enqueue("manual") }
         scenario.onActivity { activity ->
             activity.setContent {
                 LoheTheme { Box(Modifier.safeDrawingPadding()) { SwipeActionsHost { QueueScreen(queue, onPlay = { played++ }) } } }

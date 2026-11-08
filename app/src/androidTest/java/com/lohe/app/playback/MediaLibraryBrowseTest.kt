@@ -118,7 +118,7 @@ class MediaLibraryBrowseTest {
     }
 
     @Test
-    fun assignedPodcastPlaylistBrowsesManualAndAllVisibleAssignedEpisodes() {
+    fun assignedPodcastPlaylistExcludesPlayedAndArchivedAssignments() {
         val showId = "audit-assigned-browse-show"
         val repository = ServiceLocator.playlistRepository()
         val playlist = repository.createPlaylist(
@@ -144,7 +144,7 @@ class MediaLibraryBrowseTest {
             repository.removeEpisode(playlist.id, "audit-assigned-hidden")
 
             assertEquals(
-                listOf("audit-manual-second", "audit-manual-first", "audit-assigned-played", "audit-assigned-archived"),
+                listOf("audit-manual-second", "audit-manual-first"),
                 childrenOf(MediaLibrary.playlistId(playlist.id)).map { it.mediaId },
             )
         } finally {

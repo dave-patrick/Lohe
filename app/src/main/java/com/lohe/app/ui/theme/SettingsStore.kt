@@ -75,6 +75,7 @@ data class PlaybackSettings(
     val showDownloadedSmartPlaylist: Boolean = true,
     val showNewReleasesSmartPlaylist: Boolean = true,
     val debugButtonEnabled: Boolean = false,
+    val queueIndicator: QueueIndicatorSettings = QueueIndicatorSettings(),
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -154,7 +155,7 @@ class SettingsStore(private val context: Context) {
         context.settingsStore.data.map { prefs ->
             com.lohe.app.data.EpisodeFilter.Filter.entries.firstOrNull {
                 it.name == prefs[podcastEpisodeFilterKey(id)]
-            } ?: com.lohe.app.data.EpisodeFilter.Filter.ALL
+            } ?: com.lohe.app.data.EpisodeFilter.Filter.UNPLAYED
         }
 
     suspend fun setPodcastEpisodeFilter(id: String, value: com.lohe.app.data.EpisodeFilter.Filter) =
@@ -211,6 +212,10 @@ class SettingsStore(private val context: Context) {
         val showDownloadedSmartPlaylist = booleanPreferencesKey("show_smart_playlist_downloaded")
         val showNewReleasesSmartPlaylist = booleanPreferencesKey("show_smart_playlist_new_releases")
         val debugButtonEnabled = booleanPreferencesKey("debug_button_enabled")
+        val queueIndicatorEnabled = booleanPreferencesKey("queue_indicator_enabled")
+        val queueIndicatorStyle = stringPreferencesKey("queue_indicator_style")
+        val queueIndicatorColor = stringPreferencesKey("queue_indicator_color")
+        val queueIndicatorSize = stringPreferencesKey("queue_indicator_size")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -272,6 +277,10 @@ class SettingsStore(private val context: Context) {
             showDownloadedSmartPlaylist = prefs[Keys.showDownloadedSmartPlaylist] ?: true,
             showNewReleasesSmartPlaylist = prefs[Keys.showNewReleasesSmartPlaylist] ?: true,
             debugButtonEnabled = prefs[Keys.debugButtonEnabled] ?: false,
+            queueIndicator = QueueIndicatorSettings.fromStored(
+                prefs[Keys.queueIndicatorEnabled], prefs[Keys.queueIndicatorStyle],
+                prefs[Keys.queueIndicatorColor], prefs[Keys.queueIndicatorSize],
+            ),
         )
     }
 
@@ -286,6 +295,11 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setDebugButtonEnabled(value: Boolean) =
         edit { it[Keys.debugButtonEnabled] = value }
+
+    suspend fun setQueueIndicatorEnabled(value: Boolean) = edit { it[Keys.queueIndicatorEnabled] = value }
+    suspend fun setQueueIndicatorStyle(value: QueueIndicatorStyle) = edit { it[Keys.queueIndicatorStyle] = value.name }
+    suspend fun setQueueIndicatorColor(value: QueueIndicatorColor) = edit { it[Keys.queueIndicatorColor] = value.name }
+    suspend fun setQueueIndicatorSize(value: QueueIndicatorSize) = edit { it[Keys.queueIndicatorSize] = value.name }
 
     suspend fun setVolumeBoostDefault(value: Boolean) =
         edit { it[Keys.volumeBoost] = value }

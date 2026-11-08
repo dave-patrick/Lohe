@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableStateOf
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -25,6 +26,13 @@ import com.lohe.app.data.db.entity.EpisodeEntity
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.data.fetch.RssPodcastFetcher
 import com.lohe.app.ui.theme.LoheTheme
+import com.lohe.app.ui.theme.QueueIndicatorSettings
+import com.lohe.app.ui.theme.QueueIndicatorStyle
+import com.lohe.app.ui.theme.QueueIndicatorColor
+import com.lohe.app.ui.theme.QueueIndicatorSize
+import com.lohe.app.ui.theme.SettingsStore
+import com.lohe.app.ui.theme.Appearance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -39,8 +47,10 @@ class EpisodeQueueInteractionsTest {
     private lateinit var db: AppDatabase
     private lateinit var repository: SubscriptionRepository
     private lateinit var queue: QueueViewModel
+    private lateinit var playlists: PlaylistRepository
     private lateinit var scenario: ActivityScenario<MainActivity>
     @Volatile private var played = 0
+    private val indicator = mutableStateOf(QueueIndicatorSettings())
 
     @Before fun setup() {
         assertTrue("Only run against the isolated audit app", instrumentation.targetContext.packageName.endsWith(".audit"))
@@ -57,7 +67,8 @@ class EpisodeQueueInteractionsTest {
         }
         repository = SubscriptionRepository(db.podcastDao(), db.episodeDao(), db.listeningHistoryDao(),
             RssPodcastFetcher(podcastDao = db.podcastDao(), episodeDao = db.episodeDao()))
-        queue = QueueViewModel(repository, PlaylistRepository())
+        playlists = PlaylistRepository()
+        queue = QueueViewModel(repository, playlists)
         scenario = ActivityScenario.launch(MainActivity::class.java)
         scenario.onActivity { it.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
@@ -72,7 +83,7 @@ class EpisodeQueueInteractionsTest {
         scenario.onActivity { activity -> activity.setContent {
             LoheTheme { Box(Modifier.safeDrawingPadding()) { SwipeActionsHost {
                 EpisodesScreen(episodes, queue, onBack = {}, onPlay = { played++ }, onQueue = {},
-                    onDownload = {}, onRemoveDownloads = {}, onShowMessage = {})
+                    onDownload = {}, onRemoveDownloads = {}, onShowMessage = {}, queueIndicator = indicator.value)
             } } }
         } }
         waitForEpisode("Interaction episode 1")
@@ -81,11 +92,142 @@ class EpisodeQueueInteractionsTest {
     private fun showQueue() {
         scenario.onActivity { activity -> activity.setContent {
             LoheTheme { Box(Modifier.safeDrawingPadding()) { SwipeActionsHost {
-                QueueScreen(queue, onPlay = { played++ })
+                QueueScreen(queue, onPlay = { played++ }, queueIndicator = indicator.value)
             } } }
         } }
         waitFor("Interaction episode 2")
     }
+
+    @Test fun podcastNotesArchiveEpisodeWithoutPlaying() {
+        showEpisodes()
+        tap("Interaction episode 1")
+        tap("Archive")
+        waitForCondition("notes archive persisted") { runBlocking { db.episodeDao().get("episode-1")!!.isArchived } }
+        val archived = runBlocking { db.episodeDao().get("episode-1")!! }
+        assertTrue(archived.isPlayed)
+        assertNull(archived.queuePosition)
+        assertNull(find("SHOW NOTES"))
+        assertEquals(0, played)
+    }
+
+    @Test fun upNextNotesArchiveEpisodeAndDismissLeavesOthersUnchanged() {
+        showQueue()
+        tap("Interaction episode 2")
+        waitFor("SHOW NOTES")
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        waitForCondition("notes dismissed") { find("SHOW NOTES") == null }
+        assertEquals(listOf("episode-1", "episode-2", "episode-3"), queuedIds())
+        assertFalse(runBlocking { db.episodeDao().get("episode-2")!!.isArchived })
+        tap("Interaction episode 2")
+        tap("Archive")
+        waitForCondition("archived episode leaves queue") { queuedIds() == listOf("episode-1", "episode-3") }
+        val archived = runBlocking { db.episodeDao().get("episode-2")!! }
+        assertTrue(archived.isArchived)
+        assertTrue(archived.isPlayed)
+        assertEquals(0, played)
+    }
+
+    @Test fun playlistNotesArchiveEpisode() {
+        val playlist = playlists.createPlaylist("Archive fixture playlist", listOf("episode-1", "episode-2"), autoDownload = false)
+        try {
+            scenario.onActivity { activity -> activity.setContent {
+                LoheTheme { Box(Modifier.safeDrawingPadding()) { SwipeActionsHost {
+                    PlaylistsScreen(queue, onPlay = { played++ })
+                } } }
+            } }
+            waitForEpisode("Archive fixture playlist")
+            tap("Archive fixture playlist")
+            tap("Interaction episode 2")
+            tap("Archive")
+            waitForCondition("playlist episode archived") { runBlocking { db.episodeDao().get("episode-2")!!.isArchived } }
+            assertFalse(queuedIds().contains("episode-2"))
+            assertEquals(0, played)
+        } finally {
+            playlists.deletePlaylist(playlist.id)
+        }
+    }
+
+    @Test fun queueIndicatorsFollowMembershipAndVisibilityWithoutPlaying() {
+        showQueue()
+        val original = queuedIds()
+        waitForCondition("three queued indicators") { indicatorCount() == 3 }
+        scenario.onActivity { indicator.value = indicator.value.copy(enabled = false) }
+        waitForCondition("indicators hidden") { indicatorCount() == 0 }
+        assertEquals(original, queuedIds())
+        scenario.onActivity { indicator.value = indicator.value.copy(enabled = true, style = QueueIndicatorStyle.RING) }
+        waitForCondition("indicators restored") { indicatorCount() == 3 }
+        runBlocking { repository.dequeue("episode-2") }
+        waitForCondition("dequeued indicator removed") { indicatorCount() == 2 }
+        runBlocking { repository.enqueue("episode-2") }
+        waitForCondition("enqueued indicator added") { indicatorCount() == 3 }
+        assertEquals(0, played)
+    }
+
+    @Test fun podcastIndicatorsDisappearWhenEpisodesLeaveQueue() {
+        showEpisodes()
+        waitForCondition("podcast queued indicator visible") { indicatorCount() > 0 }
+        runBlocking { (1..3).forEach { repository.dequeue("episode-$it") } }
+        waitForCondition("unqueued podcast episodes have no indicators") { indicatorCount() == 0 }
+        runBlocking { repository.enqueue("episode-1") }
+        waitForCondition("podcast indicator follows enqueue") { indicatorCount() == 1 }
+        assertEquals(0, played)
+    }
+
+    @Test fun indicatorDesignControlsPersistAndSurviveDisableAndReopen() {
+        val store = SettingsStore(instrumentation.targetContext)
+        fun saved() = runBlocking { store.settings.first().queueIndicator }
+        val original = saved()
+        fun showAppearance() {
+            scenario.onActivity { activity -> activity.setContent {
+                LoheTheme { Box(Modifier.safeDrawingPadding()) {
+                    SettingsScreen(Appearance.DARK, {}, {}, {}, store, SettingsCategory.APPEARANCE)
+                } }
+            } }
+            waitFor("Up Next indicator")
+        }
+        fun setEnabled(value: Boolean) = runBlocking { store.setQueueIndicatorEnabled(value) }
+        try {
+            setEnabled(true)
+            showAppearance()
+            tap("Ring")
+            tap("Teal")
+            tap("Large")
+            val design = QueueIndicatorSettings(true, QueueIndicatorStyle.RING, QueueIndicatorColor.TEAL, QueueIndicatorSize.LARGE)
+            waitForCondition("design persisted") { saved() == design }
+            waitForCondition("preview visible") { indicatorCount() == 1 }
+            val toggle = allNodes().first { it.contentDescription?.toString() == "Up Next indicator" }
+            tapBounds(Rect().also(toggle::getBoundsInScreen))
+            waitForCondition("indicator disabled") { !saved().enabled && indicatorCount() == 0 }
+            assertNull(find("Ring"))
+            showQueue()
+            showAppearance()
+            assertEquals(design.copy(enabled = false), SettingsStore(instrumentation.targetContext).settings.let { runBlocking { it.first().queueIndicator } })
+            val restoredToggle = allNodes().first { it.contentDescription?.toString() == "Up Next indicator" }
+            tapBounds(Rect().also(restoredToggle::getBoundsInScreen))
+            waitForCondition("design restored") { saved() == design && indicatorCount() == 1 }
+            waitFor("Ring")
+        } finally {
+            runBlocking {
+                store.setQueueIndicatorEnabled(original.enabled)
+                store.setQueueIndicatorStyle(original.style)
+                store.setQueueIndicatorColor(original.color)
+                store.setQueueIndicatorSize(original.size)
+            }
+        }
+    }
+
+    private fun allNodes(): List<AccessibilityNodeInfo> {
+        val nodes = mutableListOf<AccessibilityNodeInfo>()
+        fun visit(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            if (node.isVisibleToUser) nodes.add(node)
+            for (index in 0 until node.childCount) visit(node.getChild(index))
+        }
+        visit(instrumentation.uiAutomation.rootInActiveWindow)
+        return nodes
+    }
+
+    private fun indicatorCount() = allNodes().count { it.contentDescription?.toString() == "In Up Next" }
 
     @Test fun podcastTitleOpensNotesAndBothExplicitPlayControlsStillPlay() {
         showEpisodes()
@@ -101,6 +243,22 @@ class EpisodeQueueInteractionsTest {
         tap("Play episode")
         waitForCondition("episode Play callback") { played == 2 }
         assertEquals(original, queuedIds())
+    }
+
+    @Test fun upNextTitleOpensNotesWithoutReorderingAndNotesPlayPromotes() {
+        showQueue()
+        val original = queuedIds()
+        tap("Interaction episode 2")
+        waitFor("SHOW NOTES")
+        waitFor("Interaction fixture notes 2")
+        assertEquals(0, played)
+        assertEquals(original, queuedIds())
+        tap("Play")
+        waitForCondition("notes Play callback") { played == 1 }
+        waitForCondition("notes Play promotes episode") {
+            queuedIds() == listOf("episode-2", "episode-1", "episode-3")
+        }
+        waitForCondition("notes dismissed") { find("SHOW NOTES") == null }
     }
 
     @Test fun selectionTapSelectsWithoutOpeningNotesOrPlaying() {

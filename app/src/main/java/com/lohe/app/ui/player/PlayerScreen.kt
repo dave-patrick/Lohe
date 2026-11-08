@@ -99,6 +99,7 @@ private data class PlayerEpisodeDetails(
     val durationMs: Long?,
     val published: Long,
     val sizeBytes: Long?,
+    val isArchived: Boolean,
 )
 
 /**
@@ -124,6 +125,7 @@ fun PlayerScreen(
     floatingPlayerEnabled: Boolean = false,
     settingsStore: SettingsStore? = null,
     onShrink: () -> Unit = {},
+    onArchiveEpisode: ((String) -> Unit)? = null,
     onEnded: () -> Unit = {},
     /** Media to play. Null leaves whatever is already loaded alone. */
     mediaUri: String? = null,
@@ -187,6 +189,7 @@ fun PlayerScreen(
                     description = it.description,
                     published = it.published,
                     sizeBytes = it.sizeBytes,
+                    isArchived = it.isArchived,
                     durationMs = it.durationSeconds?.toLong()?.times(1_000L),
                 )
             }
@@ -401,6 +404,12 @@ fun PlayerScreen(
             durationSeconds = totalDurSecs.takeIf { it > 0 },
             published = currentEpisodeDetails?.published,
             sizeBytes = currentEpisodeDetails?.sizeBytes,
+            onArchive = currentEpisodeDetails?.takeIf { !it.isArchived && onArchiveEpisode != null }?.let { details ->
+                {
+                    onArchiveEpisode?.invoke(details.episodeId)
+                    onShrink()
+                }
+            },
             onDismiss = { notesSheetOpen = false },
         )
     }

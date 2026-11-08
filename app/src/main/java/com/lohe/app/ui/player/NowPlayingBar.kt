@@ -186,11 +186,11 @@ fun NowPlayingBar(
                     }
                 },
                 modifier = Modifier
-                    .size(40.dp),
+                    .size(48.dp),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(27.dp)
+                        .size(47.25.dp)
                         .shadow(
                             elevation = 7.dp,
                             shape = CircleShape,
@@ -210,7 +210,7 @@ fun NowPlayingBar(
                         imageVector = if (transport.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = stringResource(R.string.player_now_playing),
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(28.dp),
                     )
                 }
             }

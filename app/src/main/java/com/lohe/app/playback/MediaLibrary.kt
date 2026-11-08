@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.first
 object MediaLibrary {
 
     const val ROOT = "lohe-root"
+    const val RECENT = "lohe-recent"
     const val CONTINUE = "lohe-continue"
     const val UP_NEXT = "lohe-up-next"
     const val DOWNLOADS = "lohe-downloads"
@@ -85,6 +86,8 @@ class LibraryCatalog(
         title = "Lohe",
         artworkUrl = null,
     )
+
+    fun recentRootItem(): MediaItem = browsable(MediaLibrary.RECENT, "Recently played", null)
 
     /** The children of a node, or an empty list for anything unknown. */
     suspend fun children(parentId: String): List<MediaItem> = when {
@@ -169,6 +172,7 @@ class LibraryCatalog(
                 browsable(MediaLibrary.DOWNLOADS, "Downloads", null)
             mediaId == MediaLibrary.SHOWS ->
                 browsable(MediaLibrary.SHOWS, "Shows", null)
+            mediaId == MediaLibrary.RECENT -> recentRootItem()
             mediaId == MediaLibrary.PLAYLISTS ->
                 browsable(MediaLibrary.PLAYLISTS, "Playlists", null)
 

@@ -10,20 +10,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -60,6 +60,7 @@ fun EpisodeNotesSheet(
     sizeBytes: Long? = null,
     onPlay: (() -> Unit)? = null,
     onAddToUpNext: (() -> Unit)? = null,
+    onArchive: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val notes = description?.takeIf { it.isNotBlank() }
@@ -152,44 +153,50 @@ fun EpisodeNotesSheet(
                 }
             }
 
-            if (onPlay != null || onAddToUpNext != null) {
+            if (onPlay != null || onAddToUpNext != null || onArchive != null) {
                 Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (onPlay != null) {
-                        Button(
+                        FilledIconButton(
                             onClick = {
                                 onPlay()
                                 onDismiss()
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                contentDescription = "Play",
+                                modifier = Modifier.size(24.dp),
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Play")
                         }
                     }
                     if (onAddToUpNext != null) {
-                        OutlinedButton(
+                        OutlinedIconButton(
                             onClick = {
                                 onAddToUpNext()
                                 onDismiss()
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                contentDescription = "Add to Up Next",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp),
                             )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Add to Up Next")
+                        }
+                    }
+                    if (onArchive != null) {
+                        OutlinedIconButton(
+                            onClick = { onArchive(); onDismiss() },
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(Icons.Filled.Archive, contentDescription = "Archive",
+                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         }
                     }
                 }

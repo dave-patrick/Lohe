@@ -37,6 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
@@ -46,6 +48,9 @@ import com.lohe.app.ui.player.FloatingPlayerSettings
 import com.lohe.app.ui.theme.Appearance
 import com.lohe.app.ui.theme.PlaybackSettings
 import com.lohe.app.ui.theme.SettingsStore
+import com.lohe.app.ui.theme.QueueIndicatorStyle
+import com.lohe.app.ui.theme.QueueIndicatorColor
+import com.lohe.app.ui.theme.QueueIndicatorSize
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -112,6 +117,28 @@ fun SettingsScreen(
                 selected = appearance == Appearance.LIGHT,
                 onClick = { if (appearance != Appearance.LIGHT) onToggleAppearance() },
             )
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            ToggleRow(
+                label = "Up Next indicator",
+                hint = "Mark episodes that are currently in Up Next.",
+                checked = settings.queueIndicator.enabled,
+                onChange = { scope.launch { settingsStore.setQueueIndicatorEnabled(it) } },
+            )
+            if (settings.queueIndicator.enabled) {
+                Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    QueueMembershipIndicator(true, settings.queueIndicator)
+                    Text("Episode title", style = MaterialTheme.typography.titleSmall)
+                }
+                IndicatorChoices("Style", QueueIndicatorStyle.entries, settings.queueIndicator.style, { it.label }) {
+                    scope.launch { settingsStore.setQueueIndicatorStyle(it) }
+                }
+                IndicatorChoices("Color", QueueIndicatorColor.entries, settings.queueIndicator.color, { it.label }) {
+                    scope.launch { settingsStore.setQueueIndicatorColor(it) }
+                }
+                IndicatorChoices("Size", QueueIndicatorSize.entries, settings.queueIndicator.size, { it.label }) {
+                    scope.launch { settingsStore.setQueueIndicatorSize(it) }
+                }
+            }
         }
 
         if (category == SettingsCategory.DEBUG) {
@@ -317,6 +344,29 @@ private fun SettingsMenuRow(title: String, summary: String, onClick: () -> Unit)
     HorizontalDivider()
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> IndicatorChoices(
+    label: String,
+    choices: List<T>,
+    selected: T,
+    format: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            choices.forEach { choice ->
+                FilterChip(
+                    selected = choice == selected,
+                    onClick = { onSelect(choice) },
+                    label = { Text(format(choice)) },
+                )
+            }
+        }
+    }
+}
+
 /**
  * A single-choice row.
  *
@@ -471,6 +521,7 @@ private fun ToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange,
+            modifier = Modifier.semantics { contentDescription = label })
     }
 }

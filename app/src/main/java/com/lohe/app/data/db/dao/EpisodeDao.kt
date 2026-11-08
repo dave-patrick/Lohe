@@ -90,6 +90,10 @@ interface EpisodeDao {
     )
     fun observeInProgress(): Flow<List<EpisodeEntity>>
 
+    /** One-shot migration fallback before a last-playing identity has been recorded. */
+    @Query("SELECT * FROM episodes WHERE lastPlayedAt > 0 AND playingStatus != 0 ORDER BY lastPlayedAt DESC, uuid ASC LIMIT 1")
+    suspend fun lastPlaybackEpisode(): EpisodeEntity?
+
     @Query(
         """
         SELECT * FROM episodes
@@ -108,12 +112,11 @@ interface EpisodeDao {
     @Query(
         """
         UPDATE episodes
-        SET queuePosition = (SELECT COALESCE(MAX(queuePosition), -1) + 1 FROM episodes),
-            lastPlayedAt = :now
+        SET queuePosition = (SELECT COALESCE(MAX(queuePosition), -1) + 1 FROM episodes)
         WHERE uuid = :uuid AND queuePosition IS NULL
         """
     )
-    suspend fun enqueue(uuid: String, now: Long)
+    suspend fun enqueue(uuid: String)
 
     @Query("UPDATE episodes SET queuePosition = NULL WHERE uuid = :uuid")
     suspend fun dequeue(uuid: String)
