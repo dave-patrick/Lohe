@@ -19,15 +19,16 @@ and `AudioHardening` in logcat (2026-11-07):
 - Cold start from a media browser with no activity
   (`PlaybackColdStartTest`, and `PlaybackResumptionColdStartTest` after the
   `keepResumeFixture` seed): plays, audio focus granted.
-- No hardening entry for the package in any case. The one entry on the
-  phone (18:31, installed `com.lohe.app` at API 36, "would be muted",
-  level partial) predates this check; the same cold-start paths are clean.
+- Floating player (enabled through the debug API key
+  `floatingPlayerEnabled`, overlay allowed with `appops`): play in the app,
+  Home, tap the bubble to pause, wait 3 minutes, tap to resume. Resumed and
+  kept playing; both foreground services stayed up; nothing muted.
+- The only "muted" line seen for the test package (level partial, no
+  foreground service) came from `am force-stop` while audio was playing,
+  in the instant the services die. That is not a listener path; the 18:31
+  line for the installed app looks like the same artefact.
 
-Not covered: resuming from the cross-app floating player after a long
-pause. Its own `specialUse` foreground service is started while the app is
-visible, so it should carry while-in-use; re-check with
-`adb shell cmd audio set-enable-hardening enable` if listeners report
-silent resumes. Also on 37 and fine: no orientation locks, no reflection on
+Also on 37 and fine: no orientation locks, no reflection on
 `static final` fields or `MessageQueue`, no
 `MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, no local-network access.
 

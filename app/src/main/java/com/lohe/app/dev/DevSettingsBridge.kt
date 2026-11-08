@@ -59,6 +59,9 @@ object DevSettingsBridge {
                 PodcastSort.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
                     ?: throw IllegalArgumentException("Unknown podcastSort: $value"),
             )
+            // Takes effect while the app is open (it starts the overlay from the
+            // resumed activity), and only once "Display over other apps" is allowed.
+            "floatingPlayerEnabled" -> settings.setFloatingPlayerEnabled(value.toBooleanStrict())
             "playlistSort" -> settings.setPlaylistSort(
                 PlaylistSort.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
                     ?: throw IllegalArgumentException("Unknown playlistSort: $value"),
