@@ -8,9 +8,9 @@ plugins {
 
 // Release version changes only when requested. The final component of the
 // custom build ID increases for each distinct build, even within one release.
-val loheReleaseVersion = "0.10.4"
+val loheReleaseVersion = "0.11.0"
 // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
-val loheBuildId = "2026.07.11.74"
+val loheBuildId = "2026.07.11.75"
 val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {

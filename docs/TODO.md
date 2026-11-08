@@ -5,6 +5,30 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
+## Target Android 17 (API 37) — blocked on one background-audio check
+
+Raising `targetSdk` to 37 builds, passes the JVM tests and lint, and the full
+instrumented suite ran on the Galaxy S948U (Android 17) with no new failures
+(2026-11-07). It was put back to 36 because of one risk that could not be
+checked before the phone dropped off wireless debugging:
+
+- Android 17 silences audio that an API-37 app plays from the background
+  unless a foreground service with while-in-use capability is running
+  (no error, just silence). On 2026-11-07 at 18:31 the phone logged
+  `AudioHardening background playback would be muted for com.lohe.app ...
+  level: partial` for the installed (API 36) app — so some path already
+  plays with no foreground service. Likely candidates: resuming from the
+  cross-app floating player, or playback resumption after the service was
+  stopped.
+- To check: install a `.audit` build with targetSdk 37, then
+  `adb shell cmd audio set-enable-hardening enable`; start playback in the
+  app, go Home, pause and resume from the floating player, the
+  notification and a media key; watch `adb logcat | grep AudioHardening`.
+  Any "muted" line for the package is a blocker.
+- Also on 37 and already fine: no orientation locks (large screens),
+  no reflection on `static final` fields or `MessageQueue`, no
+  `MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, no local-network access.
+
 ## Onboarding wizard — planned
 
 - [ ] Add a skippable first-run wizard, with a way to replay setup from Settings.
