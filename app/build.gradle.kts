@@ -42,6 +42,9 @@ android {
         }
         release {
             isMinifyEnabled = true
+            // Drop images, strings and layouts nothing references (R8 already
+            // removes unused code). Nothing looks resources up by name.
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

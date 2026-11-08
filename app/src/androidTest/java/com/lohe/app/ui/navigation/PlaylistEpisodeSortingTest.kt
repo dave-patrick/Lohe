@@ -190,7 +190,9 @@ class PlaylistEpisodeSortingTest {
             event.recycle()
         }
         val start = bounds.centerY().toFloat()
-        val end = start + second.centerY() - first.centerY()
+        // A swap needs the carried row's centre to pass the target's centre, so
+        // drag a little beyond it the way a finger does (exactly onto it is a tie).
+        val end = start + second.centerY() - first.centerY() + second.height() / 4f
         inject(MotionEvent.ACTION_DOWN, start)
         SystemClock.sleep(650)
         for (step in 1..20) {
@@ -221,7 +223,9 @@ class PlaylistEpisodeSortingTest {
         waitUntil("$label selected indicator") {
             var node: AccessibilityNodeInfo? = find(label)
             var selected = false
-            repeat(3) { selected = selected || node?.isSelected == true; node = node?.parent }
+            // Compose reports `selected` on a menu item as a checked state
+            // (stateDescription "Selected") on the item, not as isSelected.
+            repeat(3) { selected = selected || node?.isSelected == true || node?.isChecked == true; node = node?.parent }
             selected
         }
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
