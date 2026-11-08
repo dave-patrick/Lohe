@@ -42,6 +42,7 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class PodcastEpisodePreferencesTest {
+    @get:org.junit.Rule val portrait = PortraitRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val show = "preferences-${UUID.randomUUID()}"

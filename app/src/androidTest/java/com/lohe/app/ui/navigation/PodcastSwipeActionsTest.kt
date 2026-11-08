@@ -38,6 +38,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PodcastSwipeActionsTest {
+    @get:org.junit.Rule val portrait = PortraitRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var db: AppDatabase
     private lateinit var scenario: ActivityScenario<MainActivity>

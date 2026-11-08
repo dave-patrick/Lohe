@@ -43,6 +43,7 @@ import org.junit.runner.RunWith
 /** Real touch interactions, with every episode and queue mutation isolated in memory. */
 @RunWith(AndroidJUnit4::class)
 class EpisodeQueueInteractionsTest {
+    @get:org.junit.Rule val portrait = PortraitRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var db: AppDatabase
     private lateinit var repository: SubscriptionRepository

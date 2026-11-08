@@ -29,6 +29,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PlayReadinessUiTest {
+    @get:org.junit.Rule val portrait = PortraitRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val store by lazy { SettingsStore(context) }

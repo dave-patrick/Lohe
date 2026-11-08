@@ -31,6 +31,7 @@ import org.junit.runner.RunWith
 /** Exercises the real detail screen and refresh orchestration without network access. */
 @RunWith(AndroidJUnit4::class)
 class PodcastAutoQueueTest {
+    @get:org.junit.Rule val portrait = PortraitRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var db: AppDatabase
     private lateinit var repository: SubscriptionRepository

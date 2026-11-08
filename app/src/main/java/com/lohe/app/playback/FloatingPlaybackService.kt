@@ -127,32 +127,56 @@ class FloatingPlaybackService : Service() {
         }
     }
 
+    /**
+     * Every start through [sync] is a startForegroundService(), and Android kills
+     * the app if such a service stops without calling startForeground() first.
+     * So promote straight away, whatever the start is for, and only then decide
+     * to stop. (Turning the player on and off quickly, or a revoked permission,
+     * used to crash the app this way.)
+     */
+    private fun promote(): Boolean = try {
+        val notifications = getSystemService(NotificationManager::class.java)
+        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Floating player", NotificationManager.IMPORTANCE_LOW))
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val hide = PendingIntent.getService(this, 1, Intent(this, FloatingPlaybackService::class.java).setAction(ACTION_HIDE), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val notification = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_float_play)
+            .setContentTitle("Lohe floating player")
+            .setContentText("Drag to move. Double-tap to expand; hold to close.")
+            .setContentIntent(open)
+            .addAction(Notification.Action.Builder(null, "Hide controls", hide).build())
+            .setOngoing(true)
+            .build()
+        startForeground(4820, notification)
+        true
+    } catch (failure: RuntimeException) {
+        android.util.Log.e("FloatingPlayer", "Could not start in the foreground", failure)
+        false
+    }
+
+    private fun stopNow() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val promoted = promote()
+        if (intent?.action == ACTION_STOP) {
+            stopNow()
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_HIDE) {
             scope.launch {
                 ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
-                stopSelf()
+                stopNow()
             }
             return START_NOT_STICKY
         }
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
+        if (!promoted || !Settings.canDrawOverlays(this)) {
+            stopNow()
             return START_NOT_STICKY
         }
         try {
-            val notifications = getSystemService(NotificationManager::class.java)
-            notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Floating player", NotificationManager.IMPORTANCE_LOW))
-            val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val hide = PendingIntent.getService(this, 1, Intent(this, FloatingPlaybackService::class.java).setAction(ACTION_HIDE), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val notification = Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_float_play)
-                .setContentTitle("Lohe floating player")
-                .setContentText("Drag to move. Double-tap to expand; hold to close.")
-                .setContentIntent(open)
-                .addAction(Notification.Action.Builder(null, "Hide controls", hide).build())
-                .setOngoing(true)
-                .build()
-            startForeground(4820, notification)
             if (!attached) {
                 position()
                 windows.addView(controls, layout)
@@ -272,6 +296,7 @@ class FloatingPlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        startRequested = false
         overlayWatcher?.let { w -> runCatching { getSystemService(AppOpsManager::class.java).stopWatchingMode(w) } }
         overlayWatcher = null
         if (attached) runCatching { windows.removeView(controls) }
@@ -327,13 +352,24 @@ class FloatingPlaybackService : Service() {
     companion object {
         private const val CHANNEL = "lohe-floating-player"
         private const val ACTION_HIDE = "com.lohe.app.HIDE_FLOATING_PLAYER"
+        private const val ACTION_STOP = "com.lohe.app.STOP_FLOATING_PLAYER"
+
+        /** Set when a foreground start was asked for, cleared when the service ends. */
+        @Volatile private var startRequested = false
 
         fun sync(context: Context, enabled: Boolean) {
             val intent = Intent(context, FloatingPlaybackService::class.java)
             if (enabled && Settings.canDrawOverlays(context)) {
                 runCatching { context.startForegroundService(intent) }
+                    .onSuccess { startRequested = true }
                     .onFailure { android.util.Log.e("FloatingPlayer", "Start rejected", it) }
-            } else context.stopService(intent)
+            } else if (startRequested) {
+                // A stopService() that lands before the service has promoted itself
+                // crashes the app. Queue a stop behind the start instead; the
+                // service promotes, then stops at once.
+                runCatching { context.startService(intent.setAction(ACTION_STOP)) }
+                    .onFailure { context.stopService(Intent(context, FloatingPlaybackService::class.java)) }
+            }
         }
     }
 }
