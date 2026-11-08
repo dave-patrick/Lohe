@@ -28,15 +28,15 @@ class PortraitRule : ExternalResource() {
     }
 
     override fun after() {
-        // Unfreezing turns auto-rotate on, so only do that if it was on before.
-        automation.setRotation(
-            if (autoRotate) UiAutomation.ROTATION_UNFREEZE
-            else when (userRotation) {
-                Surface.ROTATION_90 -> UiAutomation.ROTATION_FREEZE_90
-                Surface.ROTATION_180 -> UiAutomation.ROTATION_FREEZE_180
-                Surface.ROTATION_270 -> UiAutomation.ROTATION_FREEZE_270
-                else -> UiAutomation.ROTATION_FREEZE_0
-            },
-        )
+        // Write the phone's own values back. Unfreezing alone leaves auto-rotate
+        // off on some phones (seen on the Galaxy S948U), so it is not enough.
+        automation.setRotation(UiAutomation.ROTATION_UNFREEZE)
+        shell("settings put system user_rotation $userRotation")
+        shell("settings put system accelerometer_rotation ${if (autoRotate) 1 else 0}")
+    }
+
+    /** Runs a shell command and waits for it to finish (the call itself returns at once). */
+    private fun shell(command: String) {
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use { it.readBytes() }
     }
 }
