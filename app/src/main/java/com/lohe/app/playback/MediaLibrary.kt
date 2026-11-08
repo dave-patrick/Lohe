@@ -140,7 +140,7 @@ class LibraryCatalog(
                 emptyList()
             } else {
                 if (playlist.assignedPodcastUuids.isNotEmpty()) {
-                    playlist.resolveAssignedEpisodes(repository.observeAllEpisodes().first())
+                    playlist.resolveAssignedEpisodes(repository.allEpisodesNow())
                         .map { playable(it, shows) }
                 } else {
                     repository.episodesOnce(playlist.episodeUuids).map { playable(it, shows) }

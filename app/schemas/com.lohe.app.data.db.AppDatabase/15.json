@@ -1,0 +1,343 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 15,
+    "identityHash": "6d026ba0e187a9088b3e5e4d0ad895ac",
+    "entities": [
+      {
+        "tableName": "podcasts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uuid` TEXT NOT NULL, `title` TEXT NOT NULL, `author` TEXT, `description` TEXT, `artworkUrl` TEXT, `feedUrl` TEXT NOT NULL, `lastEpisodePublished` INTEGER, `subscribedAt` INTEGER NOT NULL, `unreadCount` INTEGER NOT NULL, `autoDownload` INTEGER NOT NULL, `autoAddNewEpisodesToUpNext` INTEGER NOT NULL DEFAULT 0, `autoAddNewEpisodesAtTop` INTEGER NOT NULL DEFAULT 0, `isSubscribed` INTEGER NOT NULL DEFAULT 1, `feedEtag` TEXT, `feedLastModified` TEXT, PRIMARY KEY(`uuid`))",
+        "fields": [
+          {
+            "fieldPath": "uuid",
+            "columnName": "uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "author",
+            "columnName": "author",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artworkUrl",
+            "columnName": "artworkUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "feedUrl",
+            "columnName": "feedUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastEpisodePublished",
+            "columnName": "lastEpisodePublished",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "subscribedAt",
+            "columnName": "subscribedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unreadCount",
+            "columnName": "unreadCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoDownload",
+            "columnName": "autoDownload",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoAddNewEpisodesToUpNext",
+            "columnName": "autoAddNewEpisodesToUpNext",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "autoAddNewEpisodesAtTop",
+            "columnName": "autoAddNewEpisodesAtTop",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isSubscribed",
+            "columnName": "isSubscribed",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "feedEtag",
+            "columnName": "feedEtag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "feedLastModified",
+            "columnName": "feedLastModified",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "uuid"
+          ]
+        }
+      },
+      {
+        "tableName": "episodes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uuid` TEXT NOT NULL, `podcastUuid` TEXT NOT NULL, `title` TEXT NOT NULL, `audioUrl` TEXT NOT NULL, `published` INTEGER NOT NULL, `durationSeconds` INTEGER, `sizeBytes` INTEGER, `fileType` TEXT, `author` TEXT, `artworkUrl` TEXT, `description` TEXT, `playingStatus` INTEGER NOT NULL, `playedAt` INTEGER, `playedUpToSeconds` INTEGER NOT NULL, `listenedSeconds` INTEGER NOT NULL, `starred` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `archivedAt` INTEGER, `queuePosition` INTEGER, `lastPlayedAt` INTEGER, `localPath` TEXT, `downloadState` INTEGER NOT NULL, `chapters` TEXT, PRIMARY KEY(`uuid`), FOREIGN KEY(`podcastUuid`) REFERENCES `podcasts`(`uuid`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "uuid",
+            "columnName": "uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "podcastUuid",
+            "columnName": "podcastUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioUrl",
+            "columnName": "audioUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "published",
+            "columnName": "published",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fileType",
+            "columnName": "fileType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "author",
+            "columnName": "author",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artworkUrl",
+            "columnName": "artworkUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "playingStatus",
+            "columnName": "playingStatus",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playedAt",
+            "columnName": "playedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "playedUpToSeconds",
+            "columnName": "playedUpToSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "listenedSeconds",
+            "columnName": "listenedSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "starred",
+            "columnName": "starred",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "isDeleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isArchived",
+            "columnName": "isArchived",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archivedAt",
+            "columnName": "archivedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "queuePosition",
+            "columnName": "queuePosition",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastPlayedAt",
+            "columnName": "lastPlayedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "localPath",
+            "columnName": "localPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "downloadState",
+            "columnName": "downloadState",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chapters",
+            "columnName": "chapters",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_episodes_podcastUuid",
+            "unique": false,
+            "columnNames": [
+              "podcastUuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_podcastUuid` ON `${TABLE_NAME}` (`podcastUuid`)"
+          },
+          {
+            "name": "index_episodes_podcastUuid_published",
+            "unique": false,
+            "columnNames": [
+              "podcastUuid",
+              "published"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_podcastUuid_published` ON `${TABLE_NAME}` (`podcastUuid`, `published`)"
+          },
+          {
+            "name": "index_episodes_playingStatus_lastPlayedAt",
+            "unique": false,
+            "columnNames": [
+              "playingStatus",
+              "lastPlayedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_playingStatus_lastPlayedAt` ON `${TABLE_NAME}` (`playingStatus`, `lastPlayedAt`)"
+          },
+          {
+            "name": "index_episodes_queuePosition",
+            "unique": false,
+            "columnNames": [
+              "queuePosition"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_queuePosition` ON `${TABLE_NAME}` (`queuePosition`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "podcasts",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "podcastUuid"
+            ],
+            "referencedColumns": [
+              "uuid"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "listening_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`episodeUuid` TEXT NOT NULL, `listenedSeconds` INTEGER NOT NULL, `durationSeconds` INTEGER, `title` TEXT, PRIMARY KEY(`episodeUuid`))",
+        "fields": [
+          {
+            "fieldPath": "episodeUuid",
+            "columnName": "episodeUuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "listenedSeconds",
+            "columnName": "listenedSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "episodeUuid"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6d026ba0e187a9088b3e5e4d0ad895ac')"
+    ]
+  }
+}

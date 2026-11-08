@@ -17,6 +17,13 @@ import com.lohe.app.ui.image.ArtworkLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.shareIn
@@ -29,6 +36,9 @@ import java.util.concurrent.TimeUnit
 
 /** Episodes whose [EpisodeEntity.audioUrl] starts with this are device-local. */
 const val CONTENT_SCHEME = "content://"
+
+/** How many feeds a refresh downloads at the same time. */
+private const val REFRESH_PARALLEL = 4
 
 /**
  * Simple front-door for subscription management. UI observes [observePodcasts];
@@ -75,6 +85,13 @@ class SubscriptionRepository internal constructor(
     fun observeAllEpisodes(): Flow<List<EpisodeSummary>> = allEpisodeSummaries
 
     /**
+     * The whole library as it is in the database right now. One-off reads use
+     * this, not `observeAllEpisodes().first()`: the shared stream can still be
+     * holding the list from before a write that Room has not re-announced yet.
+     */
+    suspend fun allEpisodesNow(): List<EpisodeSummary> = episodes.observeAllSummaries().first()
+
+    /**
      * Listening time recorded for episodes that have left the library.
      *
      * Unsubscribing cascades the episode rows away, so this is the only place
@@ -103,6 +120,8 @@ class SubscriptionRepository internal constructor(
         episodes.setDownloadState(uuid, state, path)
 
     suspend fun clearDownload(uuid: String) = episodes.clearDownload(uuid)
+
+    suspend fun resetInterruptedDownloads(): Int = episodes.resetInterruptedDownloads()
 
     /** Snapshot of the queue for read-modify-write callers such as auto-advance. */
     suspend fun queueSnapshot(): List<EpisodeEntity> = episodes.queueSnapshot()
@@ -411,10 +430,28 @@ class SubscriptionRepository internal constructor(
     suspend fun refreshAllFeeds(): FeedRefreshSummary {
         val targets = podcasts.allOnce().filter { it.feedUrl.isNotBlank() }
 
-        var refreshed = 0
-        val failures = mutableListOf<String>()
+        // Several feeds download at once (most of a refresh is waiting on servers);
+        // the follow-up work that writes the queue runs one show at a time so new
+        // episodes keep a stable order.
+        val gate = Semaphore(REFRESH_PARALLEL)
+        val bookkeeping = Mutex()
+        val succeeded = coroutineScope {
+            targets.map { podcast ->
+                async { gate.withPermit { refreshOne(podcast, bookkeeping) } }
+            }.awaitAll()
+        }
+        val failures = targets.filterIndexed { i, _ -> !succeeded[i] }.map { it.title }
 
-        targets.forEach { podcast ->
+        return FeedRefreshSummary(
+            total = targets.size,
+            refreshed = succeeded.count { it },
+            failed = failures.size,
+            failureTitles = failures,
+        )
+    }
+
+    private suspend fun refreshOne(podcast: PodcastEntity, bookkeeping: Mutex): Boolean {
+        run { // body kept at its old indentation
             // Captured before the fetch so the diff is against pre-refresh state.
             val playlistMayDownload = playlistMayAutoDownload(podcast.uuid)
             val known = if (podcast.autoDownload || podcast.autoAddNewEpisodesToUpNext || playlistMayDownload) {
@@ -425,10 +462,9 @@ class SubscriptionRepository internal constructor(
 
             // Asks the server whether the feed changed first; an unchanged feed
             // costs a tiny 304 reply instead of the whole document.
-            fetcher.refreshFeed(podcast)
+            return fetcher.refreshFeed(podcast)
                 .onSuccess { changed ->
-                    refreshed++
-                    if (changed && known != null && known.isNotEmpty()) {
+                    if (changed && known != null && known.isNotEmpty()) bookkeeping.withLock {
                         val newlySeen = episodes.byPodcastOnce(podcast.uuid)
                             .filter { it.uuid !in known && !it.isPlayed && !it.isDeleted && !it.isArchived }
                         try {
@@ -445,15 +481,8 @@ class SubscriptionRepository internal constructor(
                         }
                     }
                 }
-                .onFailure { failures += podcast.title }
+                .isSuccess
         }
-
-        return FeedRefreshSummary(
-            total = targets.size,
-            refreshed = refreshed,
-            failed = failures.size,
-            failureTitles = failures,
-        )
     }
 
     /** Adds newly fetched episodes once, preserving the feed's newest-first order. */

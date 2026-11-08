@@ -182,6 +182,18 @@ class QueueViewModel(
     private val settingsStore: com.lohe.app.ui.theme.SettingsStore? = null,
 ) : ViewModel() {
 
+    // Declared before init: the settings collector below can run during the
+    // constructor (DataStore may emit straight away on Main.immediate), and
+    // would otherwise write to fields that are still null.
+    private val _autoDownloadUpNext = MutableStateFlow(true)
+    val autoDownloadUpNext: StateFlow<Boolean> = _autoDownloadUpNext.asStateFlow()
+
+    private val _podcastSort = MutableStateFlow(PodcastSort.TITLE)
+    val podcastSort: StateFlow<PodcastSort> = _podcastSort.asStateFlow()
+
+    private val _playlistSort = MutableStateFlow(PlaylistSort.MANUAL)
+    val playlistSort: StateFlow<PlaylistSort> = _playlistSort.asStateFlow()
+
     /**
      * Moves listened episodes out of the playlists they were added to.
      *
@@ -200,7 +212,7 @@ class QueueViewModel(
             }
         }
         viewModelScope.launch {
-            repository.observeAllEpisodes().first().let { episodes ->
+            repository.allEpisodesNow().let { episodes ->
                 val playedUuids = episodes
                     .filter { it.isPlayed }
                     .mapTo(mutableSetOf()) { it.uuid }
@@ -354,7 +366,12 @@ class QueueViewModel(
             showActivity = showActivity(allEpisodes, shows),
             mostListenedShows = mostListenedShows(allEpisodes, shows),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
+    }
+        // Whole-library maths: keep it off the main thread, and skip redraws
+        // when a progress save leaves the numbers unchanged.
+        .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeDashboardStats())
 
     /**
      * Minutes listened per day for the last [ACTIVITY_DAYS] days, oldest first.
@@ -455,15 +472,6 @@ class QueueViewModel(
 
         return byEpisodes to byListened
     }
-
-    private val _autoDownloadUpNext = MutableStateFlow(true)
-    val autoDownloadUpNext: StateFlow<Boolean> = _autoDownloadUpNext.asStateFlow()
-
-    private val _podcastSort = MutableStateFlow(PodcastSort.TITLE)
-    val podcastSort: StateFlow<PodcastSort> = _podcastSort.asStateFlow()
-
-    private val _playlistSort = MutableStateFlow(PlaylistSort.MANUAL)
-    val playlistSort: StateFlow<PlaylistSort> = _playlistSort.asStateFlow()
 
     fun setPodcastSort(sort: PodcastSort) {
         _podcastSort.value = sort
@@ -628,7 +636,9 @@ class QueueViewModel(
             flow {
                 while (true) {
                     emit(System.currentTimeMillis())
-                    delay(60_000L)
+                    // The archive window is measured in hours; re-checking every few
+                    // minutes is plenty and stops a full playlist rebuild each minute.
+                    delay(5 * 60_000L)
                 }
             },
         ) { keepHours, now -> keepHours to now },
@@ -755,6 +765,7 @@ class QueueViewModel(
             )
         }
     }.flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
 
     val userPlaylists: StateFlow<List<ResolvedPlaylist>> = resolvedPlaylists
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

@@ -1,5 +1,6 @@
 package com.lohe.app.playback
 
+import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -101,14 +102,18 @@ class FloatingPlaybackService : Service() {
         scope.launch {
             connection.isPlaying.collect { playing -> updatePlaying(playing) }
         }
+        // React when "Display over other apps" is switched off, instead of
+        // waking every two seconds to ask. A slow check stays as a safety net.
+        val appOps = getSystemService(AppOpsManager::class.java)
+        val listener = AppOpsManager.OnOpChangedListener { _, pkg ->
+            if (pkg == packageName) scope.launch { stopIfOverlayRevoked() }
+        }
+        runCatching { appOps.startWatchingMode(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, packageName, listener) }
+            .onSuccess { overlayWatcher = listener }
         scope.launch {
             while (isActive) {
-                if (!Settings.canDrawOverlays(this@FloatingPlaybackService)) {
-                    ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
-                    stopSelf()
-                    break
-                }
-                delay(2_000)
+                if (stopIfOverlayRevoked()) break
+                delay(60_000)
             }
         }
     }
@@ -257,7 +262,18 @@ class FloatingPlaybackService : Service() {
         if (attached) windows.updateViewLayout(controls, layout)
     }
 
+    private var overlayWatcher: AppOpsManager.OnOpChangedListener? = null
+
+    private suspend fun stopIfOverlayRevoked(): Boolean {
+        if (Settings.canDrawOverlays(this)) return false
+        ServiceLocator.settingsStore().setFloatingPlayerEnabled(false)
+        stopSelf()
+        return true
+    }
+
     override fun onDestroy() {
+        overlayWatcher?.let { w -> runCatching { getSystemService(AppOpsManager::class.java).stopWatchingMode(w) } }
+        overlayWatcher = null
         if (attached) runCatching { windows.removeView(controls) }
         connection.detach()
         scope.cancel()

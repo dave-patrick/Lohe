@@ -145,7 +145,6 @@ class SubscriptionRepositoryTest {
             })
         override fun observeAllSummaries() =
             kotlinx.coroutines.flow.flowOf(rows.map { it.toSummary() }.toList())
-        override fun observeAllEntities() = kotlinx.coroutines.flow.flowOf(rows.toList())
         override fun observeDownloads() =
             kotlinx.coroutines.flow.flowOf(
                 rows.filter { it.downloadState == DownloadState.DONE && it.localPath != null }
@@ -177,7 +176,6 @@ class SubscriptionRepositoryTest {
 
         override suspend fun allOnce() = rows.sortedByDescending { it.published }
 
-        override fun observeLatest(limit: Int) = kotlinx.coroutines.flow.flowOf(rows.take(limit))
         override suspend fun queueSnapshot() =
             rows.filter { it.isQueued }.sortedBy { it.queuePosition }
 
@@ -222,6 +220,7 @@ class SubscriptionRepositoryTest {
         override suspend fun setDeletedFor(uuids: List<String>, deleted: Boolean) = Unit
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
+        override suspend fun resetInterruptedDownloads(): Int = 0
     }
 
     /** Returns success for the listed URLs and failure for everything else. */

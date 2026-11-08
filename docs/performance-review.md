@@ -50,3 +50,15 @@ Lohe is generally well-structured (Room indexes, LazyColumn keys, Compose state 
 - Bound feed refresh concurrency.
 - Replace GlobalScope with lifecycle scopes.
 - Remove largeHeap after fixes.
+
+## 2026-11-07 review — fixed
+
+- Downloads: a row left "downloading" by a closed app is reset to failed on start (it used to spin forever and hide the Download button); tapping the spinner cancels; at most 3 transfers run at once; a failed or interrupted download keeps its `.part` file and resumes with an HTTP Range request (falls back to a full download on 200/416).
+- Battery rounds 1 and 2 (unmerged since 2026-11-01) merged: one shared whole-library query, progress saved every 30 s, Wi-Fi-only automatic downloads through WorkManager, conditional feed refresh (ETag / Last-Modified, schema 15).
+- Home dashboard maths and playlist resolution run off the main thread and skip identical results; the playlist archive clock ticks every 5 minutes instead of every minute.
+- Feed refresh downloads 4 feeds at a time; queue bookkeeping for new episodes stays one show at a time.
+- Skip-outro check sleeps until the cut is near (was every 0.5 s for the whole episode); the floating player listens for the overlay permission being switched off instead of polling every 2 s.
+- Room now exports each schema version to `app/schemas/` (from 15 on) so future migrations can be tested against the real previous layout.
+- Removed unused DAO queries (`observeAllEntities`, `observeLatest`), 26 unused strings and an unused splash image; moved two loose scripts into `tools/`.
+- Libraries: Kotlin 2.4.21, OkHttp 5.5.1, WorkManager 2.12, Navigation 2.10.2, Core 1.19.1, DataStore 1.3.0, serialization 1.12.0, androidx.media 1.8.0, test ext 1.3.0 / runner 1.7.0.
+- Still open: targetSdk 36 → 37 (needs device testing of Android 17 behaviour changes), splitting the 3,000-line `QueueScreen.kt`, R8 shrinking for release.

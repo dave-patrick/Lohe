@@ -42,9 +42,6 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes ORDER BY published DESC")
     suspend fun allOnce(): List<EpisodeEntity>
 
-    @Query("SELECT * FROM episodes ORDER BY published DESC LIMIT :limit")
-    fun observeLatest(limit: Int = 50): Flow<List<EpisodeEntity>>
-
     @Query(
         """
         SELECT episodes.* FROM episodes
@@ -82,10 +79,6 @@ interface EpisodeDao {
         """
     )
     fun observeAllSummaries(): Flow<List<EpisodeSummary>>
-
-    /** Every episode as full entities — used when description/chapters are needed. */
-    @Query("SELECT * FROM episodes")
-    fun observeAllEntities(): Flow<List<EpisodeEntity>>
 
     /** Part-finished episodes, most recently touched first. */
     @Query(
@@ -205,6 +198,10 @@ interface EpisodeDao {
         """
     )
     suspend fun clearDownload(uuid: String)
+
+    /** Rows left "downloading" by a process that ended mid-transfer become failed (retryable). */
+    @Query("UPDATE episodes SET downloadState = 3, localPath = NULL WHERE downloadState = 1")
+    suspend fun resetInterruptedDownloads(): Int
 
     @Query(
         """

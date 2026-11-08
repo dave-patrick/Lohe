@@ -18,13 +18,9 @@ val CharcoalRaised = Color(0xFF26262A)
 val CharcoalHairline = Color(0xFF323238)
 
 // --- Accent: electric blue -------------------------------------------------
-// Values come from brand/tokens.css, which self-declares as the source of
-// truth and is corroborated by BRAND.md §2 ("#0052FF -> #00D2FF").
-//
-// An earlier pass took #0080FF / #0052CC from the brand identity artwork
-// instead. That was a misread of a colour circle in a rendered JPEG, and it
-// desynced this file from tokens.css — see docs/TODO.md item 2.
-// The accents are read off the wordmark artwork rather than chosen by hand.
+// This file is the source of truth for the app's accent colours (the old
+// brand/tokens.css is gone). The accents are read off the wordmark artwork
+// rather than chosen by hand.
 // The mark's letters are a slab of #008EFF that lifts into a #07C6FC
 // highlight, so the ramp is anchored on the blue the eye actually reads as
 // the brand's blue: #0052FF was more violet than anything in the artwork.

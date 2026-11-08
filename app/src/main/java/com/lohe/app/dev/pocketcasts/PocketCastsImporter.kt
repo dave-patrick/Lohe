@@ -249,7 +249,7 @@ class PocketCastsImporter(
         }
 
         // Load all Lohe episodes once, keyed by (Lohe show UUID, media URL filename) and (Lohe show UUID, episode title).
-        val loheEpisodes = repository.observeAllEpisodes().first()
+        val loheEpisodes = repository.allEpisodesNow()
         val loheByShowAndUrl = mutableMapOf<String, MutableMap<String, EpisodeSummary>>()
         val loheByShowAndTitle = mutableMapOf<String, MutableMap<String, EpisodeSummary>>()
         loheEpisodes.forEach { ep ->

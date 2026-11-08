@@ -581,7 +581,7 @@ fun EpisodesScreen(
                         onRemoveDownloads = {
                             val dm = ServiceLocator.downloadManager()
                             scope.launch { dm.delete(episode.toSummary()) }
-                            onShowMessage("Removed download")
+                            onShowMessage(if (episode.isDownloading) "Download cancelled" else "Removed download")
                         },
                         onOpenNotes = { notesEpisode = episode },
                         onTogglePlayed = handleTogglePlayed,
@@ -747,6 +747,7 @@ private fun EpisodeRow(
     modifier: Modifier = Modifier,
 ) {
     val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    val cancelDownloadLabel = stringResource(R.string.episodes_cancel_download)
     var horizontalDistance by remember(episode.uuid) { mutableStateOf(0f) }
     GlassCard(
         accent = if (isSelected) ElectricBlue else null,
@@ -947,10 +948,18 @@ private fun EpisodeRow(
                     }
 
                         when {
-                            episode.isDownloading -> CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
+                            // Tap the spinner to cancel: a download can be stopped, not only waited out.
+                            episode.isDownloading -> IconButton(
+                                onClick = onRemoveDownloads,
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .semantics { contentDescription = cancelDownloadLabel },
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
 
                             episode.isDownloaded -> IconButton(
                                 onClick = onRemoveDownloads,

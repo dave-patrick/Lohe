@@ -89,6 +89,11 @@ android {
     }
 }
 
+// Room writes each database version's layout here (see AppDatabase.exportSchema).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
 implementation(libs.androidx.compose.foundation)

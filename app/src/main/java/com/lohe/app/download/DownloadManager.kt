@@ -17,6 +17,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Call
@@ -54,6 +57,25 @@ class DownloadManager(
     private val scope = CoroutineScope(Dispatchers.Main + job)
     private val transfers = ConcurrentHashMap<String, Job>()
     private val calls = ConcurrentHashMap<String, Call>()
+
+    /**
+     * At most [MAX_PARALLEL] files transfer at once. A refresh that finds twenty
+     * new episodes used to open twenty connections together; the rest now wait
+     * their turn (still shown as downloading).
+     */
+    private val slots = Semaphore(MAX_PARALLEL)
+
+    init {
+        // Nothing can be downloading when the manager is created: it lives as long
+        // as the process. A row still marked downloading was cut off when the app
+        // was closed, and would otherwise show a spinner forever and hide the
+        // Download button. Mark it failed so the listener can start it again; the
+        // partial file is kept and the next attempt continues from it.
+        scope.launch {
+            runCatching { repository.resetInterruptedDownloads() }
+                .onFailure { DevDiagnostics.log("DOWNLOAD_ERR", "Could not reset interrupted downloads: ${it.message}", it) }
+        }
+    }
 
     /** Downloaded episodes, newest first. */
     fun downloads() = repository.observeDownloads()
@@ -106,6 +128,9 @@ class DownloadManager(
         transfer.start()
         return transfer
     }
+
+    /** Stops a download in progress (or waiting for Wi-Fi) and removes what it had fetched. */
+    suspend fun cancel(episode: EpisodeSummary) = delete(episode)
 
     /** Removes the file and forgets the episode. */
     suspend fun delete(episode: EpisodeSummary) = withContext(io) {
@@ -162,8 +187,10 @@ class DownloadManager(
         repository.observeDownloads().first()
 
     private suspend fun runDownload(episode: EpisodeSummary) {
-        if (episode.isDownloaded || episode.isDownloading) return
-        if (repository.episodeOnce(episode.uuid)?.isArchived != false) return
+        // Decide from the stored row, not the caller's snapshot, which can be stale.
+        val stored = repository.episodeOnce(episode.uuid) ?: return
+        if (stored.isArchived) return
+        if (stored.isDownloaded && stored.localPath?.let { File(it).exists() } == true) return
 
         DevDiagnostics.log("DOWNLOAD", "Start uuid=${episode.uuid} title=${episode.title} url=${episode.audioUrl}")
         repository.setDownloadState(episode.uuid, DownloadState.RUNNING, null)
@@ -171,12 +198,15 @@ class DownloadManager(
         val partial = File(target.absolutePath + PART_SUFFIX)
 
         try {
-            withContext(io) {
+            slots.withPermit { withContext(io) {
                 partial.parentFile?.mkdirs()
 
+                // Continue an earlier attempt where it stopped, when the server allows it.
+                val resumeFrom = if (partial.exists()) partial.length() else 0L
                 val request = Request.Builder()
                     .url(episode.audioUrl)
                     .header("User-Agent", LOHE_USER_AGENT)
+                    .apply { if (resumeFrom > 0) header("Range", "bytes=$resumeFrom-") }
                     .build()
 
                 val call = client.newCall(request)
@@ -184,15 +214,24 @@ class DownloadManager(
                 coroutineContext.ensureActive()
                 call.execute().use { response ->
                     DevDiagnostics.log("DOWNLOAD", "HTTP ${response.code} for uuid=${episode.uuid} contentLength=${response.body?.contentLength()}")
+                    if (response.code == 416) {
+                        // The kept part no longer matches the file on the server.
+                        partial.delete()
+                        throw IOException("HTTP 416: starting over next time")
+                    }
                     if (!response.isSuccessful) {
                         throw IOException("HTTP ${response.code}")
                     }
                     val body = response.body ?: throw IOException("empty body")
+                    // 206 with a range starting at our offset: append. Anything else
+                    // (a plain 200, or a range we did not ask for): start the file over.
+                    val append = resumeFrom > 0 && response.code == 206 &&
+                        response.header("Content-Range")?.startsWith("bytes $resumeFrom-") == true
 
                     // Copy through a buffer so a large episode is never held in
                     // memory, and check for cancellation between chunks.
                     body.byteStream().use { input ->
-                        partial.outputStream().use { output ->
+                        java.io.FileOutputStream(partial, append).use { output ->
                             val buffer = ByteArray(BUFFER_BYTES)
                             while (true) {
                                 coroutineContext.ensureActive()
@@ -210,7 +249,7 @@ class DownloadManager(
                 // player because playbackUri keys off the committed path.
                 if (target.exists()) target.delete()
                 if (!partial.renameTo(target)) throw IOException("could not finalise download")
-            }
+            } }
 
             DevDiagnostics.log("DOWNLOAD", "Done uuid=${episode.uuid} bytes=${target.length()} path=${target.absolutePath}")
             if (repository.episodeOnce(episode.uuid)?.isArchived != false) {
@@ -224,10 +263,15 @@ class DownloadManager(
                 target.absolutePath,
             )
         } catch (cancelled: CancellationException) {
+            // Never leave the row saying "downloading" once nothing is.
+            withContext(NonCancellable) {
+                runCatching { repository.setDownloadState(episode.uuid, DownloadState.NONE, null) }
+            }
             throw cancelled
         } catch (e: Exception) {
             DevDiagnostics.log("DOWNLOAD_ERR", "Failed uuid=${episode.uuid} url=${episode.audioUrl}: ${e.message}", e)
-            withContext(io) { runCatching { partial.delete() } }
+            // Keep a partial file so the next attempt resumes; an empty one is useless.
+            withContext(io) { runCatching { if (partial.length() == 0L) partial.delete() } }
             repository.setDownloadState(episode.uuid, DownloadState.FAILED, null)
         } finally {
             calls.remove(episode.uuid)
@@ -252,6 +296,7 @@ class DownloadManager(
 
     companion object {
         private const val PART_SUFFIX = ".part"
+        private const val MAX_PARALLEL = 3
         private const val BUFFER_BYTES = 64 * 1024
     }
 }

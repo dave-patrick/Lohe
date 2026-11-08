@@ -124,7 +124,6 @@ class PocketCastsImporterTest {
                     episodes.count { !it.isDeleted && !it.isPlayed && !it.isArchived }, episodes.maxOf { it.published })
             })
         override fun observeAllSummaries() = flowOf(rows.map { it.toSummary() })
-        override fun observeAllEntities() = flowOf(rows.toList())
         override fun observeDownloads() =
             flowOf(
                 rows.filter { it.downloadState == DownloadState.DONE && it.localPath != null }
@@ -152,7 +151,6 @@ class PocketCastsImporterTest {
             rows.filter { it.podcastUuid == podcastUuid }
 
         override suspend fun allOnce() = rows.sortedByDescending { it.published }
-        override fun observeLatest(limit: Int) = flowOf(rows.take(limit))
         override suspend fun queueSnapshot() =
             rows.filter { it.isQueued }.sortedBy { it.queuePosition }
 
@@ -247,6 +245,7 @@ class PocketCastsImporterTest {
 
         override suspend fun setDownloadState(uuid: String, state: Int, path: String?) = Unit
         override suspend fun clearDownload(uuid: String) = Unit
+        override suspend fun resetInterruptedDownloads(): Int = 0
     }
 
     private class FakeHistoryDao : ListeningHistoryDao {

@@ -2,13 +2,9 @@
 <resources>
     <string name="app_name">Lohe</string>
 
-    <string name="theme_label_dark">Dark</string>
-    <string name="theme_label_light">Light</string>
 
     <string name="player_now_playing">Now playing</string>
-    <string name="player_stream_crisp">Stream crisp.</string>
     <string name="player_nothing_queued">Nothing queued yet.</string>
-    <string name="player_queue_clear">Your queue is clear. Feed your ears.</string>
     <string name="player_volume_boost_on">Volume boost on</string>
     <string name="player_volume_boost_off">Volume boost off</string>
     <string name="player_skip_back">Back 10 seconds</string>
@@ -40,7 +36,6 @@
     <string name="opml_export">Export subscriptions (OPML)</string>
     <string name="opml_export_failed">Couldn\'t build the export.</string>
     <string name="opml_imported_clean">Imported %1$d show(s)</string>
-    <string name="opml_imported_partial">Imported %1$d, skipped %2$d</string>
     <string name="opml_file_name">lohe-subscriptions.opml</string>
 
     <string name="refresh_feeds">Check for new episodes</string>
@@ -49,7 +44,6 @@
     <string name="refresh_partial">Checked %1$d, %2$d unreachable</string>
 
     <string name="storage_management">Storage</string>
-    <string name="storage_used">Local audio</string>
     <string name="storage_downloads">Offline downloads</string>
     <string name="storage_imported">Imported from this device</string>
     <string name="storage_no_downloads">Nothing downloaded yet.</string>
@@ -59,10 +53,6 @@
     <string name="storage_clear_imports_hint">Removes imported episodes from your library. Your audio files stay on the device, untouched.</string>
     <string name="storage_delete_one">Delete this download</string>
     <string name="storage_download_hint">Downloaded episodes play without a connection.</string>
-    <string name="storage_clear">Remove local audio from library</string>
-    <string name="storage_clear_hint">Deletes library entries only. Your files stay on the device.</string>
-    <string name="storage_clear_confirm">Remove every locally-imported episode from the library? The audio files themselves are not deleted.</string>
-    <string name="storage_nothing">No local audio imported yet.</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
 
@@ -79,11 +69,6 @@
     <string name="episodes_mark_played">Mark as played</string>
     <string name="episodes_mark_unplayed">Mark as unplayed</string>
 
-    <string name="queue_title">Queue</string>
-    <string name="queue_summary">%1$d min queued</string>
-    <string name="queue_empty_title">Your queue is clear.</string>
-    <string name="queue_empty_hint">Add episodes from a show to line them up.</string>
-    <string name="queue_move_up">Move to the front</string>
     <string name="queue_drag_handle">Drag to reorder</string>
     <string name="queue_remove">Remove from queue</string>
 
@@ -91,10 +76,8 @@
     <string name="episodes_queued">In queue</string>
     <string name="episodes_download">Download</string>
     <string name="episodes_downloaded">Downloaded</string>
+    <string name="episodes_cancel_download">Cancel download</string>
 
-    <string name="home_continue">Continue listening</string>
-    <string name="home_recent_shows">Your shows</string>
-    <string name="home_empty">Nothing here yet. Add a feed or import a folder.</string>
     <string name="home_empty_title">Nothing queued up</string>
     <string name="home_mascot_description">Kani, waiting for something to play</string>
     <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
@@ -106,11 +89,8 @@
     <string name="home_kani_played">%1$d episodes listened to. Kani is impressed.</string>
 
     <string name="settings_title">Settings</string>
-    <string name="settings_appearance">Appearance</string>
     <string name="settings_dark">Dark</string>
     <string name="settings_light">Light</string>
-    <string name="settings_on">On</string>
-    <string name="settings_playback">Playback</string>
     <string name="settings_skip_back">Skip back</string>
     <string name="settings_skip_forward">Skip forward</string>
     <string name="settings_seconds">%1$ds</string>
@@ -131,7 +111,6 @@
 
     <!-- About -->
     <string name="about_title">About</string>
-    <string name="about_open">About Lohe</string>
     <string name="about_tagline">ua lohe ʻoe? - Have you heard?</string>
     <string name="about_version">Version %1$s (build %2$s)</string>
     <string name="about_version_unknown">Version unavailable</string>
@@ -146,9 +125,5 @@
     <string name="about_wordmark_description">Lohe</string>
     <string name="floating_player_turn_on">Turn on floating player</string>
     <string name="floating_player_turn_off">Turn off floating player</string>
-    <string name="floating_player_permission_title">Allow floating controls?</string>
-    <string name="floating_player_permission_message">Allow Lohe to display over other apps to turn on floating playback controls.</string>
-    <string name="floating_player_permission_open">Open settings</string>
-    <string name="floating_player_permission_not_now">Not now</string>
     <string name="about_studio_logo_description">Atomic 22 Industries</string>
 </resources>

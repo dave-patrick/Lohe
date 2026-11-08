@@ -27,7 +27,9 @@ import com.lohe.app.data.db.entity.PodcastEntity
         ListeningHistoryEntity::class,
     ],
     version = 15,
-    exportSchema = false,
+    // Each version's layout is saved under app/schemas/ and committed, so future
+    // migrations can be tested against the real previous layout.
+    exportSchema = true,
 )
 @TypeConverters()
 abstract class AppDatabase : RoomDatabase() {

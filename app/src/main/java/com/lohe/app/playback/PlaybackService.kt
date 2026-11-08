@@ -795,13 +795,20 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             while (isActive) {
                 val outroMs = _currentSkipOutroMs
+                var wait = IDLE_OUTRO_CHECK_MS
                 if (outroMs > 0 && player.isPlaying) {
                     val duration = player.duration
-                    if (duration > outroMs && duration - player.currentPosition <= outroMs) {
+                    val untilCut = duration - player.currentPosition - outroMs
+                    if (duration > outroMs && untilCut <= 0) {
                         player.seekTo(duration)
+                    } else if (duration > outroMs) {
+                        // Sleep until the cut is near instead of checking twice a second
+                        // for the whole episode (speed-up can only bring it closer).
+                        val speed = player.playbackParameters.speed.coerceAtLeast(0.5f)
+                        wait = (untilCut / speed).toLong().coerceIn(250L, IDLE_OUTRO_CHECK_MS)
                     }
                 }
-                delay(500)
+                delay(wait)
             }
         }
     }
@@ -848,6 +855,7 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         /** How often the position is written to the library while playing. */
         private const val PROGRESS_SAVE_INTERVAL_MS = 30_000L
+        private const val IDLE_OUTRO_CHECK_MS = 5_000L
 
         /** How often the position is looked at (in memory, no write). */
         private const val PROGRESS_CHECK_INTERVAL_MS = 5_000L
