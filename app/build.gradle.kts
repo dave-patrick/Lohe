@@ -28,7 +28,7 @@ android {
     defaultConfig {
         applicationId = "com.lohe.app"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = loheAndroidVersionCode
         versionName = loheReleaseVersion
         buildConfigField("String", "BUILD_ID", "\"$loheBuildId\"")

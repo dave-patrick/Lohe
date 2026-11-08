@@ -5,29 +5,31 @@ ease. Each one names the files it touches so it can be picked up cold.
 
 ---
 
-## Target Android 17 (API 37) — blocked on one background-audio check
+## ~~Target Android 17 (API 37)~~ — **done**
 
-Raising `targetSdk` to 37 builds, passes the JVM tests and lint, and the full
-instrumented suite ran on the Galaxy S948U (Android 17) with no new failures
-(2026-11-07). It was put back to 36 because of one risk that could not be
-checked before the phone dropped off wireless debugging:
+`targetSdk` is 37 from 0.11.0. Checked on the Galaxy S948U (Android 17) with
+an isolated `.audit` build, watching `dumpsys audio` "Hardening enforcement"
+and `AudioHardening` in logcat (2026-11-07):
 
-- Android 17 silences audio that an API-37 app plays from the background
-  unless a foreground service with while-in-use capability is running
-  (no error, just silence). On 2026-11-07 at 18:31 the phone logged
-  `AudioHardening background playback would be muted for com.lohe.app ...
-  level: partial` for the installed (API 36) app — so some path already
-  plays with no foreground service. Likely candidates: resuming from the
-  cross-app floating player, or playback resumption after the service was
-  stopped.
-- To check: install a `.audit` build with targetSdk 37, then
-  `adb shell cmd audio set-enable-hardening enable`; start playback in the
-  app, go Home, pause and resume from the floating player, the
-  notification and a media key; watch `adb logcat | grep AudioHardening`.
-  Any "muted" line for the package is a blocker.
-- Also on 37 and already fine: no orientation locks (large screens),
-  no reflection on `static final` fields or `MessageQueue`, no
-  `MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, no local-network access.
+- Play from the app, then Home: keeps playing in a `mediaPlayback`
+  foreground service.
+- Media-key pause, 70 s wait, media-key play from the background: resumes.
+- Pause, 70 s wait, then play from the background with no user action
+  (debug API): resumes, foreground service restarted, nothing muted.
+- Cold start from a media browser with no activity
+  (`PlaybackColdStartTest`, and `PlaybackResumptionColdStartTest` after the
+  `keepResumeFixture` seed): plays, audio focus granted.
+- No hardening entry for the package in any case. The one entry on the
+  phone (18:31, installed `com.lohe.app` at API 36, "would be muted",
+  level partial) predates this check; the same cold-start paths are clean.
+
+Not covered: resuming from the cross-app floating player after a long
+pause. Its own `specialUse` foreground service is started while the app is
+visible, so it should carry while-in-use; re-check with
+`adb shell cmd audio set-enable-hardening enable` if listeners report
+silent resumes. Also on 37 and fine: no orientation locks, no reflection on
+`static final` fields or `MessageQueue`, no
+`MODE_BACKGROUND_ACTIVITY_START_ALLOWED`, no local-network access.
 
 ## Onboarding wizard — planned
 

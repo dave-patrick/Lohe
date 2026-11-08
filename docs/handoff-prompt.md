@@ -7,7 +7,7 @@ for the Lohe Android podcast app.
 
 - Repo: `C:\repos\Lohe` (remote: github.com/dave-patrick/Lohe)
 - App: Android podcast player, Kotlin + Jetpack Compose + Room + Media3,
-  minSdk 26, targetSdk 36, compileSdk 37.
+  minSdk 26, targetSdk 37, compileSdk 37.
 - A prior pass already made these code changes (do not redo):
   - `app/src/main/AndroidManifest.xml`: removed `usesCleartextTraffic="true"`,
     added `android:networkSecurityConfig="@xml/network_security_config"`.

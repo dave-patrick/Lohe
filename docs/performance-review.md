@@ -61,4 +61,4 @@ Lohe is generally well-structured (Room indexes, LazyColumn keys, Compose state 
 - Room now exports each schema version to `app/schemas/` (from 15 on) so future migrations can be tested against the real previous layout.
 - Removed unused DAO queries (`observeAllEntities`, `observeLatest`), 26 unused strings and an unused splash image; moved two loose scripts into `tools/`.
 - Libraries: Kotlin 2.4.21, OkHttp 5.5.1, WorkManager 2.12, Navigation 2.10.2, Core 1.19.1, DataStore 1.3.0, serialization 1.12.0, androidx.media 1.8.0, test ext 1.3.0 / runner 1.7.0.
-- Later the same day: `QueueScreen.kt` split into `QueueScreen.kt`, `PlaylistsScreen.kt` and `QueueRow.kt`. Still open: targetSdk 37 (see docs/TODO.md, blocked on a background-audio check) and R8 shrinking for release.
+- Later the same day: `QueueScreen.kt` split into `QueueScreen.kt`, `PlaylistsScreen.kt` and `QueueRow.kt`. targetSdk 37 after an on-device background-audio check (docs/TODO.md). Still open: R8 shrinking for release.
