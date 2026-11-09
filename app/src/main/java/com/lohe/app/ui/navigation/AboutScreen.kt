@@ -144,7 +144,6 @@ fun AboutScreen(
                     stringResource(R.string.about_version_unknown)
                 },
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,

@@ -20,7 +20,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.lohe.app.R
 import com.lohe.app.BuildConfig
 import kotlinx.coroutines.delay
@@ -74,7 +73,7 @@ fun SplashScreen(
                 .offset(y = maxHeight * 0.79f)
                 .alpha(alpha.value),
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            fontSize = 10.sp,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
         )
     }

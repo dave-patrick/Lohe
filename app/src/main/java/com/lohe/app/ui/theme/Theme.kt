@@ -45,6 +45,7 @@ fun LoheTheme(
     MaterialTheme(
         colorScheme = colors,
         typography = LoheTypography,
+        shapes = LoheShapes,
         content = {
             // Material3's default LocalContentColor is Color.Black, and
             // Scaffold with a transparent container does not replace it. Any

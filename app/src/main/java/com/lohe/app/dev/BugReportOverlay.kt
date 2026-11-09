@@ -48,7 +48,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -137,7 +136,7 @@ fun BugReportOverlay(
                 Text(
                     text = "BUG",
                     color = Color.White,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -173,11 +172,11 @@ fun BugReportOverlay(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(160.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(MaterialTheme.shapes.small)
                                     .border(
                                         1.dp,
                                         MaterialTheme.colorScheme.outlineVariant,
-                                        RoundedCornerShape(8.dp),
+                                        MaterialTheme.shapes.small,
                                     ),
                             )
                         }

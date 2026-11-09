@@ -785,9 +785,9 @@ fun PlaylistsScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box {
-                        IconButton(
+                        TouchTargetIconButton(
                             onClick = { sortMenuOpen = true },
-                            modifier = Modifier.size(38.dp),
+                            layoutSize = 38.dp,
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Sort,
@@ -825,9 +825,9 @@ fun PlaylistsScreen(
                     }
 
                     Box {
-                        IconButton(
+                        TouchTargetIconButton(
                             onClick = { playlistOptionsOpen = true },
-                            modifier = Modifier.size(38.dp),
+                            layoutSize = 38.dp,
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
@@ -849,9 +849,9 @@ fun PlaylistsScreen(
                         }
                     }
 
-                    IconButton(
+                    TouchTargetIconButton(
                         onClick = { isGridView = !isGridView },
-                        modifier = Modifier.size(38.dp),
+                        layoutSize = 38.dp,
                     ) {
                         Icon(
                             imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
@@ -860,9 +860,9 @@ fun PlaylistsScreen(
                         )
                     }
 
-                    IconButton(
+                    TouchTargetIconButton(
                         onClick = { showCreateDialog = true },
-                        modifier = Modifier.size(40.dp),
+                        layoutSize = 40.dp,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
@@ -1400,7 +1400,7 @@ private fun AssignPodcastsDialog(
                             val checked = show.uuid in selected
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(MaterialTheme.shapes.medium)
                                     .background(if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                                     .heightIn(min = 64.dp).toggleable(
                                     value = checked,
@@ -1414,7 +1414,7 @@ private fun AssignPodcastsDialog(
                                     url = show.artworkUrl,
                                     contentDescription = null,
                                     fallbackLabel = show.title,
-                                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+                                    modifier = Modifier.size(44.dp).clip(MaterialTheme.shapes.small),
                                 )
                                 Column(Modifier.weight(1f)) {
                                     Text(show.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1573,7 +1573,6 @@ private fun PlaylistGridCard(
                         Text(
                             text = playlistUnplayed.toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
                             lineHeight = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary,
@@ -1607,14 +1606,13 @@ private fun PlaylistGridCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(MaterialTheme.shapes.small)
                             .background(ElectricBlue.copy(alpha = 0.85f))
                             .padding(horizontal = 5.dp, vertical = 2.dp),
                     ) {
                         Text(
                             text = "AUTO-DL",
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                         )
@@ -1626,7 +1624,7 @@ private fun PlaylistGridCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(MaterialTheme.shapes.small)
                             .background(Color.Black.copy(alpha = 0.72f))
                             .padding(horizontal = 5.dp, vertical = 2.dp),
                     ) {
@@ -1641,7 +1639,6 @@ private fun PlaylistGridCard(
                                 else -> "SMART"
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                         )
@@ -1679,7 +1676,6 @@ private fun PlaylistGridCard(
                         Text(
                             text = playlist.folder,
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
                             lineHeight = 12.sp,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
@@ -1714,7 +1710,7 @@ private fun PlaylistGridCard(
                     }
                 }
                 if (!playlist.system) {
-                    IconButton(onClick = onTogglePinned, modifier = Modifier.size(26.dp)) {
+                    TouchTargetIconButton(onClick = onTogglePinned, layoutSize = 26.dp) {
                         Icon(
                             imageVector = Icons.Filled.PushPin,
                             contentDescription = if (playlist.pinned) "Unpin playlist" else "Pin playlist to top",
@@ -1723,7 +1719,7 @@ private fun PlaylistGridCard(
                         )
                     }
                 }
-                IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
+                TouchTargetIconButton(onClick = onAssignFolder, layoutSize = 26.dp) {
                     Icon(
                         imageVector = Icons.Filled.Folder,
                         contentDescription = "Folder",
@@ -1731,7 +1727,7 @@ private fun PlaylistGridCard(
                         modifier = Modifier.size(15.dp),
                     )
                 }
-                IconButton(onClick = onAddToUpNext, modifier = Modifier.size(26.dp)) {
+                TouchTargetIconButton(onClick = onAddToUpNext, layoutSize = 26.dp) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = "Add to Up Next",
@@ -1739,7 +1735,7 @@ private fun PlaylistGridCard(
                         modifier = Modifier.size(17.dp),
                     )
                 }
-                IconButton(onClick = onPlayAll, modifier = Modifier.size(26.dp)) {
+                TouchTargetIconButton(onClick = onPlayAll, layoutSize = 26.dp) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = "Play playlist",
@@ -1817,7 +1813,6 @@ private fun PlaylistListCard(
                             Text(
                                 text = folderLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1846,18 +1841,18 @@ private fun PlaylistListCard(
             // are only for the times it is not.
             if (dragHandle == null) {
                 if (canMoveUp) {
-                    IconButton(onClick = onMoveUp, modifier = Modifier.size(26.dp)) {
+                    TouchTargetIconButton(onClick = onMoveUp, layoutSize = 26.dp) {
                         Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(17.dp))
                     }
                 }
                 if (canMoveDown) {
-                    IconButton(onClick = onMoveDown, modifier = Modifier.size(26.dp)) {
+                    TouchTargetIconButton(onClick = onMoveDown, layoutSize = 26.dp) {
                         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(17.dp))
                     }
                 }
             }
             if (!playlist.system) {
-                IconButton(onClick = onTogglePinned, modifier = Modifier.size(26.dp)) {
+                TouchTargetIconButton(onClick = onTogglePinned, layoutSize = 26.dp) {
                     Icon(
                         imageVector = Icons.Filled.PushPin,
                         contentDescription = if (playlist.pinned) "Unpin playlist" else "Pin playlist to top",
@@ -1866,10 +1861,10 @@ private fun PlaylistListCard(
                     )
                 }
             }
-            IconButton(onClick = onAssignFolder, modifier = Modifier.size(26.dp)) {
+            TouchTargetIconButton(onClick = onAssignFolder, layoutSize = 26.dp) {
                 Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
             }
-            IconButton(onClick = onAddToUpNext, modifier = Modifier.size(28.dp)) {
+            TouchTargetIconButton(onClick = onAddToUpNext, layoutSize = 28.dp) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                     contentDescription = "Add to Up Next",
@@ -1877,7 +1872,7 @@ private fun PlaylistListCard(
                     modifier = Modifier.size(19.dp),
                 )
             }
-            IconButton(onClick = onPlayAll, modifier = Modifier.size(28.dp)) {
+            TouchTargetIconButton(onClick = onPlayAll, layoutSize = 28.dp) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "Play playlist",

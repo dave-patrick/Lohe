@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -271,11 +270,11 @@ fun PodcastDetailSheet(
                             }
                             IconButton(
                                 onClick = { onDownloadEpisode(episode.uuid) },
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.DownloadDone,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(R.string.episodes_downloaded),
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp),
                                 )
@@ -329,6 +328,6 @@ internal fun DetailArtwork(url: String?, modifier: Modifier = Modifier) {
         contentDescription = null,
         size = 88.dp,
         cornerRadius = 16.dp,
-        modifier = modifier.clip(RoundedCornerShape(16.dp)),
+        modifier = modifier.clip(MaterialTheme.shapes.large),
     )
 }

@@ -2,10 +2,11 @@ package com.lohe.app.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -104,9 +107,9 @@ private fun BottomBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // No ripple: a tinted block behind a 24dp icon reads as a rendering fault
-    // on a bar this thin, and the active dot already communicates selection.
     val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val itemShape = MaterialTheme.shapes.extraLarge
 
     val tint by animateColorAsState(
         targetValue = if (selected) {
@@ -124,9 +127,15 @@ private fun BottomBarItem(
 
     Column(
         modifier = modifier
-            .clickable(
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clip(itemShape)
+            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, itemShape) else Modifier)
+            .selectable(
+                selected = selected,
                 interactionSource = interaction,
-                indication = null,
+                // The theme's ripple, clipped to the pill above so presses and
+                // focus read as a contained state layer, not a square block.
+                indication = LocalIndication.current,
                 role = Role.Tab,
                 onClick = onClick,
             )
@@ -150,7 +159,7 @@ private fun BottomBarItem(
 
         Text(
             text = destination.label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = tint,
             maxLines = 1,
         )
@@ -169,7 +178,7 @@ private fun BottomBarItem(
                     scaleY = dotScale
                     alpha = dotScale
                 }
-                .clip(RoundedCornerShape(2.dp))
+                .clip(MaterialTheme.shapes.extraSmall)
                 .background(ElectricBlue),
         )
     }

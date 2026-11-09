@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -98,6 +99,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lohe.app.R
@@ -364,7 +366,7 @@ fun PodcastsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
                                     onClick = { selectedPodcastUuids = emptySet() },
-                                    modifier = Modifier.size(32.dp),
+                                    modifier = Modifier.size(48.dp),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
@@ -554,7 +556,7 @@ fun PodcastsScreen(
                     }
                     Spacer(Modifier.weight(1f))
 
-                    IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onAddLocalFolder, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Filled.CreateNewFolder,
                             contentDescription = stringResource(R.string.podcasts_add_folder),
@@ -565,7 +567,7 @@ fun PodcastsScreen(
                     Box {
                         IconButton(
                             onClick = { menuOpen = true },
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
@@ -1531,7 +1533,6 @@ private fun PodcastCard(
                         Text(
                             text = folderName,
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
                             lineHeight = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -1550,7 +1551,7 @@ private fun PodcastCard(
             }
         }
 
-        IconButton(onClick = onUnsubscribe, modifier = Modifier.size(34.dp)) {
+        CompactIconButton(onClick = onUnsubscribe, visualSize = 34.dp) {
             Icon(
                 imageVector = Icons.Filled.DeleteOutline,
                 contentDescription = "Unsubscribe",
@@ -1633,7 +1634,6 @@ private fun PodcastGridCard(
                         Text(
                             text = unplayedCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
                             lineHeight = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary,
@@ -1670,7 +1670,6 @@ private fun PodcastGridCard(
                     Text(
                         text = folderName,
                         style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
                         lineHeight = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -1713,4 +1712,24 @@ private fun ShowCountsText(
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
     )
+}
+
+/**
+ * An icon button whose touch target is 48dp while its layout box stays at
+ * [visualSize], so list rows keep their spacing.
+ */
+@Composable
+private fun CompactIconButton(
+    onClick: () -> Unit,
+    visualSize: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.size(visualSize), contentAlignment = Alignment.Center) {
+        IconButton(
+            onClick = onClick,
+            modifier = modifier.requiredSize(48.dp),
+            content = content,
+        )
+    }
 }

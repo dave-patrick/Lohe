@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +50,7 @@ internal fun SheetActionRow(action: SheetAction) {
         Box(
             modifier = Modifier
                 .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
+                .clip(MaterialTheme.shapes.small)
                 .background(action.accent.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -77,7 +76,7 @@ internal fun SheetActionGroup(actions: List<SheetAction>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         actions.forEachIndexed { index, action ->

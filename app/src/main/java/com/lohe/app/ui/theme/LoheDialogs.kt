@@ -84,7 +84,7 @@ fun LoheDialog(
 ) {
     val isLight = backgroundIsLight()
     val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val shape = RoundedCornerShape(28.dp)
+    val shape = MaterialTheme.shapes.extraLarge
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -135,7 +135,7 @@ fun LoheDialog(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(MaterialTheme.shapes.medium)
                             .background(accent.copy(alpha = 0.16f)),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -241,7 +241,7 @@ fun LoheDragHandle() {
     Box(
         modifier = Modifier
             .size(width = 38.dp, height = 4.dp)
-            .clip(RoundedCornerShape(2.dp))
+            .clip(MaterialTheme.shapes.extraSmall)
             .background(
                 Brush.horizontalGradient(
                     listOf(

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
@@ -55,7 +54,7 @@ fun FloatingPlayerControls(
 
     val controlAccent = MaterialTheme.colorScheme.primary
     val collapsedSize = 56.dp
-    val buttonSize = 44.dp
+    val buttonSize = 48.dp
 
     Column(
         modifier = modifier
@@ -70,7 +69,7 @@ fun FloatingPlayerControls(
                 modifier = Modifier
                     .padding(horizontal = 8.dp)
                     .clickable(onClick = { expanded = false }),
-                shape = RoundedCornerShape(28.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 color = LoheAccent.glassFill,
             ) {
                 Row(
@@ -112,7 +111,7 @@ fun FloatingPlayerControls(
                     }
                     IconButton(
                         onClick = { expanded = false },
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,

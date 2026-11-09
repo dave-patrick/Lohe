@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -99,8 +98,8 @@ fun EpisodeNotesSheet(
                     cornerRadius = 14.dp,
                     modifier = Modifier
                         .size(64.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp)),
+                        .clip(MaterialTheme.shapes.large)
+                        .border(1.dp, Color.White.copy(alpha = 0.14f), MaterialTheme.shapes.large),
                 )
 
                 Column(modifier = Modifier.weight(1f)) {

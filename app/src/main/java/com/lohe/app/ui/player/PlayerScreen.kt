@@ -432,13 +432,13 @@ private fun HeaderRow(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(MaterialTheme.shapes.medium)
                 .clickable(onClick = onShrink)
                 .padding(end = 8.dp),
         ) {
             IconButton(
                 onClick = onShrink,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
@@ -460,13 +460,13 @@ private fun HeaderRow(
                     enabled = floatingPlayerEnabled,
                     isPlaying = isPlaying,
                     settingsStore = it,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                 )
             }
 
             IconButton(
                 onClick = onOpenNotes,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Info,
@@ -478,7 +478,7 @@ private fun HeaderRow(
 
             IconButton(
                 onClick = onOpenSleepTimer,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Bedtime,
@@ -499,11 +499,11 @@ private fun ArtworkTile(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(26.dp))
+            .clip(MaterialTheme.shapes.extraLarge)
             .border(
                 width = 1.dp,
                 color = if (isLight) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f),
-                shape = RoundedCornerShape(26.dp),
+                shape = MaterialTheme.shapes.extraLarge,
             )
             .background(
                 Brush.linearGradient(
@@ -534,7 +534,7 @@ private fun EpisodeTitle(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(MaterialTheme.shapes.small)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 2.dp),
     ) {
@@ -625,7 +625,7 @@ private fun Scrubber(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(MaterialTheme.shapes.small)
                     .clickable { showElapsedAdjusted = !showElapsedAdjusted }
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             )
@@ -639,7 +639,7 @@ private fun Scrubber(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(MaterialTheme.shapes.small)
                     .clickable { showRemainingAdjusted = !showRemainingAdjusted }
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             )
@@ -705,7 +705,7 @@ private fun TransportRow(
         IconButton(
             onClick = onVolumeBoostToggle,
             enabled = enabled,
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
                 imageVector = if (volumeBoostEnabled) {
@@ -792,7 +792,7 @@ private fun TransportRow(
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
+                .clip(MaterialTheme.shapes.large)
                 .background(
                     if (playbackSpeed != 1f) {
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)

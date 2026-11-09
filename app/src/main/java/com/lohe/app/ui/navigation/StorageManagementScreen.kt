@@ -242,7 +242,7 @@ private fun DownloadRow(episode: EpisodeSummary, onDelete: () -> Unit) {
                 )
             }
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
             Icon(
                 imageVector = Icons.Filled.DeleteSweep,
                 contentDescription = stringResource(R.string.storage_delete_one),

@@ -18,11 +18,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -81,9 +81,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.lohe.app.R
 import com.lohe.app.data.EpisodeFilter
@@ -183,7 +183,7 @@ fun EpisodesScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = { selectedUuids = emptySet() },
-                                modifier = Modifier.size(32.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
@@ -843,14 +843,13 @@ private fun EpisodeRow(
                     if (episode.isPlayed) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(MaterialTheme.shapes.small)
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = "LISTENED ✓",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -873,7 +872,7 @@ private fun EpisodeRow(
                         modifier = Modifier.weight(1f),
                     )
 
-                    IconButton(onClick = onOpenNotes, modifier = Modifier.size(30.dp)) {
+                    CompactIconButton(onClick = onOpenNotes, visualSize = 30.dp) {
                         Icon(
                             imageVector = Icons.Outlined.Info,
                             contentDescription = "Show notes",
@@ -882,7 +881,7 @@ private fun EpisodeRow(
                         )
                     }
 
-                    IconButton(onClick = onToggleStar, modifier = Modifier.size(30.dp)) {
+                    CompactIconButton(onClick = onToggleStar, visualSize = 30.dp) {
                         Icon(
                             imageVector = if (episode.starred) {
                                 Icons.Filled.Star
@@ -899,7 +898,7 @@ private fun EpisodeRow(
                         )
                     }
 
-                    IconButton(onClick = onToggleArchived, modifier = Modifier.size(30.dp)) {
+                    CompactIconButton(onClick = onToggleArchived, visualSize = 30.dp) {
                         Icon(
                             imageVector = if (episode.isArchived) {
                                 Icons.Filled.Unarchive
@@ -922,7 +921,7 @@ private fun EpisodeRow(
                         )
                     }
 
-                    IconButton(onClick = onRefresh, modifier = Modifier.size(30.dp)) {
+                    CompactIconButton(onClick = onRefresh, visualSize = 30.dp) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = stringResource(R.string.episodes_refresh),
@@ -931,9 +930,9 @@ private fun EpisodeRow(
                         )
                     }
 
-                    IconButton(
+                    CompactIconButton(
                         onClick = onTogglePlayed,
-                        modifier = Modifier.size(30.dp),
+                        visualSize = 30.dp,
                     ) {
                         Icon(
                             imageVector = if (episode.isPlayed) {
@@ -956,11 +955,10 @@ private fun EpisodeRow(
 
                         when {
                             // Tap the spinner to cancel: a download can be stopped, not only waited out.
-                            episode.isDownloading -> IconButton(
+                            episode.isDownloading -> CompactIconButton(
                                 onClick = onRemoveDownloads,
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .semantics { contentDescription = cancelDownloadLabel },
+                                visualSize = 30.dp,
+                                modifier = Modifier.semantics { contentDescription = cancelDownloadLabel },
                             ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
@@ -968,9 +966,9 @@ private fun EpisodeRow(
                                 )
                             }
 
-                            episode.isDownloaded -> IconButton(
+                            episode.isDownloaded -> CompactIconButton(
                                 onClick = onRemoveDownloads,
-                                modifier = Modifier.size(30.dp),
+                                visualSize = 30.dp,
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.CheckCircle,
@@ -980,9 +978,9 @@ private fun EpisodeRow(
                                 )
                             }
 
-                            else -> IconButton(
+                            else -> CompactIconButton(
                                 onClick = onDownload,
-                                modifier = Modifier.size(30.dp),
+                                visualSize = 30.dp,
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Download,
@@ -993,9 +991,9 @@ private fun EpisodeRow(
                             }
                         }
 
-                        IconButton(
+                        CompactIconButton(
                             onClick = onQueue,
-                            modifier = Modifier.size(30.dp),
+                            visualSize = 30.dp,
                         ) {
                             Icon(
                                 imageVector = if (episode.isQueued) {
@@ -1019,5 +1017,25 @@ private fun EpisodeRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * An icon button whose touch target is 48dp while its layout box stays at
+ * [visualSize], so dense rows keep their spacing.
+ */
+@Composable
+private fun CompactIconButton(
+    onClick: () -> Unit,
+    visualSize: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.size(visualSize), contentAlignment = Alignment.Center) {
+        IconButton(
+            onClick = onClick,
+            modifier = modifier.requiredSize(48.dp),
+            content = content,
+        )
     }
 }

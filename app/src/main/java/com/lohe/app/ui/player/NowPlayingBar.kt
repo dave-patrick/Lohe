@@ -241,7 +241,7 @@ fun NowPlayingBar(
 
             IconButton(
                 onClick = onOpenPlayer,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowUp,

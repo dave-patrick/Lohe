@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.DownloadDone
@@ -264,7 +263,7 @@ private fun HomeTelemetryDashboard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.6.sp,
-                            color = if (isLight) ElectricBlue else ElectricBlueMid,
+                            color = if (isLight) MaterialTheme.colorScheme.primary else ElectricBlueMid,
                         )
                     }
                     Text(
@@ -507,7 +506,6 @@ private fun SignalGauge(
             Text(
                 text = "PLAYED",
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 9.sp,
                 letterSpacing = 1.2.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -535,7 +533,6 @@ private fun SignalReadout(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
                 letterSpacing = 0.8.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -549,7 +546,6 @@ private fun SignalReadout(
         Text(
             text = caption,
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -606,10 +602,9 @@ private fun ActivityChart(
                         if (value > 0) {
                             Text(
                                 text = value.toString(),
-                                modifier = Modifier.fillMaxWidth().height(13.dp),
+                                modifier = Modifier.fillMaxWidth().height(16.dp),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontSize = 8.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
@@ -621,17 +616,16 @@ private fun ActivityChart(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(if (value > 0) (4f + 42f * fraction).dp else 2.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(MaterialTheme.shapes.extraSmall)
                                 .background(barColor),
                         )
                     }
                 }
                 Text(
                     text = dayInitial,
-                    modifier = Modifier.fillMaxWidth().height(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
-                    fontSize = 9.sp,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                 )
@@ -681,7 +675,7 @@ private fun ShowTiles(
                         .widthIn(max = 110.dp)
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(MaterialTheme.shapes.medium),
                 ) {
                     RemoteImage(
                         url = show.artworkUrl,
@@ -761,7 +755,7 @@ private fun FrequencySpectrumBar(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(ratio)
-                    .clip(RoundedCornerShape(3.dp))
+                    .clip(MaterialTheme.shapes.extraSmall)
                     .background(
                         if (isLit) {
                             Brush.verticalGradient(listOf(ElectricBlueMid, ElectricBlue))
@@ -820,8 +814,7 @@ private fun LibraryStatsCard(
                     )
                     Text(
                         text = "Episodes in your library",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -926,7 +919,7 @@ private fun LibraryCompositionBar(stats: HomeDashboardStats) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(11.dp)
-                .clip(RoundedCornerShape(6.dp)),
+                .clip(MaterialTheme.shapes.small),
         ) {
             val w = size.width
             val h = size.height
@@ -983,7 +976,6 @@ private fun LegendDot(label: String, count: Int?, color: Color) {
         Text(
             text = if (count == null) label else "$label ${compactCount(count)}",
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
@@ -1004,7 +996,7 @@ private fun LibraryBadge(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(MaterialTheme.shapes.large)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .background(accent.copy(alpha = 0.08f))
             .padding(horizontal = 12.dp, vertical = 11.dp),
@@ -1041,7 +1033,6 @@ private fun LibraryBadge(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 9.sp,
                 lineHeight = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -1106,11 +1097,11 @@ private fun ContinueCard(
                 cornerRadius = 12.dp,
                 modifier = Modifier
                     .size(54.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(MaterialTheme.shapes.medium)
                     .border(
                         1.dp,
                          Color.White.copy(alpha = 0.12f),
-                        RoundedCornerShape(12.dp),
+                        MaterialTheme.shapes.medium,
                     ),
             )
 
@@ -1222,7 +1213,7 @@ private fun episodeCountStatus(status: String, count: Int) = buildAnnotatedStrin
         append(status)
     } else {
         append(status.substring(0, countStart))
-        withStyle(SpanStyle(color = ElectricBlue)) { append(countText) }
+        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append(countText) }
         append(status.substring(countStart + countText.length))
     }
 }

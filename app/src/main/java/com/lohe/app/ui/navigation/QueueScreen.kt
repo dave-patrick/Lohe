@@ -122,7 +122,7 @@ fun QueueScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = { selectedUuids = emptySet() },
-                                modifier = Modifier.size(32.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(Icons.Filled.Close, contentDescription = "Exit selection")
                             }

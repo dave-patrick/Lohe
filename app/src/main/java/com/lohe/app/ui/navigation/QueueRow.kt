@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.data.QueueEntry
@@ -155,7 +157,7 @@ internal fun QueueRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(MaterialTheme.shapes.large)
                     .background(background)
                     .padding(horizontal = 14.dp),
             ) {
@@ -421,7 +423,7 @@ internal fun QueueRow(
                         )
                     }
 
-                    if (!playlistSelection) IconButton(onClick = onPlay, modifier = Modifier.size(30.dp)) {
+                    if (!playlistSelection) TouchTargetIconButton(onClick = onPlay, layoutSize = 30.dp) {
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
                             contentDescription = stringResource(R.string.player_now_playing),
@@ -460,7 +462,7 @@ internal fun SwipeActionButton(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
             .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -478,6 +480,29 @@ internal fun SwipeActionButton(
             style = MaterialTheme.typography.labelSmall,
             color = tint,
             maxLines = 1,
+        )
+    }
+}
+
+/**
+ * An icon button with a 48dp touch target whose layout footprint stays
+ * [layoutSize], so dense headers and rows keep their spacing.
+ */
+@Composable
+internal fun TouchTargetIconButton(
+    onClick: () -> Unit,
+    layoutSize: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier.size(layoutSize),
+        contentAlignment = Alignment.Center,
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.requiredSize(48.dp),
+            content = content,
         )
     }
 }

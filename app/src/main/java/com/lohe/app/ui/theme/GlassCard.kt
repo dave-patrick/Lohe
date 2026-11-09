@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +42,7 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(20.dp),
+    shape: Shape = MaterialTheme.shapes.large,
     borderWidth: Dp = 1.dp,
     contentPadding: Dp = 14.dp,
     content: @Composable BoxScope.() -> Unit,
@@ -104,7 +104,7 @@ fun GlassRow(
     accent: Color? = null,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(20.dp),
+    shape: Shape = MaterialTheme.shapes.large,
     contentPadding: Dp = 14.dp,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
