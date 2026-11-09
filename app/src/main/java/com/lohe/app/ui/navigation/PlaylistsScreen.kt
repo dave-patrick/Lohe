@@ -752,13 +752,12 @@ fun PlaylistsScreen(
             }
         } else {
             // --- Playlists Overview (Grid / List + Folders) ---
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 20.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "Playlists",
                     style = MaterialTheme.typography.headlineMedium,
@@ -778,10 +777,10 @@ fun PlaylistsScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box {
@@ -1699,10 +1698,9 @@ private fun PlaylistGridCard(
                 )
             }
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (dragHandle != null) {
                     Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
@@ -1764,6 +1762,7 @@ private fun PlaylistListCard(
     modifier: Modifier = Modifier,
 ) {
     GlassCard(onClick = onOpen, contentPadding = 8.dp, modifier = modifier) {
+        Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1837,6 +1836,8 @@ private fun PlaylistListCard(
                 }
             }
 
+        }
+        FlowRow(modifier = Modifier.fillMaxWidth()) {
             // Dragging is the reorder control when it is available; the arrows
             // are only for the times it is not.
             if (dragHandle == null) {
@@ -1881,6 +1882,7 @@ private fun PlaylistListCard(
                 )
             }
         }
+    }
     }
 }
 

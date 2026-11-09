@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.LoheAccent
@@ -68,7 +70,7 @@ fun LoheBottomBar(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 8.dp)
-            .height(BarHeight)
+            .heightIn(min = BarHeight)
             .clip(shape)
             .background(if (isLight) LoheAccent.barGlassFillLight else LoheAccent.barGlassFill)
             .border(
@@ -161,7 +163,9 @@ private fun BottomBarItem(
             text = destination.label,
             style = MaterialTheme.typography.labelMedium,
             color = tint,
-            maxLines = 1,
+            minLines = 2,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
         )
 
         Spacer(Modifier.height(4.dp))
@@ -191,4 +195,4 @@ data class BottomDestination(
     val icon: ImageVector,
 )
 
-private val BarHeight = 62.dp
+private val BarHeight = 78.dp

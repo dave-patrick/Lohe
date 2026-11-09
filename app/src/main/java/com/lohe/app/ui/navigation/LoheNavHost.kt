@@ -79,7 +79,7 @@ import kotlinx.coroutines.launch
 
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
     HOME("home", "Home", Icons.Filled.Home),
-    PODCASTS("podcasts", "My Podcasts", Icons.Filled.LibraryMusic),
+    PODCASTS("podcasts", "Podcasts", Icons.Filled.LibraryMusic),
     DISCOVER("discover", "Discover", Icons.Filled.Explore),
     PLAYLISTS("playlists", "Playlists", Icons.AutoMirrored.Filled.PlaylistPlay),
     QUEUE("queue", "Up Next", Icons.AutoMirrored.Filled.QueueMusic),

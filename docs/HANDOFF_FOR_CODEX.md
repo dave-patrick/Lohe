@@ -1,5 +1,7 @@
 # Handoff: Lohe debug build (Material 3 adherence pass)
 
+> Historical handoff for commit `855ee63`. The paths and verification status below describe Claude's original environment. Subsequent fixes reserve full 48 dp button slots, wrap crowded actions, and show the full Podcasts navigation label. Current build metadata is in `app/build.gradle.kts`; public distribution uses the signed Release APK, while the owner's main app remains on the private Debug channel.
+
 APK: /workspace/bright-darwin/app/build/outputs/apk/debug/app-debug.apk
 SHA-256: 70151274ba21a94dead4516fdbb0bb078cae03106f322816b06b17b0d516ad3f
 applicationId: com.lohe.app.debug  (versionName 0.11.1, versionCode 1101)

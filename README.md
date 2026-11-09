@@ -6,9 +6,9 @@
 
 Lohe is a podcast player for listening on your own terms. Find the stories, conversations, news, and curious detours you want to hear. Keep your shows and playlists together, shape Up Next, and pick up where you left off.
 
-**[Open the Lohe landing page](https://dave-patrick.github.io/Lohe/)** · **[Download the latest signed release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.76)** · **[Getting started](docs/guide.md)**
+**[Open the Lohe landing page](https://dave-patrick.github.io/Lohe/)** · **[Download the latest signed release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.80)** · **[Getting started](docs/guide.md)**
 
-The current release is **0.11.1 (build 2026.08.11.76)**. The APK is built with the Android `release` variant and is not debuggable.
+The current release is **0.11.1 (build 2026.08.11.80)**. The APK is built with the Android `release` variant and is not debuggable.
 
 ## See Lohe
 
@@ -31,7 +31,7 @@ Android Auto exposes media browsing and playback through Android's media browser
 
 ## Install the release
 
-Download `Lohe-0.11.1-build-2026.08.11.76-release.apk` from the [latest GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.76), open it on your Android device, and allow app installs from your browser or file manager if Android asks. Lohe currently distributes its signed Android APK through GitHub; it is not listed on Google Play.
+Download `Lohe-0.11.1-build-2026.08.11.80-release.apk` from the [latest GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.80), open it on your Android device, and allow app installs from your browser or file manager if Android asks. Lohe currently distributes its signed Android APK through GitHub; it is not listed on Google Play.
 
 ## Build from source
 

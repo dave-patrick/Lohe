@@ -47,6 +47,8 @@ Native Android podcast client using Kotlin, Jetpack Compose, Room, and a debug M
 
 ## Conventions
 
+- Dense icon actions reserve at least 48 dp in layout; do not force a 48 dp child into a smaller wrapper. Podcast episode and playlist actions wrap below metadata/header content with FlowRow so targets remain separate on narrow screens.
+
 - Google Play phone/tablet builds use `-PlohePlayStore=true`; the high-priority `src/play/AndroidManifest.xml` removes car-specific declarations only from Release and the isolated, minified/non-debuggable `smokeRelease` package (`com.lohe.app.releaseaudit`). Ordinary Release and private Debug preserve the car implementation. Never upload the smoke APK or Debug APK to Play. CI without signing credentials emits an explicitly unsigned AAB plus its R8 mapping.
 - About exposes an offline privacy-policy dialog. `docs/privacy-policy.md` is the source for `app/src/main/assets/privacy-policy.txt` and `docs/privacy/index.html`; regenerate with `tools/prepare-privacy-policy.ps1` and verify with `-Check`. Pages stages index/guide/assets/privacy, not internal planning documents. Publishing is separate from local preparation.
 - Settings and the player button share `rememberFloatingPlayerPermissionFlow`: overlay rationale/special access first, then optional notification rationale on Android 13+, with denial/Not now allowing controls and audio. A persisted handled flag avoids repeated OS notification prompts; Settings links to Android notification settings. Never launch permission dialogs automatically at startup.

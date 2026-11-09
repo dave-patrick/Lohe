@@ -485,8 +485,7 @@ internal fun SwipeActionButton(
 }
 
 /**
- * An icon button with a 48dp touch target whose layout footprint stays
- * [layoutSize], so dense headers and rows keep their spacing.
+ * Reserve the full touch target in layout so adjacent actions cannot overlap.
  */
 @Composable
 internal fun TouchTargetIconButton(
@@ -496,7 +495,7 @@ internal fun TouchTargetIconButton(
     content: @Composable () -> Unit,
 ) {
     Box(
-        modifier = modifier.size(layoutSize),
+        modifier = modifier.size(layoutSize.coerceAtLeast(48.dp)),
         contentAlignment = Alignment.Center,
     ) {
         IconButton(

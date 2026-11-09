@@ -859,19 +859,17 @@ private fun EpisodeRow(
 
                 Spacer(Modifier.size(4.dp))
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = EpisodeMeta.line(episode.toSummary(), now),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     )
 
+                    FlowRow(modifier = Modifier.fillMaxWidth()) {
                     CompactIconButton(onClick = onOpenNotes, visualSize = 30.dp) {
                         Icon(
                             imageVector = Icons.Outlined.Info,
@@ -1014,6 +1012,7 @@ private fun EpisodeRow(
                             )
                         }
                     }
+                    }
                 }
             }
         }
@@ -1021,8 +1020,7 @@ private fun EpisodeRow(
 }
 
 /**
- * An icon button whose touch target is 48dp while its layout box stays at
- * [visualSize], so dense rows keep their spacing.
+ * Reserve the full touch target in layout so adjacent actions cannot overlap.
  */
 @Composable
 private fun CompactIconButton(
@@ -1031,7 +1029,7 @@ private fun CompactIconButton(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.size(visualSize), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(visualSize.coerceAtLeast(48.dp)), contentAlignment = Alignment.Center) {
         IconButton(
             onClick = onClick,
             modifier = modifier.requiredSize(48.dp),

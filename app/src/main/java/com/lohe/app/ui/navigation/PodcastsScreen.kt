@@ -1715,8 +1715,7 @@ private fun ShowCountsText(
 }
 
 /**
- * An icon button whose touch target is 48dp while its layout box stays at
- * [visualSize], so list rows keep their spacing.
+ * Reserve the full touch target in layout so adjacent actions cannot overlap.
  */
 @Composable
 private fun CompactIconButton(
@@ -1725,7 +1724,7 @@ private fun CompactIconButton(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.size(visualSize), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(visualSize.coerceAtLeast(48.dp)), contentAlignment = Alignment.Center) {
         IconButton(
             onClick = onClick,
             modifier = modifier.requiredSize(48.dp),
