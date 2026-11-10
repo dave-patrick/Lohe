@@ -76,7 +76,7 @@ class SubscriptionsViewModel(
 
     fun markPodcastsPlayed(podcastUuids: Set<String>) = viewModelScope.launch {
         val targetEpisodes = allEpisodes.value.filter { it.podcastUuid in podcastUuids }
-        targetEpisodes.forEach { repository.markPlayed(it.uuid) }
+        repository.markPlayedBatch(targetEpisodes.map { it.uuid })
     }
 
     /**
@@ -89,7 +89,7 @@ class SubscriptionsViewModel(
      */
     fun unmarkPodcastsPlayed(podcastUuids: Set<String>) = viewModelScope.launch {
         val targetEpisodes = allEpisodes.value.filter { it.podcastUuid in podcastUuids }
-        targetEpisodes.forEach { repository.reopenEpisode(it.uuid) }
+        repository.reopenEpisodeBatch(targetEpisodes.map { it.uuid })
     }
 
     /** Delete every episode backed by a local content:// URI. */

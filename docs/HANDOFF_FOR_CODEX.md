@@ -38,7 +38,8 @@ Built: 2026-11-09 with
 - Device/UI tests NOT run (no adb). App never launched.
 
 ## Known gaps / follow-ups
-- PrivacyPolicyDialog and BugReportOverlay dialog still stock AlertDialog.
-- Brand blue #008EFF still used as text outside HomeScreen.
-- QueueRow play button contentDescription is "Now playing" (pre-existing bug).
+- PrivacyPolicyDialog migrated to LoheDialog in the house style; BugReportOverlay dev dialog remains.
+- Brand blue text outside HomeScreen in QueueRow and PlaylistsScreen migrated to MaterialTheme.colorScheme.primary (preserves ElectricBlue in dark mode and high-contrast accessible blue in light mode).
+- QueueRow play button contentDescription fixed to "Play" (was "Now playing").
+- Play Store compliance: FloatingPlaybackService specifies FOREGROUND_SERVICE_TYPE_SPECIAL_USE on API 34+; Play Store feature graphic (1024x500) generated.
 - Dynamic color / follow-system theme and WindowSizeClass adaptivity not started.

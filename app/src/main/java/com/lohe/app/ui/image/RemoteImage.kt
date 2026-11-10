@@ -48,6 +48,7 @@ fun RemoteImage(
 ) {
     val loader = remember { ServiceLocator.artworkLoader() }
     var bitmap by remember(url) { mutableStateOf(loader.cached(url.orEmpty())) }
+    val isPreCached = remember(url) { bitmap != null }
 
     LaunchedEffect(url) {
         val target = url?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -95,7 +96,7 @@ fun RemoteImage(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(fade),
+                    .alpha(if (isPreCached) 1f else fade),
             )
         }
     }

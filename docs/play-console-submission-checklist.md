@@ -4,7 +4,7 @@ Updated November 1, 2026. This is a phone/tablet submission plan, not a claim of
 
 ## Build and distribution decision
 
-- Production package `com.lohe.app`, release `0.10.3`, release-only versionCode `1003`; build ID is separate in artifact names and About.
+- Production package `com.lohe.app`, release `0.11.1`, release-only versionCode `1101`; build ID is separate in artifact names and About.
 - Use `-PlohePlayStore=true`. That profile omits unverified car declarations. Ordinary Release and private Debug retain the car implementation. Do not opt the first Play submission into Android Auto or Automotive.
 - `smokeRelease` is minified and non-debuggable, signed with the release key, with isolated package `com.lohe.app.releaseaudit`. It is for local device testing only.
 - CI builds an explicitly **unsigned** Play AAB without signing credentials and retains its R8 mapping. No private Debug APK is uploaded. An unsigned CI artifact is not upload-ready.
@@ -16,14 +16,14 @@ Updated November 1, 2026. This is a phone/tablet submission plan, not a claim of
 - [ ] Confirm legal developer identity, public developer name and region-specific trader disclosures. The app/policy identify Lohe and Atomic 22 Industries.
 - [ ] Create the app: default language, app rather than game, name and free/paid choice. Music & Audio is the proposed category; owner confirms pricing, countries and tags.
 - [ ] Confirm `com.lohe.app` is available or belongs to the account. Package identity becomes permanent.
-- [ ] Check highest versionCode uploaded in every track: `1003` must exceed it. Another source set cannot reuse this code after upload; request the next semantic release under this repo's versioning convention.
+- [ ] Check highest versionCode uploaded in every track: `1101` must exceed it. Another source set cannot reuse this code after upload; request the next semantic release under this repo's versioning convention.
 
 ## 2. Store listing
 
 - [ ] Name (30 characters maximum), short description (80), full description (4,000), category/tags, languages/translations. Draft copy: `play-store-listing.md`.
 - [ ] Support email **atomic22industries@gmail.com** (owner supplied), website/phone where appropriate or required.
 - [x] Privacy URL: `https://dave-patrick.github.io/Lohe/privacy/`. Published with the user's GitHub publication request and verified November 1, 2026: public HTTPS 200, no login or editing access, HTML policy with the supplied contact address.
-- [ ] Upload an actual **512 × 512** store icon, **1024 × 500** feature graphic and at least two genuine phone screenshots meeting current Console image/format requirements. Launcher density icons are not automatically store icons. Do not expose personal library data or claim car functionality; add tablet assets only for form factors claimed. Confirm promotional image/content rights.
+- [ ] Store visual assets: **512 × 512** store icon (`docs/assets/lohe-mark.png`), compliant **1024 × 500** feature graphic generated (`docs/assets/feature-graphic.png` via `tools/generate-feature-graphic.ps1`), and at least two genuine phone screenshots meeting current Console image/format requirements. Launcher density icons are not automatically store icons. Do not expose personal library data or claim car functionality; add tablet assets only for form factors claimed. Confirm promotional image/content rights.
 - [ ] Release name and localized release notes; no Google endorsement or unverified feature claims.
 
 Source: [preview asset requirements](https://support.google.com/googleplay/android-developer/answer/9866151?hl=en).

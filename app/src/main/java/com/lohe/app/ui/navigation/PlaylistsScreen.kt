@@ -884,7 +884,32 @@ fun PlaylistsScreen(
                     Triple(DOWNLOADED_ID, "Downloaded", playlistSettings.showDownloadedSmartPlaylist),
                     Triple(NEW_RELEASES_ID, "New Releases", playlistSettings.showNewReleasesSmartPlaylist),
                 )
-                AlertDialog(
+                LoheDialog(
+                    onDismiss = { smartPlaylistDialogOpen = false },
+                    title = "Smart playlists",
+                    icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                    confirmLabel = "Done",
+                    onConfirm = { smartPlaylistDialogOpen = false },
+                    dismissLabel = null,
+                    body = {
+                        smartPlaylists.forEach { (id, name, visible) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(name, modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = visible,
+                                    onCheckedChange = { enabled ->
+                                        playlistScope.launch { settingsStore.setSmartPlaylistVisibility(id, enabled) }
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+                if (false) AlertDialog(
                     onDismissRequest = { smartPlaylistDialogOpen = false },
                     title = { Text("Smart playlists") },
                     text = {
@@ -1450,7 +1475,38 @@ private fun FollowShowsDialog(
     onSave: (Set<String>) -> Unit,
 ) {
     var selected by remember(playlist.id) { mutableStateOf(playlist.shows.toSet()) }
-    AlertDialog(
+    LoheDialog(
+        onDismiss = onDismiss,
+        title = "Choose shows",
+        icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+        confirmLabel = "Save",
+        onConfirm = { onSave(selected) },
+        dismissLabel = "Cancel",
+        body = {
+            LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                itemsIndexed(shows, key = { _, show -> show.uuid }) { _, show ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selected = if (show.uuid in selected) selected - show.uuid else selected + show.uuid
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = show.uuid in selected,
+                            onCheckedChange = { checked ->
+                                selected = if (checked) selected + show.uuid else selected - show.uuid
+                            },
+                        )
+                        Text(show.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        },
+    )
+    // Legacy AlertDialog replaced by LoheDialog above.
+    if (false) AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose shows") },
         text = {

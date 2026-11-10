@@ -55,7 +55,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Button
@@ -202,7 +202,7 @@ fun PodcastsScreen(
     val availableFolders = remember(podcastFolders) {
         podcastFolders.values.filter { it.isNotBlank() }.distinct().sorted()
     }
-    if (selectedPlaylistId != ALL_PODCASTS && userPlaylists.none { it.id == selectedPlaylistId }) {
+    if (selectedPlaylistId != ALL_PODCASTS && userPlaylists.isNotEmpty() && userPlaylists.none { it.id == selectedPlaylistId }) {
         selectedPlaylistId = ALL_PODCASTS
     }
 
@@ -321,7 +321,25 @@ fun PodcastsScreen(
     }
 
     if (showSearchDialog) {
-        AlertDialog(
+        LoheDialog(
+            onDismiss = { showSearchDialog = false },
+            title = stringResource(R.string.podcasts_search_label),
+            icon = Icons.Filled.Search,
+            confirmLabel = "Done",
+            onConfirm = { showSearchDialog = false },
+            dismissLabel = "Clear",
+            onDismissAction = { viewModel.onSearchQueryChanged(""); showSearchDialog = false },
+            body = {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.podcasts_search_label)) },
+                )
+            },
+        )
+        if (false) AlertDialog(
             onDismissRequest = { showSearchDialog = false },
             title = { Text(stringResource(R.string.podcasts_search_label)) },
             text = {
@@ -1203,7 +1221,7 @@ fun PodcastsScreen(
                                 }
                             }
                         }
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             },

@@ -55,7 +55,7 @@ data class ResolvedPlaylist(
     val pinned: Boolean = false,
 ) {
     val totalSeconds: Long
-        get() = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
+        = entries.sumOf { (it.episode.durationSeconds ?: 0).toLong() }
 }
 
 /** Where a batch of episodes lands when it is added to Up Next. */
@@ -212,7 +212,7 @@ class QueueViewModel(
             }
         }
         viewModelScope.launch {
-            repository.allEpisodesNow().let { episodes ->
+            if (playlistRepository.playlists.value.any { it.episodeUuids.isNotEmpty() }) repository.allEpisodesNow().let { episodes ->
                 val playedUuids = episodes
                     .filter { it.isPlayed }
                     .mapTo(mutableSetOf()) { it.uuid }
@@ -278,8 +278,8 @@ class QueueViewModel(
         // Archived episodes leave active library counts. Keep archived rows
         // with real listening time in the signal totals, though, so the 24-hour
         // archive policy cannot erase listening progress from the dashboard.
-        val activeEpisodes = allEpisodes.filter { !it.isDeleted && !it.isArchived }
-        val liveUuids = allEpisodes.mapTo(mutableSetOf()) { it.uuid }
+        var activeCount = 0
+        val liveUuids = if (history.isNotEmpty()) allEpisodes.mapTo(mutableSetOf()) { it.uuid } else emptySet()
         var totalRemaining = 0L
         var totalPlayed = 0L
         var totalDuration = 0L
@@ -301,7 +301,7 @@ class QueueViewModel(
             if (!ep.isArchived) {
                 if (ep.isPlayed) playedCount++
                 if (!ep.isDeleted) {
-                    if (ep.isDownloaded) downloaded++
+                    activeCount++; if (ep.isDownloaded) downloaded++
                     if (ep.isInProgress) inProgressCount++
                 }
             }
@@ -339,6 +339,7 @@ class QueueViewModel(
             totalPlayed += entry.listenedSeconds.coerceIn(0L, dur.coerceAtLeast(entry.listenedSeconds))
         }
 
+        val (rankedShowActivity, rankedMostListened) = rankShows(allEpisodes, shows)
         HomeDashboardStats(
             isLoaded = true,
             subscriptionCount = shows.size,
@@ -352,7 +353,7 @@ class QueueViewModel(
                 "Downloaded" to settings.showDownloadedSmartPlaylist,
                 "New Releases" to settings.showNewReleasesSmartPlaylist,
             ).count { it.second },
-            totalEpisodes = activeEpisodes.size,
+            totalEpisodes = activeCount,
             downloadedCount = downloaded,
             playedEpisodesCount = playedCount,
             inProgressCount = inProgressCount,
@@ -363,8 +364,8 @@ class QueueViewModel(
             // Archived episodes stay out of library counts, but their recorded
             // listening still belongs in the activity chart.
             dailyActivityMinutes = dailyActivityMinutes(allEpisodes),
-            showActivity = showActivity(allEpisodes, shows),
-            mostListenedShows = mostListenedShows(allEpisodes, shows),
+            showActivity = rankedShowActivity,
+            mostListenedShows = rankedMostListened,
         )
     }
         // Whole-library maths: keep it off the main thread, and skip redraws
@@ -384,13 +385,16 @@ class QueueViewModel(
         if (episodes.isEmpty()) return emptyList()
 
         val zone = ZoneId.systemDefault()
-        val todayEpochDay = LocalDate.now(zone).toEpochDay()
+        val todayDate = LocalDate.now(zone)
+        val todayEpochDay = todayDate.toEpochDay()
+        val minEpochMillis = todayDate.minusDays(ACTIVITY_DAYS.toLong() + 1).atStartOfDay(zone).toInstant().toEpochMilli()
         val buckets = IntArray(ACTIVITY_DAYS)
 
         episodes.forEach { ep ->
             if (!ep.isPlayed && ep.listenedSeconds <= 0L) return@forEach
             val playedAt = (if (ep.isPlayed) ep.playedAt ?: ep.lastPlayedAt else ep.lastPlayedAt)
                 ?: return@forEach
+            if (playedAt < minEpochMillis) return@forEach
             val playedDate = Instant.ofEpochMilli(playedAt).atZone(zone).toLocalDate()
             val dayIndex = (todayEpochDay - playedDate.toEpochDay()).toInt()
             if (dayIndex !in 0 until ACTIVITY_DAYS) return@forEach
@@ -454,7 +458,8 @@ class QueueViewModel(
             if (ep.isPlayed) listened[title] = (listened[title] ?: 0) + 1
         }
 
-        fun art(title: String) = shows.firstOrNull { it.title == title }?.artworkUrl
+        val artByTitle = mutableMapOf<String, String?>().apply { shows.forEach { putIfAbsent(it.title, it.artworkUrl) } }
+        fun art(title: String) = artByTitle[title]
 
         val byEpisodes = counts.entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
@@ -517,7 +522,7 @@ class QueueViewModel(
     fun dequeue(uuid: String) = viewModelScope.launch { repository.dequeue(uuid) }
 
     fun dequeueBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.dequeue(it) }
+        repository.dequeueBatch(uuids)
     }
 
     fun promote(uuid: String) = viewModelScope.launch { repository.promote(uuid) }
@@ -646,6 +651,12 @@ class QueueViewModel(
         val (archiveKeepHours, now) = archiveClock
         val epMap = allEpisodes.associateBy { it.uuid }
         val showMap = shows.associateBy { it.uuid }
+        var isSortedDesc = true
+        for (i in 1 until allEpisodes.size) {
+            if (allEpisodes[i - 1].published < allEpisodes[i].published) { isSortedDesc = false; break }
+        }
+        fun List<EpisodeSummary>.ensureSortedDesc(): List<EpisodeSummary> =
+            if (isSortedDesc) this else sortedByDescending { it.published }
 
         fun resolve(ep: EpisodeSummary): QueueEntry {
             val show = showMap[ep.podcastUuid]
@@ -668,6 +679,7 @@ class QueueViewModel(
             val minSeconds = pl.minDurationMinutes * 60L
             val maxSeconds = if (pl.maxDurationMinutes > 0) pl.maxDurationMinutes * 60L else Long.MAX_VALUE
             val followed = pl.shows.toSet()
+            val excluded = pl.excludedUuids.toSet()
 
             // A length rule on its own collects from every show; on a
             // playlist that follows shows it narrows what counts.
@@ -680,7 +692,7 @@ class QueueViewModel(
             val finishedFilter = if (pl.finished) { ep: com.lohe.app.data.db.entity.EpisodeSummary -> ep.isPlayed } else { ep: com.lohe.app.data.db.entity.EpisodeSummary -> !ep.isPlayed }
 
             val resolvedEntries = if (pl.assignedPodcastUuids.isNotEmpty()) {
-                pl.resolveAssignedEpisodes(allEpisodes).map(::resolve)
+                pl.resolveAssignedEpisodes(allEpisodes, epMap).map(::resolve)
             } else if (pl.snapshot) {
                 pl.resolveExplicitEpisodes(epMap).map(::resolve)
             } else if (followed.isNotEmpty()) {
@@ -690,20 +702,20 @@ class QueueViewModel(
                 allEpisodes
                     .filter { ep ->
                         ep.podcastUuid in followed && !ep.isDeleted && !ep.isArchived &&
-                            ep.uuid !in pl.excludedUuids &&
+                            ep.uuid !in excluded &&
                             finishedFilter(ep) && fitsLength(ep)
                     }
-                    .sortedByDescending { it.published }
+                    .ensureSortedDesc()
                     .map(::resolve)
             } else if (hasLengthRule) {
                 // Length playlists collect short (or long) episodes from every
                 // show, so new ones land in the list on their own.
                 allEpisodes
                     .filter { ep ->
-                        !ep.isDeleted && !ep.isArchived && ep.uuid !in pl.excludedUuids &&
+                        !ep.isDeleted && !ep.isArchived && ep.uuid !in excluded &&
                             finishedFilter(ep) && fitsLength(ep)
                     }
-                    .sortedByDescending { it.published }
+                    .ensureSortedDesc()
                     .map(::resolve)
             } else if (pl.folder.isNotBlank()) {
                 // A playlist tied to a folder follows it. Putting a show in
@@ -716,9 +728,9 @@ class QueueViewModel(
                 allEpisodes
                     .filter {
                         it.podcastUuid in inFolder && !it.isDeleted && !it.isArchived &&
-                            it.uuid !in pl.excludedUuids && finishedFilter(it)
+                            it.uuid !in excluded && finishedFilter(it)
                     }
-                    .sortedByDescending { it.published }
+                    .ensureSortedDesc()
                     .map(::resolve)
             } else {
                 pl.resolveExplicitEpisodes(epMap).map(::resolve)
@@ -759,7 +771,7 @@ class QueueViewModel(
             ResolvedPlaylist(
                 id = id,
                 name = name,
-                entries = episodes.sortedByDescending { it.published }.map(::resolve),
+                entries = episodes.ensureSortedDesc().map(::resolve),
                 autoDownload = false,
                 system = true,
             )
@@ -850,7 +862,8 @@ class QueueViewModel(
 
     /** Marks a batch of episodes as listened to. */
     fun markPlayedBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.markPlayed(it) }
+        repository.markPlayedBatch(uuids)
+        playlistRepository.removeEpisodesFromAll(uuids)
     }
 
     /**
@@ -861,12 +874,12 @@ class QueueViewModel(
      * rather than stored.
      */
     fun markUnplayedBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.reopenEpisode(it) }
+        repository.reopenEpisodeBatch(uuids)
     }
 
     /** Takes a batch of episodes out of a playlist. */
     fun removeEpisodesFromPlaylist(playlistId: String, uuids: Collection<String>) {
-        uuids.forEach { playlistRepository.removeEpisode(playlistId, it) }
+        playlistRepository.removeEpisodes(playlistId, uuids)
     }
 
     fun moveEpisodeInPlaylist(playlistId: String, episodeUuid: String, delta: Int) =

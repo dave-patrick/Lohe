@@ -163,8 +163,7 @@ private fun BottomBarItem(
             text = destination.label,
             style = MaterialTheme.typography.labelMedium,
             color = tint,
-            minLines = 2,
-            maxLines = 2,
+            maxLines = 1,
             textAlign = TextAlign.Center,
         )
 
@@ -195,4 +194,4 @@ data class BottomDestination(
     val icon: ImageVector,
 )
 
-private val BarHeight = 78.dp
+private val BarHeight = 62.dp

@@ -135,6 +135,8 @@ class SubscriptionRepository internal constructor(
     }
 
     suspend fun dequeue(uuid: String) = episodes.dequeue(uuid)
+    suspend fun dequeueBatch(uuids: Collection<String>) { if (uuids.isNotEmpty()) transaction { uuids.forEach { episodes.dequeue(it) } } }
+    suspend fun enqueueBatch(uuids: Collection<String>, toTop: Boolean = false) { if (uuids.isNotEmpty()) transaction { uuids.forEach { episodes.enqueue(it) }; if (toTop) episodes.promoteBatchInQueue(uuids.toList()) } }
 
     /** A single episode, looked up by uuid. */
     suspend fun episodeOnce(uuid: String): EpisodeEntity? = episodes.get(uuid)
@@ -142,7 +144,7 @@ class SubscriptionRepository internal constructor(
 
     /** Several episodes by uuid, in the order asked for. */
     suspend fun episodesOnce(uuids: Collection<String>): List<EpisodeEntity> =
-        uuids.mapNotNull { episodes.get(it) }
+        if (uuids.isEmpty()) emptyList() else if (uuids.size == 1) listOfNotNull(episodes.get(uuids.first())) else uuids.distinct().chunked(900).flatMap { episodes.getMany(it) }.associateBy { it.uuid }.let { map -> uuids.mapNotNull { map[it] } }
 
     /** Moves a queued episode to the front of the queue. */
     suspend fun promote(uuid: String) = episodes.promoteInQueue(uuid)
@@ -174,7 +176,7 @@ class SubscriptionRepository internal constructor(
 
     /** Empties the entire Up Next queue. */
     suspend fun clearAllQueue() {
-        episodes.queueSnapshot().forEach { episodes.dequeue(it.uuid) }
+        transaction { episodes.queueSnapshot().forEach { episodes.dequeue(it.uuid) } }
     }
 
     /** Drops everything from [uuid] onwards — "played up to here". */
@@ -239,6 +241,9 @@ class SubscriptionRepository internal constructor(
 
     /** Undo [markPlayed]: back to unplayed, restarting from the beginning. */
     suspend fun reopenEpisode(uuid: String) = episodes.reopenEpisode(uuid)
+    suspend fun markPlayedBatch(uuids: Collection<String>) { if (uuids.isNotEmpty()) { transaction { uuids.forEach { episodes.markPlayedAndClearProgress(it) } }; uuids.forEach { onPlayed(it) } } }
+    suspend fun reopenEpisodeBatch(uuids: Collection<String>) { if (uuids.isNotEmpty()) transaction { uuids.forEach { episodes.reopenEpisode(it) } } }
+    suspend fun deleteEpisodeBatch(uuids: Collection<String>) { val existing = episodesOnce(uuids); if (existing.isNotEmpty()) episodes.upsertAll(existing.map { it.copy(isDeleted = true, queuePosition = null) }) }
 
     /** Soft-deletes [uuid] from the episode list and removes it from the queue. */
     suspend fun deleteEpisode(uuid: String) {

@@ -38,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import com.lohe.app.ui.theme.LoheDialog
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -121,7 +124,21 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
         Text(if (batteryUnrestricted) "Battery optimization is off" else "Battery optimization setup")
     }
 
-    if (batteryPrompt) AlertDialog(
+    if (batteryPrompt) LoheDialog(
+        onDismiss = { batteryPrompt = false },
+        title = "Keep floating controls available",
+        icon = Icons.Filled.BatteryChargingFull,
+        confirmLabel = "Open battery settings",
+        onConfirm = {
+            batteryPrompt = false
+            runCatching { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                .onFailure { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
+        },
+        dismissLabel = "Not now",
+        onDismissAction = { batteryPrompt = false },
+        body = { Text("Android may stop floating controls to save power. In battery settings, select All apps, find Lohe, and choose Don't optimize or Unrestricted. This is optional and may use more battery.") },
+    )
+    if (false) AlertDialog(
         onDismissRequest = { batteryPrompt = false },
         title = { Text("Keep floating controls available") },
         text = { Text("Android may stop floating controls to save power. In battery settings, select All apps, find Lohe, and choose Don't optimize or Unrestricted. This is optional and may use more battery.") },

@@ -22,6 +22,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import com.lohe.app.ui.theme.LoheDialog
 import com.lohe.app.ui.theme.SettingsStore
 import kotlinx.coroutines.launch
 
@@ -83,7 +87,49 @@ internal fun rememberFloatingPlayerPermissionFlow(
         else message("Display over other apps was not granted. Floating controls remain off.")
     }
 
-    if (overlayPrompt) AlertDialog(
+    if (overlayPrompt) LoheDialog(
+        onDismiss = { overlayPrompt = false },
+        title = "Show controls over other apps?",
+        icon = Icons.Filled.PictureInPictureAlt,
+        confirmLabel = "Open permission settings",
+        onConfirm = {
+            overlayPrompt = false
+            runCatching { overlay.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName))) }
+                .onFailure { message("Open Android Settings → Apps → Special access → Display over other apps → Lohe.") }
+        },
+        dismissLabel = "Not now",
+        onDismissAction = { overlayPrompt = false },
+        body = { Text("Allow Lohe under Display over other apps to show draggable playback buttons. Lohe does not read or control other apps. This is optional; you can keep listening without floating controls.") },
+    )
+    if (notificationPrompt) LoheDialog(
+        onDismiss = {
+            notificationPrompt = false
+            preferences.edit().putBoolean("notification-prompt-handled", true).apply()
+            message("Notifications remain off. You can hide floating controls in Lohe's Floating player settings.")
+            finishEnable()
+        },
+        title = "Allow floating-player notifications?",
+        icon = Icons.Filled.Notifications,
+        confirmLabel = "Allow notifications",
+        onConfirm = {
+            notificationPrompt = false
+            preferences.edit().putBoolean("notification-prompt-handled", true).apply()
+            runCatching { notifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                .onFailure {
+                    message("Notifications remain off. You can enable them in Android notification settings.")
+                    finishEnable()
+                }
+        },
+        dismissLabel = "Not now",
+        onDismissAction = {
+            notificationPrompt = false
+            preferences.edit().putBoolean("notification-prompt-handled", true).apply()
+            message("Notifications remain off. You can hide floating controls in Lohe's Floating player settings.")
+            finishEnable()
+        },
+        body = { Text("The optional ongoing notification lets you hide floating controls without stopping your audio. Android may hide it if notifications are off. You can still listen and use floating controls without allowing notifications.") },
+    )
+    if (false) AlertDialog(
         onDismissRequest = { overlayPrompt = false },
         title = { Text("Show controls over other apps?") },
         text = { Text("Allow Lohe under Display over other apps to show draggable playback buttons. Lohe does not read or control other apps. This is optional; you can keep listening without floating controls.") },

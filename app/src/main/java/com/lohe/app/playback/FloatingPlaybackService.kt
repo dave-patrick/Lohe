@@ -147,7 +147,11 @@ class FloatingPlaybackService : Service() {
             .addAction(Notification.Action.Builder(null, "Hide controls", hide).build())
             .setOngoing(true)
             .build()
-        startForeground(4820, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(4820, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(4820, notification)
+        }
         true
     } catch (failure: RuntimeException) {
         android.util.Log.e("FloatingPlayer", "Could not start in the foreground", failure)

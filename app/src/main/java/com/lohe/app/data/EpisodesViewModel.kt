@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -85,7 +88,7 @@ class EpisodesViewModel(
                 all
             }
             EpisodeFilter.apply(resolved, filter, order, query)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        }.flowOn(Dispatchers.Default).distinctUntilChanged().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setFilter(value: EpisodeFilter.Filter) {
         _filter.value = value
@@ -137,15 +140,15 @@ class EpisodesViewModel(
     }
 
     fun markPlayedBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.markPlayed(it) }
+        repository.markPlayedBatch(uuids)
     }
 
     fun markUnplayedBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.reopenEpisode(it) }
+        repository.reopenEpisodeBatch(uuids)
     }
 
     fun deleteBatch(uuids: Collection<String>) = viewModelScope.launch {
-        uuids.forEach { repository.deleteEpisode(it) }
+        repository.deleteEpisodeBatch(uuids)
     }
 }
 

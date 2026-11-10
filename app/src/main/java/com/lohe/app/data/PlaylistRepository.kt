@@ -56,9 +56,9 @@ data class UserPlaylist(
         }
 
     /** Explicit entries first, followed by the current library of assigned podcasts. */
-    fun resolveAssignedEpisodes(episodes: List<EpisodeSummary>): List<EpisodeSummary> {
+    fun resolveAssignedEpisodes(episodes: List<EpisodeSummary>, episodeMap: Map<String, EpisodeSummary>? = null): List<EpisodeSummary> {
         val excluded = excludedUuids.toSet()
-        val explicit = resolveExplicitEpisodes(episodes.associateBy { it.uuid })
+        val explicit = resolveExplicitEpisodes(episodeMap ?: episodes.associateBy { it.uuid })
             .filter { !it.isDeleted && it.uuid !in excluded }
         val assigned = assignedPodcastUuids.toSet()
         val automatic = episodes.asSequence()
@@ -343,7 +343,33 @@ class PlaylistRepository(
         }
     }
 
-    fun removeEpisode(playlistId: String, episodeUuid: String) {
+    fun removeEpisode(playlistId: String, episodeUuid: String) = removeEpisodes(playlistId, listOf(episodeUuid))
+
+    fun removeEpisodes(playlistId: String, episodeUuids: Collection<String>) {
+        if (episodeUuids.isEmpty()) return
+        val targets = episodeUuids.toSet()
+        synchronized(lock) {
+            val next = _playlists.value.map { pl ->
+                if (pl.id != playlistId) {
+                    pl
+                } else {
+                    val dynamic = pl.assignedPodcastUuids.isNotEmpty() || (!pl.snapshot && (
+                        pl.shows.isNotEmpty() || pl.folder.isNotBlank() ||
+                            pl.minDurationMinutes > 0 || pl.maxDurationMinutes > 0
+                        ))
+                    pl.copy(
+                        episodeUuids = pl.episodeUuids.filterNot { it in targets },
+                        excludedUuids = if (dynamic) (pl.excludedUuids + targets).distinct()
+                            else pl.excludedUuids,
+                    )
+                }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    fun removeEpisodeSingleLegacy(playlistId: String, episodeUuid: String) {
         synchronized(lock) {
             val next = _playlists.value.map { pl ->
                 if (pl.id != playlistId) {
@@ -366,7 +392,23 @@ class PlaylistRepository(
     }
 
     /** Removes an explicit entry during automatic cleanup without creating an exclusion. */
-    fun removeExplicitEpisode(playlistId: String, episodeUuid: String) {
+    fun removeExplicitEpisode(playlistId: String, episodeUuid: String) = removeExplicitEpisodes(playlistId, listOf(episodeUuid))
+
+    fun removeExplicitEpisodes(playlistId: String, episodeUuids: Collection<String>) {
+        if (episodeUuids.isEmpty()) return
+        val targets = episodeUuids.toSet()
+        synchronized(lock) {
+            val current = _playlists.value
+            if (current.none { it.id == playlistId && it.episodeUuids.any { id -> id in targets } }) return
+            val next = current.map { pl ->
+                if (pl.id == playlistId) pl.copy(episodeUuids = pl.episodeUuids.filterNot { it in targets }) else pl
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    fun removeExplicitEpisodeSingleLegacy(playlistId: String, episodeUuid: String) {
         synchronized(lock) {
             val current = _playlists.value
             if (current.none { it.id == playlistId && episodeUuid in it.episodeUuids }) return
@@ -384,7 +426,27 @@ class PlaylistRepository(
      * Used when an episode is marked listened: it leaves the playlists it was
      * added to and shows up in the Played list instead.
      */
-    fun removeEpisodeFromAll(episodeUuid: String) {
+    fun removeEpisodeFromAll(episodeUuid: String) = removeEpisodesFromAll(listOf(episodeUuid))
+
+    fun removeEpisodesFromAll(episodeUuids: Collection<String>) {
+        if (episodeUuids.isEmpty()) return
+        val targets = episodeUuids.toSet()
+        synchronized(lock) {
+            val current = _playlists.value
+            if (current.none { pl -> pl.episodeUuids.any { it in targets } }) return
+            val next = current.map { pl ->
+                if (pl.episodeUuids.any { it in targets }) {
+                    pl.copy(episodeUuids = pl.episodeUuids.filterNot { it in targets })
+                } else {
+                    pl
+                }
+            }
+            _playlists.value = next
+            saveToDisk(next)
+        }
+    }
+
+    fun removeEpisodeFromAllSingleLegacy(episodeUuid: String) {
         synchronized(lock) {
             val current = _playlists.value
             if (current.none { pl -> episodeUuid in pl.episodeUuids }) return

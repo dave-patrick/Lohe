@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.lohe.app.ui.theme.LoheDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -143,7 +144,82 @@ fun BugReportOverlay(
         }
 
         if (dialogOpen) {
-            AlertDialog(
+            LoheDialog(
+                onDismiss = {
+                    if (!submitting) {
+                        dialogOpen = false
+                        note = ""
+                    }
+                },
+                title = "Submit Bug Report (Dev)",
+                icon = Icons.Filled.BugReport,
+                confirmLabel = if (submitting) "Saving…" else "Submit Report",
+                confirmEnabled = !submitting,
+                onConfirm = {
+                    submitting = true
+                    scope.launch {
+                        val reportId = DevDiagnostics.submitBugReport(
+                            context = context,
+                            userNote = note.trim(),
+                            screenshot = capturedBitmap,
+                        )
+                        submitting = false
+                        dialogOpen = false
+                        note = ""
+                        Toast.makeText(
+                            context,
+                            "Bug report submitted: $reportId",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                dismissLabel = "Cancel",
+                onDismissAction = {
+                    if (!submitting) {
+                        dialogOpen = false
+                        note = ""
+                    }
+                },
+                body = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "Route: ${DevDiagnostics.currentRoute}\nCaptures screenshot, app event log, DB summary, and logcat.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        capturedBitmap?.let { bmp ->
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = "Captured screenshot preview",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .clip(MaterialTheme.shapes.small)
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant,
+                                        MaterialTheme.shapes.small,
+                                    ),
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = note,
+                            onValueChange = { note = it },
+                            label = { Text("What happened? (optional)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            maxLines = 4,
+                        )
+                    }
+                },
+            )
+            if (false) AlertDialog(
                 onDismissRequest = {
                     if (!submitting) {
                         dialogOpen = false
