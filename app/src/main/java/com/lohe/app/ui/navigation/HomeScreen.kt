@@ -1135,7 +1135,7 @@ private fun ContinueCard(
             IconButton(onClick = onPlay) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = stringResource(R.string.player_now_playing),
+                    contentDescription = "Play",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }

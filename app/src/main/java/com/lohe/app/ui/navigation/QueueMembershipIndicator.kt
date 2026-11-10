@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.QueueIndicatorColor
 import com.lohe.app.ui.theme.QueueIndicatorSettings
 import com.lohe.app.ui.theme.QueueIndicatorStyle
@@ -34,7 +33,7 @@ fun QueueMembershipIndicator(
     if (!isQueued || !settings.enabled) return
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val color = when (settings.color) {
-        QueueIndicatorColor.BLUE -> ElectricBlue
+        QueueIndicatorColor.BLUE -> MaterialTheme.colorScheme.primary
         QueueIndicatorColor.TEAL -> if (dark) Color(0xFF2DD4BF) else Color(0xFF00796B)
         QueueIndicatorColor.AMBER -> if (dark) Color(0xFFFFC24B) else Color(0xFFA86000)
     }

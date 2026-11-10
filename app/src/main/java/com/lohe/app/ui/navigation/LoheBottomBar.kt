@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,7 +37,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.LoheAccent
 import com.lohe.app.ui.theme.backgroundIsLight
 
@@ -64,7 +62,7 @@ fun LoheBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val isLight = backgroundIsLight()
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -182,7 +180,7 @@ private fun BottomBarItem(
                     alpha = dotScale
                 }
                 .clip(MaterialTheme.shapes.extraSmall)
-                .background(ElectricBlue),
+                .background(MaterialTheme.colorScheme.primary),
         )
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Archive
@@ -63,7 +62,6 @@ import androidx.compose.ui.unit.dp
 import com.lohe.app.R
 import com.lohe.app.data.QueueEntry
 import com.lohe.app.ui.image.RemoteImage
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +96,8 @@ internal fun QueueRow(
     // One line, not four. The runtime, the date and where the episode is up
     // to come first and the show name last: a long show title would
     // otherwise push out the number the listener is actually reading.
-    val metaLine = remember(entry.showTitle, ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus, ep.published, ep.isArchived, now) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val metaLine = remember(entry.showTitle, ep.playedUpToSeconds, ep.durationSeconds, ep.playingStatus, ep.published, ep.isArchived, now, primaryColor) {
         val state = EpisodeMeta.line(ep, now)
         val show = entry.showTitle.trim()
         val base = when {
@@ -111,7 +110,7 @@ internal fun QueueRow(
             val stateStart = length
             append(base)
             val runtime = EpisodeMeta.duration(ep.durationSeconds)
-            val durationStyle = SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)
+            val durationStyle = SpanStyle(color = primaryColor, fontWeight = FontWeight.Bold)
             if (runtime.isNotEmpty() && state.endsWith(runtime)) {
                 addStyle(durationStyle, stateStart + state.length - runtime.length, stateStart + state.length)
             }
@@ -303,7 +302,7 @@ internal fun QueueRow(
             modifier = Modifier.fillMaxWidth().then(if (playlistSelection) Modifier.semantics { selected = isSelected } else Modifier),
             contentPadding = 5.dp,
             accent = when {
-                isSelected -> ElectricBlue
+                isSelected -> MaterialTheme.colorScheme.primary
                 else -> null
             },
             onClick = onOpen ?: if (dragHandleAtStart && !inSelectionMode) null else onPlay,
@@ -356,11 +355,11 @@ internal fun QueueRow(
                         url = ep.artworkUrl,
                         contentDescription = null,
                         size = 30.dp,
-                        cornerRadius = 9.dp,
+                        cornerRadius = 8.dp,
                         modifier = Modifier
                             .size(30.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(9.dp)),
+                            .clip(MaterialTheme.shapes.small)
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), MaterialTheme.shapes.small),
                     )
 
                     Column(modifier = Modifier.weight(1f)) {
@@ -397,8 +396,8 @@ internal fun QueueRow(
                             // a rule drawn across the card.
                             LinearProgressIndicator(
                                 progress = { playedFraction },
-                                color = ElectricBlue,
-                                trackColor = ElectricBlue.copy(alpha = 0.16f),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                                 modifier = Modifier
                                     .padding(top = 4.dp)
                                     .fillMaxWidth()
@@ -426,7 +425,7 @@ internal fun QueueRow(
                     if (!playlistSelection) TouchTargetIconButton(onClick = onPlay, layoutSize = 30.dp) {
                         Icon(
                             imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(R.string.player_now_playing),
+                            contentDescription = "Play",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp),
                         )

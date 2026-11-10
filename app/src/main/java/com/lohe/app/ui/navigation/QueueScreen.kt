@@ -65,7 +65,6 @@ import com.lohe.app.data.QueueViewModel
 import com.lohe.app.data.ResolvedPlaylist
 import com.lohe.app.ui.player.EpisodeNotesSheet
 import com.lohe.app.ui.formatDuration
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.LoheDialog
 
@@ -109,7 +108,7 @@ fun QueueScreen(
     ) {
         if (inSelectionMode) {
             GlassCard(
-                accent = ElectricBlue,
+                accent = MaterialTheme.colorScheme.primary,
                 contentPadding = 12.dp,
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
             ) {

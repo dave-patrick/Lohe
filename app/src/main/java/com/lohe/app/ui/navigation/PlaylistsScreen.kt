@@ -38,7 +38,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -312,7 +311,7 @@ fun PlaylistsScreen(
 
             if (playlistSelectionMode) {
                 GlassCard(
-                    accent = ElectricBlue,
+                    accent = MaterialTheme.colorScheme.primary,
                     contentPadding = 12.dp,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                 ) {
@@ -1441,7 +1440,7 @@ private fun PlaylistArtworkMosaic(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(MaterialTheme.shapes.medium)
             .background(
                 Brush.linearGradient(listOf(ElectricBlue.copy(alpha = 0.45f), ElectricCyan.copy(alpha = 0.25f))),
             ),
@@ -1533,7 +1532,7 @@ private fun PlaylistGridCard(
             )
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) {
                         append(playlist.entries.size.toString())
                     }
                     append(if (playlist.entries.size == 1) " episode" else " episodes")
@@ -1659,7 +1658,7 @@ private fun PlaylistListCard(
                 }
                 Text(
                     text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) {
                             append(playlist.entries.size.toString())
                         }
                         append(" ep · ${formatDuration(playlist.totalSeconds)}")

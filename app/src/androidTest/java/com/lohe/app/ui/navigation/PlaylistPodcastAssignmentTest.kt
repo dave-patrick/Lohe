@@ -87,7 +87,7 @@ class PlaylistPodcastAssignmentTest {
         assertEquals("Opening notes must not play", 0, played)
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         waitFor("Assign podcasts")
-        tap("Now playing")
+        tap("Play")
         waitForCondition("Explicit Play should still play") { played == 1 }
     }
 

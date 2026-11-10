@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lohe.app.BuildConfig
 import com.lohe.app.R
 import com.lohe.app.ui.theme.backgroundIsLight
@@ -153,8 +152,7 @@ fun AboutScreen(
 
             Text(
                 text = stringResource(R.string.about_tagline),
-                style = MaterialTheme.typography.bodyMedium,
-                fontSize = 18.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.fillMaxWidth(),

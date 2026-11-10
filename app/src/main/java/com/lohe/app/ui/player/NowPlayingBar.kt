@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
@@ -89,7 +88,8 @@ fun NowPlayingBar(
     val nextUpLabel = nextUpTitle?.takeIf { it.isNotBlank() && it != shownTitle }
 
     val isLight = backgroundIsLight()
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
+    val primaryColor = MaterialTheme.colorScheme.primary
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val currentOnSwipeUp = rememberUpdatedState(onSwipeUp)
     Box(
@@ -232,7 +232,7 @@ fun NowPlayingBar(
                 ) {
                     Icon(
                         imageVector = if (transport.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(R.string.player_now_playing),
+                        contentDescription = if (transport.isPlaying) "Pause" else "Play",
                         tint = Color.White,
                         modifier = Modifier.size(28.dp),
                     )
@@ -259,7 +259,7 @@ fun NowPlayingBar(
         ) {
             val barHeight = size.height
             drawRoundRect(
-                color = ElectricBlue,
+                color = primaryColor,
                 size = Size(size.width * shownProgress.coerceIn(0f, 1f), barHeight),
                 cornerRadius = CornerRadius(barHeight / 2f),
             )

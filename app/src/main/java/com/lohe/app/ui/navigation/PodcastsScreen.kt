@@ -113,7 +113,6 @@ import com.lohe.app.data.ServiceLocator
 import com.lohe.app.data.SubscriptionsViewModel
 import com.lohe.app.data.db.entity.PodcastEntity
 import com.lohe.app.ui.image.RemoteImage
-import com.lohe.app.ui.theme.ElectricBlue
 import com.lohe.app.ui.theme.GlassCard
 import com.lohe.app.ui.theme.GlassRow
 import com.lohe.app.ui.theme.LoheDialog
@@ -348,7 +347,7 @@ fun PodcastsScreen(
                 }
 
                 GlassCard(
-                    accent = ElectricBlue,
+                    accent = MaterialTheme.colorScheme.primary,
                     contentPadding = 12.dp,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                 ) {
@@ -670,7 +669,7 @@ fun PodcastsScreen(
                 val total = opmlState.total
                 val progress = if (total > 0) completed.toFloat() / total.toFloat() else 0f
                 GlassCard(
-                    accent = ElectricBlue,
+                    accent = MaterialTheme.colorScheme.primary,
                     contentPadding = 12.dp,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1452,7 +1451,7 @@ private fun PodcastCard(
     onUnsubscribe: () -> Unit,
 ) {
     GlassRow(
-        accent = if (isSelected) ElectricBlue else null,
+        accent = if (isSelected) MaterialTheme.colorScheme.primary else null,
         onClick = onClick,
         onLongClick = onLongClick,
         contentPadding = 8.dp,
@@ -1568,7 +1567,7 @@ private fun PodcastGridCard(
     onLongClick: () -> Unit,
 ) {
     GlassCard(
-        accent = if (isSelected) ElectricBlue else null,
+        accent = if (isSelected) MaterialTheme.colorScheme.primary else null,
         onClick = onClick,
         onLongClick = onLongClick,
         contentPadding = 8.dp,
@@ -1578,7 +1577,7 @@ private fun PodcastGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(12.dp)),
+                    .clip(MaterialTheme.shapes.medium),
             ) {
                 RemoteImage(
                     url = podcast.artworkUrl,
@@ -1641,8 +1640,6 @@ private fun PodcastGridCard(
             Text(
                 text = podcast.title,
                 style = MaterialTheme.typography.labelLarge,
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,

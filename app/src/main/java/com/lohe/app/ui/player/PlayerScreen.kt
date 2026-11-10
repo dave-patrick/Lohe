@@ -40,7 +40,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -605,8 +604,8 @@ private fun Scrubber(
                 dragging = false
             },
             colors = SliderDefaults.colors(
-                thumbColor = ElectricBlue,
-                activeTrackColor = ElectricBlue,
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
                 inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
             ),
         )
@@ -769,7 +768,7 @@ private fun TransportRow(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(R.string.player_now_playing),
+                        contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(34.dp),
                     )
@@ -877,8 +876,8 @@ private fun PlaybackSpeedSheet(
                     valueRange = 0.5f..3.0f,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
-                        thumbColor = ElectricBlue,
-                        activeTrackColor = ElectricBlue,
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
                     ),
                 )
 
