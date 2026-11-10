@@ -10,7 +10,7 @@ plugins {
 // custom build ID increases for each distinct build, even within one release.
 val loheReleaseVersion = "0.11.1"
 // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
-val loheBuildId = "2026.10.11.88"
+val loheBuildId = "2026.10.11.89"
 val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
@@ -166,6 +166,9 @@ implementation(libs.androidx.compose.foundation)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 /**

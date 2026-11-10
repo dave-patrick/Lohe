@@ -121,6 +121,7 @@ internal fun rememberFloatingPlayerPermissionFlow(
         dismissLabel = "Not now",
         body = { Text("The optional ongoing notification lets you hide floating controls without stopping your audio. Android may hide it if notifications are off. You can still listen and use floating controls without allowing notifications.") },
     )
+
     return {
         when (nextFloatingPlayerPermissionStep(Settings.canDrawOverlays(context), notificationsAllowed(),
             preferences.getBoolean("notification-prompt-handled", false))) {

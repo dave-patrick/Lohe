@@ -63,8 +63,8 @@ jobs:
       - name: Android lint
         run: ./gradlew -PlohePlayStore=true lintRelease --console=plain
 
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug --console=plain
+      - name: Assemble debug APK and instrumented tests
+        run: ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
 
       - name: Validate unsigned Play bundle build
         # Signing credentials are deliberately absent in this CI workflow.
