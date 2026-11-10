@@ -89,7 +89,7 @@ fun NowPlayingBar(
     val nextUpLabel = nextUpTitle?.takeIf { it.isNotBlank() && it != shownTitle }
 
     val isLight = backgroundIsLight()
-    val shape = RoundedCornerShape(36.dp)
+    val shape = RoundedCornerShape(16.dp)
     val swipeThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val currentOnSwipeUp = rememberUpdatedState(onSwipeUp)
     Box(

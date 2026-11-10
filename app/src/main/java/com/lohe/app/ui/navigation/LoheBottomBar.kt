@@ -64,7 +64,7 @@ fun LoheBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val isLight = backgroundIsLight()
-    val shape = RoundedCornerShape(32.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()

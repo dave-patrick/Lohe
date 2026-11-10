@@ -60,13 +60,18 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -752,125 +757,70 @@ fun PlaylistsScreen(
         } else {
             // --- Playlists Overview (Grid / List + Folders) ---
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 20.dp, bottom = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Playlists",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Spacer(Modifier.width(10.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(horizontal = 11.dp, vertical = 5.dp),
-                ) {
-                    Text(
-                        text = userPlaylists.count { !it.system || smartVisibility[it.id] == true }.toString(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Playlists", style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false))
+                        Text(
+                            userPlaylists.count { !it.system || smartVisibility[it.id] == true }.toString(),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp, end = 8.dp),
+                        )
+                    }
+                    Button(onClick = { showCreateDialog = true },
+                        modifier = Modifier.semantics { contentDescription = "Create playlist" }) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("New")
+                    }
+                    HeaderSettingsSpacer()
                 }
-                }
-
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box {
-                        TouchTargetIconButton(
-                            onClick = { sortMenuOpen = true },
-                            layoutSize = 38.dp,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Sort,
-                                contentDescription = "Sort playlists",
-                                tint = if (playlistSort != PlaylistSort.MANUAL) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
+                        TextButton(onClick = { sortMenuOpen = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Sort")
                         }
-                        DropdownMenu(
-                            expanded = sortMenuOpen,
-                            onDismissRequest = { sortMenuOpen = false },
-                        ) {
+                        DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
                             PlaylistSort.entries.forEach { option ->
                                 DropdownMenuItem(
                                     text = { Text(option.label) },
                                     leadingIcon = {
-                                        if (option == playlistSort) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                            )
-                                        }
+                                        if (option == playlistSort) Icon(Icons.Filled.Check, contentDescription = "Selected",
+                                            tint = MaterialTheme.colorScheme.primary)
                                     },
-                                    onClick = {
-                                        sortMenuOpen = false
-                                        viewModel.setPlaylistSort(option)
-                                    },
+                                    onClick = { sortMenuOpen = false; viewModel.setPlaylistSort(option) },
                                 )
                             }
                         }
                     }
-
+                    SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
+                        SegmentedButton(selected = isGridView, onClick = { isGridView = true },
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)) {
+                            Text("Grid", maxLines = 1)
+                        }
+                        SegmentedButton(selected = !isGridView, onClick = { isGridView = false },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)) {
+                            Text("List", maxLines = 1)
+                        }
+                    }
                     Box {
-                        TouchTargetIconButton(
-                            onClick = { playlistOptionsOpen = true },
-                            layoutSize = 38.dp,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Playlist options",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        IconButton(onClick = { playlistOptionsOpen = true }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Playlist options", modifier = Modifier.size(24.dp))
                         }
-                        DropdownMenu(
-                            expanded = playlistOptionsOpen,
-                            onDismissRequest = { playlistOptionsOpen = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Smart playlists") },
-                                onClick = {
-                                    playlistOptionsOpen = false
-                                    smartPlaylistDialogOpen = true
-                                },
-                            )
+                        DropdownMenu(expanded = playlistOptionsOpen, onDismissRequest = { playlistOptionsOpen = false }) {
+                            DropdownMenuItem(text = { Text("Smart playlists") },
+                                onClick = { playlistOptionsOpen = false; smartPlaylistDialogOpen = true })
                         }
                     }
-
-                    TouchTargetIconButton(
-                        onClick = { isGridView = !isGridView },
-                        layoutSize = 38.dp,
-                    ) {
-                        Icon(
-                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
-                            contentDescription = if (isGridView) "Switch to list view" else "Switch to grid view",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    TouchTargetIconButton(
-                        onClick = { showCreateDialog = true },
-                        layoutSize = 40.dp,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Create playlist",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-
-                    HeaderSettingsSpacer()
                 }
             }
 
@@ -969,7 +919,7 @@ fun PlaylistsScreen(
                     if (gridDragState.draggedKey == null) gridItems = visiblePlaylists
                 }
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Adaptive(minSize = 164.dp),
                     state = gridState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp),
@@ -998,7 +948,7 @@ fun PlaylistsScreen(
                                         state = gridDragState,
                                         playlistId = pl.id,
                                         playlistName = pl.name,
-                                        modifier = Modifier.size(40.dp),
+                                        modifier = Modifier.size(48.dp),
                                     )
                                 }
                             } else null,
@@ -1510,18 +1460,19 @@ private fun PlaylistArtworkMosaic(
                 RemoteImage(
                     url = urls.first(),
                     contentDescription = null,
+                    cornerRadius = 0.dp,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
             else -> {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        RemoteImage(url = urls[0], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
-                        RemoteImage(url = urls[1], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[0], contentDescription = null, cornerRadius = 0.dp, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[1], contentDescription = null, cornerRadius = 0.dp, modifier = Modifier.weight(1f).fillMaxHeight())
                     }
                     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        RemoteImage(url = urls[2], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
-                        RemoteImage(url = urls[3], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[2], contentDescription = null, cornerRadius = 0.dp, modifier = Modifier.weight(1f).fillMaxHeight())
+                        RemoteImage(url = urls[3], contentDescription = null, cornerRadius = 0.dp, modifier = Modifier.weight(1f).fillMaxHeight())
                     }
                 }
             }
@@ -1540,208 +1491,122 @@ private fun PlaylistGridCard(
     dragHandle: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 8.dp, modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 4:3 rather than a square: the mosaic crops nothing
-                    // important and the shorter card puts another row of
-                    // playlists on screen.
-                    .aspectRatio(4f / 3f),
-            ) {
-                PlaylistArtworkMosaic(
-                    entries = playlist.entries,
-                    modifier = Modifier.fillMaxSize(),
+    Card(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
+                PlaylistArtworkMosaic(playlist.entries, Modifier.fillMaxSize())
+                if (playlist.pinned) Icon(
+                    Icons.Filled.PushPin, contentDescription = "Pinned playlist",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
+                        .padding(4.dp).size(16.dp),
                 )
-
-                val playlistUnplayed = playlist.entries.count { it.episode.playingStatus != 2 }
-                if (playlistUnplayed > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(4.dp)
-                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
-                            .clip(RoundedCornerShape(50))
-                            .background(MaterialTheme.colorScheme.primary)
-                            .border(1.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
-                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
-                            .padding(horizontal = 4.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = playlistUnplayed.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            lineHeight = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            maxLines = 1,
-                        )
-                    }
-                } else if (playlist.entries.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(4.dp)
-                            .shadow(2.5.dp, RoundedCornerShape(50), clip = false)
-                            .clip(RoundedCornerShape(50))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .border(1.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
-                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
-                            .padding(horizontal = 4.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = "All listened",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(12.dp),
-                        )
-                    }
-                }
-
-                if (playlist.autoDownload && !playlist.system) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
+                if (playlist.autoDownload || playlist.system) {
+                    Text(
+                        text = if (playlist.system) "Smart playlist" else "Auto-download",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
                             .clip(MaterialTheme.shapes.small)
-                            .background(ElectricBlue.copy(alpha = 0.85f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = "AUTO-DL",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
-                }
-
-                if (playlist.system) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .background(Color.Black.copy(alpha = 0.72f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = when (playlist.id) {
-                                PLAYED_ID -> "PLAYED"
-                                IN_PROGRESS_ID -> "IN PROGRESS"
-                                UNPLAYED_ID -> "UNPLAYED"
-                                NOT_DOWNLOADED_ID -> "NOT DOWNLOADED"
-                                DOWNLOADED_ID -> "DOWNLOADED"
-                                NEW_RELEASES_ID -> "NEW"
-                                else -> "SMART"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
-                }
-
-            }
-
-            // Name and count sit tight under the artwork: they are one caption,
-            // not two paragraphs, and the gap between them was reading as a
-            // separate block.
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                Text(
-                    text = playlist.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                if (playlist.folder.isNotBlank() && !playlist.folder.equals(playlist.name, ignoreCase = true)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Folder,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(11.dp),
-                        )
-                        Text(
-                            text = playlist.folder,
-                            style = MaterialTheme.typography.labelSmall,
-                            lineHeight = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
-                            append(playlist.entries.size.toString())
-                        }
-                        append(" ep · ${formatDuration(playlist.totalSeconds)}")
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    lineHeight = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                if (dragHandle != null) {
-                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                        dragHandle()
-                    }
-                }
-                if (!playlist.system) {
-                    TouchTargetIconButton(onClick = onTogglePinned, layoutSize = 26.dp) {
-                        Icon(
-                            imageVector = Icons.Filled.PushPin,
-                            contentDescription = if (playlist.pinned) "Unpin playlist" else "Pin playlist to top",
-                            tint = if (playlist.pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
-                }
-                TouchTargetIconButton(onClick = onAssignFolder, layoutSize = 26.dp) {
-                    Icon(
-                        imageVector = Icons.Filled.Folder,
-                        contentDescription = "Folder",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
-                TouchTargetIconButton(onClick = onAddToUpNext, layoutSize = 26.dp) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                        contentDescription = "Add to Up Next",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-                TouchTargetIconButton(onClick = onPlayAll, layoutSize = 26.dp) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play playlist",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(19.dp),
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
                     )
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                playlist.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
+                        append(playlist.entries.size.toString())
+                    }
+                    append(if (playlist.entries.size == 1) " episode" else " episodes")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                formatDuration(playlist.totalSeconds),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // Three targets at most: grip/status, overflow, Play. Never wrap Play.
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (dragHandle != null) dragHandle()
+                }
+                PlaylistCardMenu(playlist, onAddToUpNext, onAssignFolder, onTogglePinned)
+                FilledTonalIconButton(onClick = onPlayAll, enabled = playlist.entries.isNotEmpty(), modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play playlist", modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Less-frequent card actions stay available without competing with Play. */
+@Composable
+private fun PlaylistCardMenu(
+    playlist: ResolvedPlaylist,
+    onAddToUpNext: () -> Unit,
+    onAssignFolder: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "Actions for ${playlist.name}",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Add to Up Next") },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null) },
+                enabled = playlist.entries.isNotEmpty(),
+                onClick = { expanded = false; onAddToUpNext() },
+            )
+            DropdownMenuItem(
+                text = { Text(if (playlist.folder.isBlank()) "Assign folder" else "Folder: ${playlist.folder}") },
+                leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
+                onClick = { expanded = false; onAssignFolder() },
+            )
+            if (onMoveUp != null) DropdownMenuItem(
+                text = { Text("Move up") },
+                leadingIcon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
+                onClick = { expanded = false; onMoveUp() },
+            )
+            if (onMoveDown != null) DropdownMenuItem(
+                text = { Text("Move down") },
+                leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null) },
+                onClick = { expanded = false; onMoveDown() },
+            )
+            if (!playlist.system) DropdownMenuItem(
+                text = { Text(if (playlist.pinned) "Unpin playlist" else "Pin to top") },
+                leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },
+                onClick = { expanded = false; onTogglePinned() },
+            )
         }
     }
 }
@@ -1761,128 +1626,68 @@ private fun PlaylistListCard(
     dragHandle: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(onClick = onOpen, contentPadding = 8.dp, modifier = modifier) {
-        Column(Modifier.fillMaxWidth()) {
+    Card(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            if (dragHandle != null) {
-                Box(
-                    modifier = Modifier.size(28.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    dragHandle()
+            if (dragHandle != null) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { dragHandle() }
+            PlaylistArtworkMosaic(playlist.entries, Modifier.size(48.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        playlist.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (playlist.pinned) Icon(
+                        Icons.Filled.PushPin, contentDescription = "Pinned playlist",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp).size(14.dp),
+                    )
                 }
-            }
-
-            PlaylistArtworkMosaic(
-                entries = playlist.entries,
-                modifier = Modifier.size(40.dp),
-            )
-
-            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = playlist.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.Bold)) {
+                            append(playlist.entries.size.toString())
+                        }
+                        append(" ep · ${formatDuration(playlist.totalSeconds)}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val folderLabel = playlist.folder
-                    .takeIf { it.isNotBlank() && !it.equals(playlist.name, ignoreCase = true) }
                 val unplayed = playlist.entries.count { it.episode.playingStatus != 2 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (folderLabel != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Folder,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(11.dp),
-                            )
-                            Text(
-                                text = folderLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    val accent = MaterialTheme.colorScheme.primary
-                    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = if (unplayed > 0) accent else muted, fontWeight = FontWeight.SemiBold)) {
-                                append(if (unplayed > 0) "$unplayed unplayed" else "All listened")
-                            }
-                            withStyle(SpanStyle(color = muted)) {
-                                append(" · ${playlist.entries.size} ep · ${formatDuration(playlist.totalSeconds)}")
-                            }
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
-        }
-        FlowRow(modifier = Modifier.fillMaxWidth()) {
-            // Dragging is the reorder control when it is available; the arrows
-            // are only for the times it is not.
-            if (dragHandle == null) {
-                if (canMoveUp) {
-                    TouchTargetIconButton(onClick = onMoveUp, layoutSize = 26.dp) {
-                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(17.dp))
-                    }
-                }
-                if (canMoveDown) {
-                    TouchTargetIconButton(onClick = onMoveDown, layoutSize = 26.dp) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(17.dp))
-                    }
-                }
-            }
-            if (!playlist.system) {
-                TouchTargetIconButton(onClick = onTogglePinned, layoutSize = 26.dp) {
-                    Icon(
-                        imageVector = Icons.Filled.PushPin,
-                        contentDescription = if (playlist.pinned) "Unpin playlist" else "Pin playlist to top",
-                        tint = if (playlist.pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
-            TouchTargetIconButton(onClick = onAssignFolder, layoutSize = 26.dp) {
-                Icon(Icons.Filled.Folder, contentDescription = "Folder", modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
-            }
-            TouchTargetIconButton(onClick = onAddToUpNext, layoutSize = 28.dp) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                    contentDescription = "Add to Up Next",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(19.dp),
+                val status = if (unplayed > 0) "$unplayed unplayed" else if (playlist.entries.isEmpty()) "Empty playlist" else "All listened"
+                Text(
+                    listOfNotNull(playlist.folder.takeIf { it.isNotBlank() }, status).joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            TouchTargetIconButton(onClick = onPlayAll, layoutSize = 28.dp) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play playlist",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(21.dp),
-                )
+            PlaylistCardMenu(
+                playlist, onAddToUpNext, onAssignFolder, onTogglePinned,
+                onMoveUp = if (dragHandle == null && canMoveUp) onMoveUp else null,
+                onMoveDown = if (dragHandle == null && canMoveDown) onMoveDown else null,
+            )
+            FilledTonalIconButton(onClick = onPlayAll, enabled = playlist.entries.isNotEmpty(), modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Play playlist", modifier = Modifier.size(24.dp))
             }
         }
-    }
     }
 }
 
