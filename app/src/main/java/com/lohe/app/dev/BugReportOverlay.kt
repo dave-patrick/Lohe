@@ -23,13 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -216,91 +213,6 @@ fun BugReportOverlay(
                             minLines = 2,
                             maxLines = 4,
                         )
-                    }
-                },
-            )
-            if (false) AlertDialog(
-                onDismissRequest = {
-                    if (!submitting) {
-                        dialogOpen = false
-                        note = ""
-                    }
-                },
-                title = {
-                    Text("Submit Bug Report (Dev)")
-                },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = "Route: ${DevDiagnostics.currentRoute}\nCaptures screenshot, app event log, DB summary, and logcat.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        capturedBitmap?.let { bmp ->
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = "Captured screenshot preview",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp)
-                                    .clip(MaterialTheme.shapes.small)
-                                    .border(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant,
-                                        MaterialTheme.shapes.small,
-                                    ),
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = note,
-                            onValueChange = { note = it },
-                            label = { Text("What happened? (optional)") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 2,
-                            maxLines = 4,
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        enabled = !submitting,
-                        onClick = {
-                            submitting = true
-                            scope.launch {
-                                val reportId = DevDiagnostics.submitBugReport(
-                                    context = context,
-                                    userNote = note.trim(),
-                                    screenshot = capturedBitmap,
-                                )
-                                submitting = false
-                                dialogOpen = false
-                                note = ""
-                                Toast.makeText(
-                                    context,
-                                    "Bug report submitted: $reportId",
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        },
-                    ) {
-                        Text(if (submitting) "Saving…" else "Submit Report")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        enabled = !submitting,
-                        onClick = {
-                            dialogOpen = false
-                            note = ""
-                        },
-                    ) {
-                        Text("Cancel")
                     }
                 },
             )

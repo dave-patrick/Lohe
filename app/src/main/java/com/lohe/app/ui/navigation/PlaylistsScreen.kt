@@ -65,7 +65,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -909,32 +908,6 @@ fun PlaylistsScreen(
                         }
                     },
                 )
-                if (false) AlertDialog(
-                    onDismissRequest = { smartPlaylistDialogOpen = false },
-                    title = { Text("Smart playlists") },
-                    text = {
-                        Column {
-                            smartPlaylists.forEach { (id, name, visible) ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(name, modifier = Modifier.weight(1f))
-                                    Switch(
-                                        checked = visible,
-                                        onCheckedChange = { enabled ->
-                                            playlistScope.launch { settingsStore.setSmartPlaylistVisibility(id, enabled) }
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { smartPlaylistDialogOpen = false }) { Text("Done") }
-                    },
-                )
             }
 
             if (availableFolders.isNotEmpty()) {
@@ -1504,35 +1477,6 @@ private fun FollowShowsDialog(
                 }
             }
         },
-    )
-    // Legacy AlertDialog replaced by LoheDialog above.
-    if (false) AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Choose shows") },
-        text = {
-            LazyColumn {
-                itemsIndexed(shows, key = { _, show -> show.uuid }) { _, show ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                selected = if (show.uuid in selected) selected - show.uuid else selected + show.uuid
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = show.uuid in selected,
-                            onCheckedChange = { checked ->
-                                selected = if (checked) selected + show.uuid else selected - show.uuid
-                            },
-                        )
-                        Text(show.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(selected) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

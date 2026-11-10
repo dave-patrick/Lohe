@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Slider
 import androidx.compose.material3.MaterialTheme
@@ -137,16 +135,5 @@ fun FloatingPlayerSettings(enabled: Boolean, sizeDp: Int, opacity: Float, settin
         dismissLabel = "Not now",
         onDismissAction = { batteryPrompt = false },
         body = { Text("Android may stop floating controls to save power. In battery settings, select All apps, find Lohe, and choose Don't optimize or Unrestricted. This is optional and may use more battery.") },
-    )
-    if (false) AlertDialog(
-        onDismissRequest = { batteryPrompt = false },
-        title = { Text("Keep floating controls available") },
-        text = { Text("Android may stop floating controls to save power. In battery settings, select All apps, find Lohe, and choose Don't optimize or Unrestricted. This is optional and may use more battery.") },
-        confirmButton = { Button(onClick = {
-            batteryPrompt = false
-            runCatching { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                .onFailure { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
-        }) { Text("Open battery settings") } },
-        dismissButton = { TextButton(onClick = { batteryPrompt = false }) { Text("Not now") } },
     )
 }

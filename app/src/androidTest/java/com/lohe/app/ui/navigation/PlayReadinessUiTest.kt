@@ -34,9 +34,16 @@ class PlayReadinessUiTest {
     private val context get() = instrumentation.targetContext
     private val store by lazy { SettingsStore(context) }
     private var scenario: ActivityScenario<MainActivity>? = null
+    @Volatile private var enabledCallbacks = 0
+    private var originalAccessibilityFlags = 0
 
     @Before fun setup() {
         assertTrue("Use only the isolated audit app", context.packageName.endsWith(".audit"))
+        enabledCallbacks = 0
+        val info = instrumentation.uiAutomation.serviceInfo
+        originalAccessibilityFlags = info.flags
+        info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        instrumentation.uiAutomation.serviceInfo = info
         runBlocking { store.setFloatingPlayerEnabled(false) }
         context.getSharedPreferences("floating-player-setup", 0).edit().remove("notification-prompt-handled").commit()
     }
@@ -44,6 +51,9 @@ class PlayReadinessUiTest {
         runBlocking { store.setFloatingPlayerEnabled(false) }
         scenario?.close()
         shell("appops set " + context.packageName + " SYSTEM_ALERT_WINDOW default")
+        val info = instrumentation.uiAutomation.serviceInfo
+        info.flags = originalAccessibilityFlags
+        instrumentation.uiAutomation.serviceInfo = info
     }
     private fun shell(command: String) {
         instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->
@@ -59,7 +69,7 @@ class PlayReadinessUiTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         scenario!!.onActivity { activity -> activity.setContent {
             LoheTheme {
-                val enable = rememberFloatingPlayerPermissionFlow(store)
+                val enable = rememberFloatingPlayerPermissionFlow(store, onEnabled = { enabledCallbacks++ })
                 Box(Modifier.padding(top = 64.dp)) {
                     Button(onClick = enable) { Text("Enable floating controls") }
                 }
@@ -80,8 +90,19 @@ class PlayReadinessUiTest {
         permissionFixture(true)
         tap("Enable floating controls")
         waitFor("Allow floating-player notifications?")
+        instrumentation.waitForIdleSync()
+        fun containsRationale(node: AccessibilityNodeInfo?): Boolean {
+            if (node == null) return false
+            if (node.text?.toString() == "Allow floating-player notifications?") return true
+            for (index in 0 until node.childCount) if (containsRationale(node.getChild(index))) return true
+            return false
+        }
+        assertEquals("Only one notification rationale window", 1,
+            instrumentation.uiAutomation.windows.count { containsRationale(it.root) })
         tap("Not now")
         await { runBlocking { store.settings.first().floatingPlayerEnabled } }
+        instrumentation.waitForIdleSync()
+        assertEquals("Enable callback runs once", 1, enabledCallbacks)
         assertTrue(context.getSharedPreferences("floating-player-setup", 0).getBoolean("notification-prompt-handled", false))
         runBlocking { store.setFloatingPlayerEnabled(false) }
         tap("Enable floating controls")
