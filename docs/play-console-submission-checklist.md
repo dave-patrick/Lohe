@@ -88,7 +88,7 @@ pwsh tools/verify-play-bundle.ps1 -BundlePath app/build/outputs/bundle/release/a
 The tool inspects bundle structure, package/SDK/debug state, permissions/car exclusion, signatures and applicable native 64-bit ELF / APK ZIP 16 KB alignment. It does not certify Console answers or test an actual 16 KB device.
 
 - [ ] Save AAB, matching R8 mapping, build ID and SHA-256 together. Upload only the signed production AAB; keep smoke and private Debug local.
-- [ ] Inspect Play-generated APKs/device exclusions after internal-track upload. Target API 36 meets the currently published phone requirement; recheck at submission. Exercise native libraries on a 16 KB environment where available.
+- [ ] Inspect Play-generated APKs/device exclusions after internal-track upload. Target API 37 meets the currently published phone requirement; recheck at submission. Exercise native libraries on a 16 KB environment where available.
 
 Sources: [target API](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en), [16 KB](https://developer.android.com/guide/practices/page-sizes), [car distribution](https://developer.android.com/training/cars/distribute).
 
