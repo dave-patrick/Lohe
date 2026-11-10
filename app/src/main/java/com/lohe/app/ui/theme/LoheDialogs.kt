@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -161,10 +162,10 @@ fun LoheDialog(
 
                 if (confirmLabel != null || dismissLabel != null) {
                     Spacer(Modifier.height(20.dp))
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         if (dismissLabel != null) {
                             TextButton(
@@ -177,7 +178,6 @@ fun LoheDialog(
                             }
                         }
                         if (confirmLabel != null && onConfirm != null) {
-                            Spacer(Modifier.width(8.dp))
                             Button(
                                 onClick = onConfirm,
                                 enabled = confirmEnabled,
