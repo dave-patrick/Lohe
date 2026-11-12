@@ -3,6 +3,10 @@
 ## Overview
 Native Android podcast client using Kotlin, Jetpack Compose, Room, and a debug MCP/REST surface.
 
+## Imported design reference
+
+- `prototypes/ai-studio-play/` is a separate React/Vite AI Studio reference snapshot. Read its `IMPORT_STATUS.md` before using it. Its billing, Android build files, native overlay example and exported context do not establish implemented native capabilities. Build the actual Android app from the repository root; keep the prototype's Gradle/configuration files isolated.
+
 ## Library mirrors
 - Android Auto projection uses `PlaybackService`'s `MediaLibrarySession` and `MediaLibrary` browse tree for Continue listening, Up Next, Downloads, Shows, Playlists, and episode/show search. AAOS additionally uses `CarPlaybackService` and `CarHomeScreen`, registering the same platform media-session token so car and phone share playback state. The media service declares the launcher icon, and the car media card uses a monochrome tintable attribution vector.
 - The Playlists tab has six derived smart playlists: Played, In Progress, Unplayed, Not Downloaded, Downloaded, and New Releases (last seven days). They update from episode state, default to visible, and each visibility preference persists in DataStore.
