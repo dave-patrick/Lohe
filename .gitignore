@@ -1,37 +1,18 @@
-# Gradle
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# Kotlin
-.kotlin/
-
-# Android
-local.properties
-*.apk
-*.aab
-*.ap_
-*.dex
-captures/
-.externalNativeBuild/
-.cxx/
-
-# IDE
-.idea/
 *.iml
-*.ipr
-*.iws
-
-# Signing material must never be committed
-*.jks
-*.keystore
-
-# OS noise
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
-Thumbs.db
-
-# Local scratch
-*.log
-
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.env
+debug.keystore
