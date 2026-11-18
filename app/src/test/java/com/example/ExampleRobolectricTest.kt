@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.download.EpisodeDownloadManager
 import com.example.data.local.EpisodeEntity
 import com.example.data.network.RssAndOpmlParser
+import com.example.edition.Edition
 import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,22 +116,46 @@ class ExampleRobolectricTest {
         // Settings -> Appearance
         composeTestRule.onNodeWithTag("top_settings_button").performClick()
         composeTestRule.waitForIdle()
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("settings_pro_banner").assertIsDisplayed()
+        } else {
+            composeTestRule.onNodeWithTag("settings_pro_banner").assertDoesNotExist()
+        }
         composeTestRule.onNodeWithTag("settings_item_appearance").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("up_next_indicator_switch").assertIsDisplayed()
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("indicator_style_pill").assertExists()
+            composeTestRule.onNodeWithTag("indicator_style_diamond").assertExists()
+            composeTestRule.onNodeWithTag("indicator_style_glow").assertExists()
+        } else {
+            composeTestRule.onNodeWithTag("indicator_style_pill").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("indicator_style_diamond").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("indicator_style_glow").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("custom_hex_input").assertDoesNotExist()
+        }
         composeTestRule.onNodeWithTag("appearance_settings_list")
             .performScrollToNode(hasTestTag("indicator_size_medium"))
         composeTestRule.onNodeWithTag("indicator_size_medium").performClick()
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("appearance_settings_list")
+                .performScrollToNode(hasTestTag("custom_hex_input"))
+            composeTestRule.onNodeWithTag("custom_hex_input").assertIsDisplayed()
+        }
         composeTestRule.onNodeWithTag("settings_back_button").performClick()
         composeTestRule.waitForIdle()
 
-        // Settings -> Floating player
-        composeTestRule.onNodeWithTag("settings_item_floating_player").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("floating_player_switch").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("floating_overlay_permission_button").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("settings_back_button").performClick()
-        composeTestRule.waitForIdle()
+        // Settings -> Floating player (Pro-only)
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("settings_item_floating_player").performClick()
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("floating_player_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("floating_overlay_permission_button").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("settings_back_button").performClick()
+            composeTestRule.waitForIdle()
+        } else {
+            composeTestRule.onNodeWithTag("settings_item_floating_player").assertDoesNotExist()
+        }
 
         // Settings -> Downloads
         composeTestRule.onNodeWithTag("settings_item_downloads").performClick()
@@ -139,15 +164,19 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("settings_back_button").performClick()
         composeTestRule.waitForIdle()
 
-        // Settings -> Cloud Sync
-        composeTestRule.onNodeWithTag("settings_overview_list")
-            .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
-        composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("cloud_sync_unlock_pro_button").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("settings_back_button").performClick()
-        composeTestRule.waitForIdle()
+        // Settings -> Cloud Sync (Pro-only)
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("settings_overview_list")
+                .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
+            composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("cloud_sync_unlock_pro_button").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("settings_back_button").performClick()
+            composeTestRule.waitForIdle()
+        } else {
+            composeTestRule.onNodeWithTag("settings_item_cloud_sync").assertDoesNotExist()
+        }
 
         // Settings -> About
         composeTestRule.onNodeWithTag("settings_overview_list")
@@ -166,9 +195,13 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("about_sub_screen")
             .performScrollToNode(hasTestTag("about_atomic22_logo"))
         composeTestRule.onNodeWithTag("about_atomic22_logo").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("about_sub_screen")
-            .performScrollToNode(hasTestTag("about_pro_card"))
-        composeTestRule.onNodeWithTag("about_pro_card").assertIsDisplayed()
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("about_sub_screen")
+                .performScrollToNode(hasTestTag("about_pro_card"))
+            composeTestRule.onNodeWithTag("about_pro_card").assertIsDisplayed()
+        } else {
+            composeTestRule.onNodeWithTag("about_pro_card").assertDoesNotExist()
+        }
         assertTrue(true)
     }
 

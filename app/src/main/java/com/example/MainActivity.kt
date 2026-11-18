@@ -611,6 +611,13 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                                 }
                             }
                         }
+
+                        // Developer Diagnostics Floating BUG Button (no-op in release builds)
+                        viewModel.devTools.FloatingBugButtonOverlay(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 60.dp, end = 16.dp)
+                        )
                     }
                 }
             }

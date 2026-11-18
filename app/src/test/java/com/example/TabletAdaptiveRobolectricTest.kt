@@ -2,10 +2,13 @@ package com.example
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import com.example.edition.Edition
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,10 +64,34 @@ class TabletAdaptiveRobolectricTest {
         composeTestRule.onNodeWithTag("up_next_indicator_switch").assertIsDisplayed()
 
         // Switch right pane in-place while overview remains visible
-        composeTestRule.onNodeWithTag("settings_item_floating_player").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("settings_overview_list").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("floating_player_switch").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("floating_overlay_permission_button").assertIsDisplayed()
+        if (Edition.HAS_PRO) {
+            composeTestRule.onNodeWithTag("indicator_style_pill").assertExists()
+            composeTestRule.onNodeWithTag("indicator_style_diamond").assertExists()
+            composeTestRule.onNodeWithTag("indicator_style_glow").assertExists()
+            composeTestRule.onNodeWithTag("appearance_settings_list")
+                .performScrollToNode(hasTestTag("custom_hex_input"))
+            composeTestRule.onNodeWithTag("custom_hex_input").assertIsDisplayed()
+
+            composeTestRule.onNodeWithTag("settings_item_floating_player").performClick()
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("settings_overview_list").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("floating_player_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("floating_overlay_permission_button").assertIsDisplayed()
+
+            composeTestRule.onNodeWithTag("settings_overview_list")
+                .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
+            composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("cloud_sync_unlock_pro_button").assertIsDisplayed()
+        } else {
+            composeTestRule.onNodeWithTag("settings_pro_banner").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("indicator_style_pill").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("indicator_style_diamond").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("indicator_style_glow").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("custom_hex_input").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("settings_item_floating_player").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("settings_item_cloud_sync").assertDoesNotExist()
+        }
     }
 }

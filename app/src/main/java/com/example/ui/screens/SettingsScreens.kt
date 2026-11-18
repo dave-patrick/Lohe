@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
@@ -87,6 +88,7 @@ import com.example.data.importer.ImportResultSummary
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.QueueIndicatorSize
 import com.example.data.local.QueueIndicatorStyle
+import com.example.edition.DevTools
 import com.example.edition.Edition
 import com.example.edition.LoheBillingState
 import com.example.ui.SettingsSubScreen
@@ -474,6 +476,12 @@ private fun SettingsDetailContent(
             onOpenProModal = onOpenProUpgradeModal,
             onRestorePurchases = onRestoreProPurchases
         )
+
+        SettingsSubScreen.DIAGNOSTICS -> {
+            if (DevTools.current.isAvailable) {
+                DevTools.current.DiagnosticsSettingsScreen()
+            }
+        }
     }
 }
 
@@ -485,16 +493,19 @@ private fun SettingsOverviewList(
     onSelect: (SettingsSubScreen) -> Unit,
     onOpenProModal: () -> Unit
 ) {
-    val entries: List<Pair<SettingsSubScreen, ImageVector>> = listOf(
-        SettingsSubScreen.APPEARANCE to Icons.Filled.Palette,
-        SettingsSubScreen.PLAYBACK to Icons.Filled.PlayCircleFilled,
-        SettingsSubScreen.FLOATING_PLAYER to Icons.Filled.PictureInPictureAlt,
-        SettingsSubScreen.ARCHIVING to Icons.Filled.Archive,
-        SettingsSubScreen.DOWNLOADS to Icons.Filled.Download,
-        SettingsSubScreen.IMPORT_FROM_APP to Icons.Filled.FileOpen,
-        SettingsSubScreen.CLOUD_SYNC to Icons.Filled.CloudSync,
-        SettingsSubScreen.ABOUT to Icons.Filled.Info
-    ).filter { (sub, _) -> Edition.HAS_PRO || !sub.isProFeatured }
+    val entries: List<Pair<SettingsSubScreen, ImageVector>> = buildList {
+        add(SettingsSubScreen.APPEARANCE to Icons.Filled.Palette)
+        add(SettingsSubScreen.PLAYBACK to Icons.Filled.PlayCircleFilled)
+        add(SettingsSubScreen.FLOATING_PLAYER to Icons.Filled.PictureInPictureAlt)
+        add(SettingsSubScreen.ARCHIVING to Icons.Filled.Archive)
+        add(SettingsSubScreen.DOWNLOADS to Icons.Filled.Download)
+        add(SettingsSubScreen.IMPORT_FROM_APP to Icons.Filled.FileOpen)
+        add(SettingsSubScreen.CLOUD_SYNC to Icons.Filled.CloudSync)
+        add(SettingsSubScreen.ABOUT to Icons.Filled.Info)
+        if (DevTools.current.isAvailable) {
+            add(SettingsSubScreen.DIAGNOSTICS to Icons.Filled.BugReport)
+        }
+    }.filter { (sub, _) -> Edition.HAS_PRO || !sub.isProFeatured }
 
     LazyColumn(
         contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),

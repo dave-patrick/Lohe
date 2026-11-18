@@ -28,6 +28,7 @@ import com.example.data.network.EpisodeChapter
 import com.example.data.network.TranscriptCue
 import com.example.data.repository.DiscoverCatalogItem
 import com.example.data.repository.LoheRepository
+import com.example.edition.DevTools
 import com.example.edition.DriveAuthOutcome
 import com.example.edition.Edition
 import com.example.edition.LoheBillingState
@@ -73,7 +74,8 @@ enum class SettingsSubScreen(val title: String, val subtitle: String, val isProF
     DOWNLOADS("Downloads", "Offline cache limits, auto-cleanup, background sync & OPML"),
     IMPORT_FROM_APP("Import from another app", "OPML, AntennaPod (.db), Podcast Addict (.backup) & Lohe JSON"),
     CLOUD_SYNC("Google Drive & Cloud Sync", "Cross-device library sync & Google Drive AppData backup", isProFeatured = true),
-    ABOUT("About", "Kani mascot, version 0.12.0 & Credits")
+    ABOUT("About", "Kani mascot, version 0.12.0 & Credits"),
+    DIAGNOSTICS("Diagnostics", "Local bug reports, event logs & 127.0.0.1 debug API")
 }
 
 class LoheViewModel(application: Application) : AndroidViewModel(application) {
@@ -89,6 +91,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _lastImportSummary = MutableStateFlow<ImportResultSummary?>(null)
     val lastImportSummary: StateFlow<ImportResultSummary?> = _lastImportSummary.asStateFlow()
+
+    val devTools: DevTools
+        get() = DevTools.current
 
     val proFeatures: ProFeatures = ProFeaturesRegistry.create(
         context = application,
@@ -264,6 +269,17 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
             proFeatures.startBillingConnection()
         }
         LoheNotificationHelper.ensureChannels(application)
+        devTools.attachRuntime(
+            context = application,
+            scope = viewModelScope,
+            database = database,
+            repository = repository,
+            preferencesRepository = preferencesRepository,
+            playerController = playerController,
+            podcastAppImporter = podcastAppImporter,
+            onStatusNotice = ::postStatusMessage
+        )
+        devTools.recordEvent("lifecycle", "LoheViewModel initialized")
 
         viewModelScope.launch {
             repository.seedPublicSampleShowsIfEmpty()
@@ -331,6 +347,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         _activeSettingsScreen.value = null
         if (tab != PrimaryTab.PODCASTS) _selectedPodcastId.value = null
         if (tab != PrimaryTab.PLAYLISTS) _selectedPlaylistId.value = null
+        devTools.recordEvent("navigation", "Selected tab ${tab.name}")
     }
 
     fun openPodcastDetail(podcastId: String?) {
@@ -338,6 +355,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         if (podcastId != null) {
             _selectedTab.value = PrimaryTab.PODCASTS
             _activeSettingsScreen.value = null
+            devTools.recordEvent("navigation", "Opened podcast detail $podcastId")
         }
     }
 
@@ -346,11 +364,13 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         if (playlistId != null) {
             _selectedTab.value = PrimaryTab.PLAYLISTS
             _activeSettingsScreen.value = null
+            devTools.recordEvent("navigation", "Opened playlist detail $playlistId")
         }
     }
 
     fun openSettings(subScreen: SettingsSubScreen = SettingsSubScreen.OVERVIEW) {
         _activeSettingsScreen.value = subScreen
+        devTools.recordEvent("navigation", "Opened settings ${subScreen.name}")
     }
 
     fun navigateBackInSettings(): Boolean {
@@ -469,6 +489,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         applyEffectiveAudioForEpisode(episode)
         playerController.loadAndPlayEpisode(episode, autoPlay = true)
         refreshChaptersForActiveEpisode(episode)
+        devTools.recordEvent("playback", "Play episode ${episode.id} (${episode.title}) stream=${episode.audioUrl}")
         viewModelScope.launch {
             preferencesRepository.setLastPlayingEpisodeId(episode.id)
         }
@@ -477,6 +498,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     fun togglePlayPause() {
         startMediaSessionServiceIfNeeded()
         playerController.togglePlayPause()
+        devTools.recordEvent("playback", "Toggled play/pause")
     }
 
     private fun startMediaSessionServiceIfNeeded() {
