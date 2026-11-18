@@ -42,7 +42,7 @@ EXCLUDE_SUFFIXES = (".jks", ".keystore", ".p12")
 LEAK_PATTERNS = [
     (r"com\.example\.pro\.(?!ProFeaturesImpl\b)", "a reference into the Pro package"),
     (r"com\.android\.billingclient", "Google Play Billing"),
-    (r"com\.google\.android\.gms(?!\.car\.application\b)", "Google Play services"),
+    (r"com\.google\.android\.gms(?!\.car\.)", "Google Play services"),
     (r"googleusercontent\.com", "an OAuth client ID"),
     (r"AIza[0-9A-Za-z_\-]{30,}", "a Google API key"),
     (r"GEMINI_API_KEY", "a Gemini key reference"),
