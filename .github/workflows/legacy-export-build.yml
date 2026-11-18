@@ -73,17 +73,17 @@ jobs:
           SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -1)"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.p12"
           {
             printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT"
-            printf 'keystore.path=%s\n' "$RUNNER_TEMP/release.jks"
+            printf 'keystore.path=%s\n' "$RUNNER_TEMP/release.p12"
             printf 'keystore.password=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keystore.alias=%s\n' "$KEY_ALIAS"
             printf 'keystore.key.password=%s\n' "$KEY_PASSWORD"
           } > local.properties
           chmod +x gradlew
           ./gradlew assembleRelease --console=plain
-          rm -f local.properties "$RUNNER_TEMP/release.jks"
+          rm -f local.properties "$RUNNER_TEMP/release.p12"
           APK=app/build/outputs/apk/release/app-release.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate (DN|SHA-256)"
           mkdir -p "$RUNNER_TEMP/out"
