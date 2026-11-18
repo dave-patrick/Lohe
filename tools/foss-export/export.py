@@ -49,6 +49,8 @@ LEAK_PATTERNS = [
     (r"AIza[0-9A-Za-z_\-]{30,}", "a Google API key"),
     (r"GEMINI_API_KEY", "a Gemini key reference"),
     (r"libs\.android\.billing|libs\.play\.services\.(?!location)", "a Google dependency"),
+    (r"com\.example\.dev\.|DebugDevTools|LocalDebugApiServer|DiagnosticsReportManager|PocketCastsJsonImporter",
+     "owner-only debug tools (these belong in app/src/testDebug, not app/src/test)"),
 ]
 
 
