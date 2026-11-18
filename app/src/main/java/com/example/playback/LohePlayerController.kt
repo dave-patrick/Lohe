@@ -15,11 +15,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.example.data.local.EpisodeEntity
+import com.example.data.local.LoheDatabase
 import com.example.widget.LohePlayerWidget
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +30,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
@@ -44,7 +48,8 @@ data class PlaybackUiState(
     val volumeBoostDb: Int = 0,
     val sleepTimerRemainingSeconds: Int = 0,
     val sleepAtEndOfEpisode: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val queueEpisodeIds: List<String> = emptyList()
 ) {
     val progressFraction: Float
         get() = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
@@ -58,12 +63,14 @@ class LohePlayerController(
     private val onEpisodeCompleted: (episodeId: String) -> Unit
 ) {
     private val appContext = context.applicationContext
+    private val loheDao = LoheDatabase.getInstance(appContext).loheDao()
 
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
+    private var observedServicePlayer: Player? = null
     private var pendingEpisodeRequest: Pair<EpisodeEntity, Boolean>? = null
     private var progressJob: Job? = null
     private var sleepTimerJob: Job? = null
@@ -73,12 +80,102 @@ class LohePlayerController(
     private var onSleepExtendedCallback: ((Int) -> Unit)? = null
     private var shakeListener: SensorEventListener? = null
 
+    private val sharedPlayerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            val activePlayer = activeTransportPlayer()
+            val pos = activePlayer?.currentPosition?.coerceAtLeast(0L) ?: _state.value.positionMs
+            _state.value = _state.value.copy(
+                isPlaying = isPlaying,
+                positionMs = pos
+            )
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val activePlayer = activeTransportPlayer() ?: return
+            syncStateFromActivePlayer(activePlayer)
+        }
+
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+            val activePlayer = activeTransportPlayer() ?: return
+            syncStateFromActivePlayer(activePlayer)
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            val pos = newPosition.positionMs.coerceAtLeast(0L)
+            _state.value = _state.value.copy(positionMs = pos)
+        }
+
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            _state.value = _state.value.copy(playbackSpeed = playbackParameters.speed)
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val activePlayer = activeTransportPlayer()
+            val buffering = playbackState == Player.STATE_BUFFERING
+            val dur = activePlayer?.duration?.takeIf { it > 0 } ?: _state.value.durationMs
+            val pos = activePlayer?.currentPosition?.coerceAtLeast(0L) ?: _state.value.positionMs
+            _state.value = _state.value.copy(
+                isBuffering = buffering,
+                positionMs = pos,
+                durationMs = dur
+            )
+            if (playbackState == Player.STATE_ENDED) {
+                _state.value.currentEpisode?.let { ep ->
+                    onEpisodeCompleted(ep.id)
+                }
+            }
+        }
+    }
+
     init {
+        observeInProcessService()
+        observeSharedQueueFlow()
         connectToPlaybackService()
     }
 
     private fun isRobolectricRuntime(): Boolean =
         Build.FINGERPRINT.equals("robolectric", ignoreCase = true)
+
+    private fun activeTransportPlayer(): Player? =
+        mediaController ?: LohePlaybackService.activeServiceFlow.value?.getPlayer()
+
+    private fun observeSharedQueueFlow() {
+        scope.launch {
+            LohePlaybackService.sharedQueueIdsFlow.collectLatest { queueIds ->
+                if (queueIds.isNotEmpty()) {
+                    _state.value = _state.value.copy(queueEpisodeIds = queueIds)
+                }
+            }
+        }
+    }
+
+    private fun observeInProcessService() {
+        scope.launch {
+            LohePlaybackService.activeServiceFlow.collectLatest { service ->
+                val prev = observedServicePlayer
+                val next = service?.getPlayer()
+                if (prev !== next) {
+                    prev?.removeListener(sharedPlayerListener)
+                    observedServicePlayer = next
+                    if (next != null && mediaController == null) {
+                        next.addListener(sharedPlayerListener)
+                        syncStateFromActivePlayer(next)
+                        startProgressTicker()
+                        pendingEpisodeRequest?.let { (ep, autoPlay) ->
+                            pendingEpisodeRequest = null
+                            if (next.mediaItemCount == 0 || autoPlay) {
+                                loadIntoPlayer(next, ep, autoPlay)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     private fun connectToPlaybackService() {
         if (isRobolectricRuntime() || controllerFuture != null || mediaController != null) return
@@ -93,25 +190,12 @@ class LohePlayerController(
                 val controller = future.await()
                 mediaController = controller
 
-                controller.addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _state.value = _state.value.copy(isPlaying = isPlaying)
-                    }
+                observedServicePlayer?.removeListener(sharedPlayerListener)
+                controller.addListener(sharedPlayerListener)
 
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        val buffering = playbackState == Player.STATE_BUFFERING
-                        val dur = controller.duration.takeIf { it > 0 } ?: _state.value.durationMs
-                        _state.value = _state.value.copy(
-                            isBuffering = buffering,
-                            durationMs = dur
-                        )
-                        if (playbackState == Player.STATE_ENDED) {
-                            _state.value.currentEpisode?.let { ep ->
-                                onEpisodeCompleted(ep.id)
-                            }
-                        }
-                    }
-                })
+                if (controller.mediaItemCount > 0) {
+                    syncStateFromActivePlayer(controller)
+                }
 
                 // Re-apply audio DSP preferences and load any queued playback request
                 controller.playbackParameters = PlaybackParameters(_state.value.playbackSpeed)
@@ -121,10 +205,53 @@ class LohePlayerController(
 
                 pendingEpisodeRequest?.let { (ep, autoPlay) ->
                     pendingEpisodeRequest = null
-                    loadIntoController(controller, ep, autoPlay)
+                    if (controller.mediaItemCount == 0 || autoPlay) {
+                        loadIntoPlayer(controller, ep, autoPlay)
+                    }
                 }
             } catch (_: Throwable) {
-                // Headless Robolectric / unit-test fallback: keep reactive PlaybackUiState working cleanly
+                // Headless Robolectric / unit-test fallback: uses in-process activeServiceFlow or local state
+            }
+        }
+    }
+
+    private fun syncStateFromActivePlayer(player: Player) {
+        val currentIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        val currentItem = player.currentMediaItem
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val dur = player.duration.takeIf { it > 0L } ?: _state.value.durationMs
+        val playing = player.isPlaying
+
+        if (currentItem == null) {
+            _state.value = _state.value.copy(
+                isPlaying = playing,
+                queueEpisodeIds = currentIds
+            )
+            return
+        }
+
+        val mediaId = currentItem.mediaId
+        if (_state.value.currentEpisode?.id == mediaId) {
+            _state.value = _state.value.copy(
+                isPlaying = playing,
+                positionMs = pos,
+                durationMs = dur,
+                queueEpisodeIds = currentIds
+            )
+            return
+        }
+
+        scope.launch {
+            val resolvedEp = loheDao.getEpisodeById(mediaId)
+            if (resolvedEp != null) {
+                val effectiveDur = player.duration.takeIf { it > 0L } ?: resolvedEp.durationMs.coerceAtLeast(30_000L)
+                _state.value = _state.value.copy(
+                    currentEpisode = resolvedEp,
+                    isPlaying = player.isPlaying,
+                    positionMs = player.currentPosition.coerceAtLeast(0L),
+                    durationMs = effectiveDur,
+                    queueEpisodeIds = currentIds
+                )
             }
         }
     }
@@ -134,14 +261,14 @@ class LohePlayerController(
         progressJob = scope.launch {
             var tickCount = 0
             while (isActive) {
-                val controller = mediaController
+                val player = activeTransportPlayer()
                 val currentEp = _state.value.currentEpisode
-                if (controller != null && currentEp != null) {
-                    val pos = controller.currentPosition.coerceAtLeast(0L)
-                    val dur = controller.duration.takeIf { it > 0 } ?: currentEp.durationMs
-                    if (controller.isPlaying || _state.value.isPlaying) {
+                if (player != null && currentEp != null) {
+                    val pos = player.currentPosition.coerceAtLeast(0L)
+                    val dur = player.duration.takeIf { it > 0 } ?: currentEp.durationMs
+                    if (player.isPlaying || _state.value.isPlaying) {
                         _state.value = _state.value.copy(
-                            isPlaying = controller.isPlaying,
+                            isPlaying = player.isPlaying,
                             positionMs = pos,
                             durationMs = dur
                         )
@@ -160,34 +287,81 @@ class LohePlayerController(
         val localFile = episode.localFilePath.takeIf { it.isNotBlank() }?.let(::File)
         return if (localFile != null && localFile.exists() && localFile.length() > 0L) {
             Uri.fromFile(localFile)
+        } else if (episode.localFilePath.startsWith("file://") || episode.localFilePath.startsWith("content://")) {
+            Uri.parse(episode.localFilePath)
         } else {
             Uri.parse(episode.audioUrl)
         }
     }
 
-    fun loadAndPlayEpisode(episode: EpisodeEntity, autoPlay: Boolean = true) {
-        val current = _state.value.currentEpisode
-        val controller = mediaController
+    private fun buildPlayableMediaItem(episode: EpisodeEntity): MediaItem {
+        val resumePosMs = LohePlaybackService.validResumePositionMs(episode)
+        LohePlaybackService.cacheResumePositionMs(episode.id, resumePosMs)
 
-        if (current?.id == episode.id && controller != null && controller.mediaItemCount > 0) {
+        val extras = Bundle().apply {
+            putLong(LohePlaybackService.EXTRA_RESUME_POSITION_MS, resumePosMs)
+            putLong(LohePlaybackService.EXTRA_DURATION_MS, episode.durationMs)
+            putString(LohePlaybackService.EXTRA_PODCAST_ID, episode.podcastId)
+            putBoolean(LohePlaybackService.EXTRA_IS_DOWNLOADED, episode.isDownloaded)
+        }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(episode.title)
+            .setArtist(episode.podcastTitle)
+            .setSubtitle(episode.podcastTitle)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+            .setExtras(extras)
+            .apply {
+                if (episode.artworkUrl.isNotBlank()) {
+                    setArtworkUri(Uri.parse(episode.artworkUrl))
+                }
+            }
+            .build()
+
+        return MediaItem.Builder()
+            .setMediaId(episode.id)
+            .setUri(resolveMediaUri(episode))
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    fun loadAndPlayEpisode(episode: EpisodeEntity, autoPlay: Boolean = true) {
+        val player = activeTransportPlayer()
+        val current = _state.value.currentEpisode
+
+        // If autoPlay is false and the shared service player already has an active item (e.g. from Android Auto),
+        // adopt the service player's state rather than overwriting it.
+        if (!autoPlay && player != null && player.mediaItemCount > 0) {
+            syncStateFromActivePlayer(player)
+            return
+        }
+
+        if (current?.id == episode.id && player != null && player.mediaItemCount > 0 &&
+            player.currentMediaItem?.mediaId == episode.id
+        ) {
             if (autoPlay) {
-                controller.play()
+                player.prepare()
+                player.play()
                 _state.value = _state.value.copy(isPlaying = true)
             }
             return
         }
 
+        val startPosMs = LohePlaybackService.validResumePositionMs(episode)
+        LohePlaybackService.cacheResumePositionMs(episode.id, startPosMs)
+
         _state.value = _state.value.copy(
             currentEpisode = episode,
-            positionMs = episode.resumePositionMs,
+            positionMs = startPosMs,
             durationMs = episode.durationMs.coerceAtLeast(30_000L),
             isPlaying = autoPlay,
             errorMessage = null
         )
         pushWidgetSnapshot()
 
-        if (controller != null) {
-            loadIntoController(controller, episode, autoPlay)
+        if (player != null) {
+            loadIntoPlayer(player, episode, autoPlay)
         } else {
             pendingEpisodeRequest = episode to autoPlay
             connectToPlaybackService()
@@ -210,59 +384,61 @@ class LohePlayerController(
         }
     }
 
-    private fun loadIntoController(controller: MediaController, episode: EpisodeEntity, autoPlay: Boolean) {
-        try {
-            val metadata = MediaMetadata.Builder()
-                .setTitle(episode.title)
-                .setArtist(episode.podcastTitle)
-                .setSubtitle(episode.podcastTitle)
-                .apply {
-                    if (episode.artworkUrl.isNotBlank()) {
-                        setArtworkUri(Uri.parse(episode.artworkUrl))
-                    }
+    private fun loadIntoPlayer(player: Player, episode: EpisodeEntity, autoPlay: Boolean) {
+        scope.launch {
+            try {
+                val upNext = runCatching { loheDao.getUpNextEpisodes().first() }.getOrDefault(emptyList())
+                val queueEpisodes = if (upNext.any { it.id == episode.id }) {
+                    upNext.map { if (it.id == episode.id) episode else it }
+                } else {
+                    listOf(episode) + upNext
                 }
-                .build()
+                val queueItems = queueEpisodes.map(::buildPlayableMediaItem)
+                val startIndex = queueEpisodes.indexOfFirst { it.id == episode.id }.coerceAtLeast(0)
+                val startPositionMs = LohePlaybackService.validResumePositionMs(episode)
 
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(episode.id)
-                .setUri(resolveMediaUri(episode))
-                .setMediaMetadata(metadata)
-                .build()
+                // Supply the saved resume position directly in setMediaItems BEFORE prepare/play,
+                // never by seeking after STATE_READY.
+                player.setMediaItems(queueItems, startIndex, startPositionMs)
+                player.playbackParameters = PlaybackParameters(_state.value.playbackSpeed)
+                sendSkipSilenceCommand(_state.value.skipSilenceEnabled)
+                sendVolumeBoostCommand(_state.value.volumeBoostDb)
+                _state.value = _state.value.copy(
+                    positionMs = startPositionMs,
+                    queueEpisodeIds = queueEpisodes.map { it.id }
+                )
 
-            controller.setMediaItem(mediaItem)
-            controller.prepare()
-            if (episode.resumePositionMs > 0L && episode.resumePositionMs < episode.durationMs) {
-                controller.seekTo(episode.resumePositionMs)
+                if (autoPlay) {
+                    player.prepare()
+                    player.play()
+                } else {
+                    player.playWhenReady = false
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(errorMessage = e.localizedMessage)
             }
-            controller.playbackParameters = PlaybackParameters(_state.value.playbackSpeed)
-            sendSkipSilenceCommand(_state.value.skipSilenceEnabled)
-            sendVolumeBoostCommand(_state.value.volumeBoostDb)
-            if (autoPlay) {
-                controller.play()
-            }
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(errorMessage = e.localizedMessage)
         }
     }
 
     fun togglePlayPause() {
-        val controller = mediaController
+        val player = activeTransportPlayer()
         val ep = _state.value.currentEpisode ?: return
-        if (controller == null) {
+        if (player == null) {
             _state.value = _state.value.copy(isPlaying = !_state.value.isPlaying)
             pushWidgetSnapshot()
             return
         }
-        if (controller.mediaItemCount == 0) {
+        if (player.mediaItemCount == 0) {
             loadAndPlayEpisode(ep, autoPlay = true)
             return
         }
-        if (controller.isPlaying) {
-            controller.pause()
+        if (player.isPlaying) {
+            player.pause()
             _state.value = _state.value.copy(isPlaying = false)
             onProgressPersist(ep.id, _state.value.positionMs, _state.value.durationMs)
         } else {
-            controller.play()
+            player.prepare()
+            player.play()
             _state.value = _state.value.copy(isPlaying = true)
         }
         pushWidgetSnapshot()
@@ -270,9 +446,10 @@ class LohePlayerController(
 
     fun seekTo(positionMs: Long) {
         val clamped = positionMs.coerceIn(0L, _state.value.durationMs)
-        mediaController?.seekTo(clamped)
+        activeTransportPlayer()?.seekTo(clamped)
         _state.value = _state.value.copy(positionMs = clamped)
         _state.value.currentEpisode?.let { ep ->
+            LohePlaybackService.cacheResumePositionMs(ep.id, clamped)
             onProgressPersist(ep.id, clamped, _state.value.durationMs)
         }
     }
@@ -285,7 +462,7 @@ class LohePlayerController(
 
     fun setPlaybackSpeed(speed: Float) {
         val valid = speed.coerceIn(0.5f, 3.0f)
-        mediaController?.playbackParameters = PlaybackParameters(valid)
+        activeTransportPlayer()?.playbackParameters = PlaybackParameters(valid)
         _state.value = _state.value.copy(playbackSpeed = valid)
     }
 
@@ -300,6 +477,7 @@ class LohePlayerController(
     }
 
     private fun sendSkipSilenceCommand(enabled: Boolean) {
+        LohePlaybackService.activeServiceFlow.value?.setSkipSilenceDirect(enabled)
         val controller = mediaController ?: return
         val args = Bundle().apply { putBoolean(LohePlaybackService.EXTRA_ENABLED, enabled) }
         runCatching {
@@ -311,6 +489,7 @@ class LohePlayerController(
     }
 
     private fun sendVolumeBoostCommand(db: Int) {
+        LohePlaybackService.activeServiceFlow.value?.setVolumeBoostDirect(db)
         val controller = mediaController ?: return
         val args = Bundle().apply { putInt(LohePlaybackService.EXTRA_BOOST_DB, db) }
         runCatching {
@@ -363,7 +542,7 @@ class LohePlayerController(
         val armed = _state.value.sleepAtEndOfEpisode
         if (armed) {
             _state.value = _state.value.copy(sleepAtEndOfEpisode = false, isPlaying = false)
-            mediaController?.pause()
+            activeTransportPlayer()?.pause()
             pushWidgetSnapshot()
         }
         return armed
@@ -391,7 +570,7 @@ class LohePlayerController(
             }
             if (_state.value.sleepTimerRemainingSeconds <= 0) {
                 unregisterShakeSensor()
-                mediaController?.pause()
+                activeTransportPlayer()?.pause()
                 _state.value = _state.value.copy(isPlaying = false, sleepTimerRemainingSeconds = 0)
                 pushWidgetSnapshot()
             }
@@ -435,6 +614,9 @@ class LohePlayerController(
         progressJob?.cancel()
         sleepTimerJob?.cancel()
         unregisterShakeSensor()
+        observedServicePlayer?.removeListener(sharedPlayerListener)
+        observedServicePlayer = null
+        mediaController?.removeListener(sharedPlayerListener)
         mediaController = null
         controllerFuture?.let { future ->
             runCatching { MediaController.releaseFuture(future) }

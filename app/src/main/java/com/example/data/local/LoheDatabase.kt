@@ -52,6 +52,12 @@ interface LoheDao {
     @Query("SELECT * FROM episodes WHERE resumePositionMs > 0 AND isPlayed = 0 AND isArchived = 0 ORDER BY publishedAt DESC")
     fun getInProgressEpisodes(): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT * FROM episodes WHERE (isDownloaded = 1 OR localFilePath != '') AND isArchived = 0 ORDER BY publishedAt DESC")
+    fun getDownloadedEpisodes(): Flow<List<EpisodeEntity>>
+
+    @Query("SELECT * FROM episodes WHERE podcastId = :podcastId AND isArchived = 0 ORDER BY publishedAt DESC")
+    fun getEpisodesByPodcastId(podcastId: String): Flow<List<EpisodeEntity>>
+
     @Query("SELECT * FROM episodes WHERE id = :episodeId LIMIT 1")
     suspend fun getEpisodeById(episodeId: String): EpisodeEntity?
 
