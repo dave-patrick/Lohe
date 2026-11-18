@@ -1,10 +1,6 @@
 version: 2
+# App dependencies come from the Play Edition via tools/foss-export; update them there.
 updates:
-  - package-ecosystem: gradle
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
     schedule:
