@@ -10,6 +10,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.download.EpisodeDownloadManager
 import com.example.data.download.PodcastStorageUsage
+import com.example.data.importer.ImportProgressState
+import com.example.data.importer.ImportResultSummary
+import com.example.data.importer.PodcastAppImporter
 import com.example.data.local.AutoQueueMode
 import com.example.data.local.EpisodeBookmarkEntity
 import com.example.data.local.EpisodeEntity
@@ -68,6 +71,7 @@ enum class SettingsSubScreen(val title: String, val subtitle: String, val isProF
     FLOATING_PLAYER("Floating player", "Cross-app controls, size, transparency & battery setup", isProFeatured = true),
     ARCHIVING("Archiving", "Archive delay, retention rules & starred episode protection"),
     DOWNLOADS("Downloads", "Offline cache limits, auto-cleanup, background sync & OPML"),
+    IMPORT_FROM_APP("Import from another app", "OPML, AntennaPod (.db), Podcast Addict (.backup) & Lohe JSON"),
     CLOUD_SYNC("Google Drive & Cloud Sync", "Cross-device library sync & Google Drive AppData backup", isProFeatured = true),
     ABOUT("About", "Kani mascot, version 0.12.0 & Credits")
 }
@@ -78,6 +82,13 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     val downloadManager = EpisodeDownloadManager(application)
     val repository = LoheRepository(database.loheDao(), downloadManager = downloadManager)
     val preferencesRepository = LohePreferencesRepository(application)
+    val podcastAppImporter = PodcastAppImporter(application, database)
+
+    private val _importProgressState = MutableStateFlow(ImportProgressState())
+    val importProgressState: StateFlow<ImportProgressState> = _importProgressState.asStateFlow()
+
+    private val _lastImportSummary = MutableStateFlow<ImportResultSummary?>(null)
+    val lastImportSummary: StateFlow<ImportResultSummary?> = _lastImportSummary.asStateFlow()
 
     val proFeatures: ProFeatures = ProFeaturesRegistry.create(
         context = application,
@@ -785,29 +796,24 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }.sortedByDescending { it.publishedAt }
     }
 
-    // Storage Access Framework (SAF) On-Device OPML / JSON Import & Export
+    // Storage Access Framework (SAF) On-Device Multi-App Import & Export
     fun importFromUri(uri: Uri) {
         viewModelScope.launch {
-            try {
-                val app = getApplication<Application>()
-                val content = withContext(Dispatchers.IO) {
-                    app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                }
-                if (content.isNullOrBlank()) {
-                    postStatusMessage("Selected file was empty")
-                    return@launch
-                }
-                val pathSegment = uri.lastPathSegment ?: ""
-                val result = repository.importOpmlOrJson(content, pathSegment)
-                result.onSuccess { summary ->
-                    postStatusMessage(summary)
-                }.onFailure { err ->
-                    postStatusMessage("Import failed: ${err.localizedMessage}")
-                }
-            } catch (e: Exception) {
-                postStatusMessage("Could not read file: ${e.localizedMessage}")
+            val result = podcastAppImporter.importFromUri(uri) { progress ->
+                _importProgressState.value = progress
+            }
+            result.onSuccess { summary ->
+                _lastImportSummary.value = summary
+                postStatusMessage(summary.toDisplayBanner())
+            }.onFailure { err ->
+                _importProgressState.value = ImportProgressState(isImporting = false)
+                postStatusMessage("Import failed: ${err.localizedMessage ?: "Unsupported file"}")
             }
         }
+    }
+
+    fun clearLastImportSummary() {
+        _lastImportSummary.value = null
     }
 
     fun exportToUri(uri: Uri, asJson: Boolean) {

@@ -273,7 +273,9 @@ class RssAndOpmlParser(
                     chaptersJson = obj.optString("chaptersJson", ""),
                     transcriptUrl = obj.optString("transcriptUrl", ""),
                     transcriptMimeType = obj.optString("transcriptMimeType", ""),
-                    transcriptText = obj.optString("transcriptText", "")
+                    transcriptText = obj.optString("transcriptText", ""),
+                    guid = obj.optString("guid", obj.optString("itemIdentifier", "")),
+                    playedAt = obj.optLong("playedAt", obj.optLong("playedDate", 0L))
                 )
             )
         }
@@ -359,6 +361,8 @@ class RssAndOpmlParser(
                     put("transcriptUrl", e.transcriptUrl)
                     put("transcriptMimeType", e.transcriptMimeType)
                     put("transcriptText", e.transcriptText)
+                    put("guid", e.guid)
+                    put("playedAt", e.playedAt)
                 }
             )
         }
@@ -536,7 +540,8 @@ class RssAndOpmlParser(
                                         durationMs = itemDurationMs,
                                         chaptersUrl = itemChaptersUrl,
                                         transcriptUrl = itemTranscriptUrl,
-                                        transcriptMimeType = itemTranscriptMime
+                                        transcriptMimeType = itemTranscriptMime,
+                                        guid = itemGuid
                                     )
                                 )
                             }

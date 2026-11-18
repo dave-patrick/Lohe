@@ -126,7 +126,7 @@ interface LoheDao {
         PlaylistEntity::class,
         EpisodeBookmarkEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class LoheDatabase : RoomDatabase() {

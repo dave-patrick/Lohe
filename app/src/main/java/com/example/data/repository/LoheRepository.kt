@@ -233,6 +233,7 @@ class LoheRepository(
             val episodes = listOf(
                 EpisodeEntity(
                     id = "sample_ep_1",
+                    guid = "guid_sample_ep_1",
                     podcastId = "sample_pod_1",
                     podcastTitle = initialShows[0].title,
                     title = initialShows[0].sampleEpisodeTitle,
@@ -264,6 +265,7 @@ class LoheRepository(
                 ),
                 EpisodeEntity(
                     id = "sample_ep_2",
+                    guid = "guid_sample_ep_2",
                     podcastId = "sample_pod_2",
                     podcastTitle = initialShows[1].title,
                     title = initialShows[1].sampleEpisodeTitle,
@@ -284,6 +286,7 @@ class LoheRepository(
                 ),
                 EpisodeEntity(
                     id = "sample_ep_3",
+                    guid = "guid_sample_ep_3",
                     podcastId = "sample_pod_3",
                     podcastTitle = initialShows[2].title,
                     title = initialShows[2].sampleEpisodeTitle,
@@ -301,6 +304,7 @@ class LoheRepository(
                 ),
                 EpisodeEntity(
                     id = "sample_ep_4",
+                    guid = "guid_sample_ep_4",
                     podcastId = "sample_pod_1",
                     podcastTitle = initialShows[0].title,
                     title = "Ep. 41 — Hydrophone Array Calibration at Makapuʻu",
@@ -318,6 +322,7 @@ class LoheRepository(
                 ),
                 EpisodeEntity(
                     id = "sample_ep_5",
+                    guid = "guid_sample_ep_5",
                     podcastId = "sample_pod_2",
                     podcastTitle = initialShows[1].title,
                     title = "Ep. 18 — Spatial Mix & Headphone Psychoacoustics",

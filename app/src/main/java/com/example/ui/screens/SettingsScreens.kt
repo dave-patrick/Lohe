@@ -55,6 +55,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -81,6 +82,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.download.PodcastStorageUsage
+import com.example.data.importer.ImportProgressState
+import com.example.data.importer.ImportResultSummary
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.QueueIndicatorSize
 import com.example.data.local.QueueIndicatorStyle
@@ -107,6 +110,8 @@ fun SettingsContainerScreen(
     isCloudSyncBusy: Boolean,
     downloadedEpisodesCount: Int,
     storageBreakdown: Pair<Long, List<PodcastStorageUsage>> = 0L to emptyList(),
+    importProgressState: ImportProgressState = ImportProgressState(),
+    lastImportSummary: ImportResultSummary? = null,
     onNavigateSubScreen: (SettingsSubScreen) -> Unit,
     onBack: () -> Unit,
     onThemeChange: (ThemePreference) -> Unit,
@@ -234,6 +239,8 @@ fun SettingsContainerScreen(
                             isCloudSyncBusy = isCloudSyncBusy,
                             downloadedEpisodesCount = downloadedEpisodesCount,
                             storageBreakdown = storageBreakdown,
+                            importProgressState = importProgressState,
+                            lastImportSummary = lastImportSummary,
                             onThemeChange = onThemeChange,
                             onReducedMotionChange = onReducedMotionChange,
                             onUpNextIndicatorEnabledChange = onUpNextIndicatorEnabledChange,
@@ -289,6 +296,8 @@ fun SettingsContainerScreen(
                         isCloudSyncBusy = isCloudSyncBusy,
                         downloadedEpisodesCount = downloadedEpisodesCount,
                         storageBreakdown = storageBreakdown,
+                        importProgressState = importProgressState,
+                        lastImportSummary = lastImportSummary,
                         onThemeChange = onThemeChange,
                         onReducedMotionChange = onReducedMotionChange,
                         onUpNextIndicatorEnabledChange = onUpNextIndicatorEnabledChange,
@@ -339,6 +348,8 @@ private fun SettingsDetailContent(
     isCloudSyncBusy: Boolean,
     downloadedEpisodesCount: Int,
     storageBreakdown: Pair<Long, List<PodcastStorageUsage>>,
+    importProgressState: ImportProgressState,
+    lastImportSummary: ImportResultSummary?,
     onThemeChange: (ThemePreference) -> Unit,
     onReducedMotionChange: (Boolean) -> Unit,
     onUpNextIndicatorEnabledChange: (Boolean) -> Unit,
@@ -436,6 +447,12 @@ private fun SettingsDetailContent(
             onExportJsonBackup = onExportJsonBackup
         )
 
+        SettingsSubScreen.IMPORT_FROM_APP -> ImportFromAnotherAppSettingsSubScreen(
+            importProgressState = importProgressState,
+            lastImportSummary = lastImportSummary,
+            onPickImportFile = onImportOpmlOrJson
+        )
+
         SettingsSubScreen.CLOUD_SYNC -> {
             if (Edition.HAS_PRO) {
                 CloudSyncSettingsSubScreen(
@@ -474,6 +491,7 @@ private fun SettingsOverviewList(
         SettingsSubScreen.FLOATING_PLAYER to Icons.Filled.PictureInPictureAlt,
         SettingsSubScreen.ARCHIVING to Icons.Filled.Archive,
         SettingsSubScreen.DOWNLOADS to Icons.Filled.Download,
+        SettingsSubScreen.IMPORT_FROM_APP to Icons.Filled.FileOpen,
         SettingsSubScreen.CLOUD_SYNC to Icons.Filled.CloudSync,
         SettingsSubScreen.ABOUT to Icons.Filled.Info
     ).filter { (sub, _) -> Edition.HAS_PRO || !sub.isProFeatured }
@@ -1639,6 +1657,261 @@ private fun DownloadsSettingsSubScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ImportFromAnotherAppSettingsSubScreen(
+    importProgressState: ImportProgressState,
+    lastImportSummary: ImportResultSummary?,
+    onPickImportFile: () -> Unit
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.testTag("import_from_app_settings_list")
+    ) {
+        if (importProgressState.isImporting) {
+            item {
+                SettingsCard(title = "Importing Library Data...") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("import_progress_card"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                color = LoheCyanAccent,
+                                strokeWidth = 2.5.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = importProgressState.stageMessage.ifBlank { "Running database transaction..." },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { importProgressState.progressFraction.coerceIn(0f, 1f) },
+                            color = LoheElectricBlue,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .testTag("import_progress_bar")
+                        )
+                    }
+                }
+            }
+        }
+
+        if (lastImportSummary != null) {
+            item {
+                SettingsCard(title = "Last Import Summary • ${lastImportSummary.format.label}") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("import_summary_card"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Shows added",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${lastImportSummary.showsAdded}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LoheCyanAccent,
+                                modifier = Modifier.testTag("import_summary_shows_added")
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Episodes updated",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${lastImportSummary.episodesUpdated}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LoheElectricBlue,
+                                modifier = Modifier.testTag("import_summary_episodes_updated")
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Items skipped",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${lastImportSummary.itemsSkipped}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.testTag("import_summary_items_skipped")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Import via System File Picker (SAF)") {
+                Text(
+                    text = "Select an export file from your device or cloud drive using Android's Storage Access Framework. No broad storage permissions are required.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onPickImportFile,
+                    enabled = !importProgressState.isImporting,
+                    colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("import_from_app_pick_file_button")
+                ) {
+                    Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Choose Backup or OPML File", color = Color.White)
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Supported Import Formats") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ImportFormatOptionRow(
+                        title = "1. OPML Subscriptions (.opml / .xml)",
+                        description = "Standard OPML subscription lists from any podcast app.",
+                        buttonLabel = "Import OPML",
+                        testTag = "import_format_opml_button",
+                        enabled = !importProgressState.isImporting,
+                        onClick = onPickImportFile
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                    ImportFormatOptionRow(
+                        title = "2. AntennaPod Database Export (.db)",
+                        description = "SQLite database export including subscriptions, played state, in-progress positions, and played dates.",
+                        buttonLabel = "Import .db",
+                        testTag = "import_format_antennapod_button",
+                        enabled = !importProgressState.isImporting,
+                        onClick = onPickImportFile
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                    ImportFormatOptionRow(
+                        title = "3. Podcast Addict Backup (.backup)",
+                        description = "Podcast Addict .backup ZIP archive containing its SQLite database with subscriptions, played state, and resume positions.",
+                        buttonLabel = "Import .backup",
+                        testTag = "import_format_podcast_addict_button",
+                        enabled = !importProgressState.isImporting,
+                        onClick = onPickImportFile
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                    ImportFormatOptionRow(
+                        title = "4. Lohe JSON Backup (.json)",
+                        description = "Complete Lohe library backup with subscriptions, played state, positions, and custom playlists.",
+                        buttonLabel = "Import .json",
+                        testTag = "import_format_lohe_json_button",
+                        enabled = !importProgressState.isImporting,
+                        onClick = onPickImportFile
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Episode Matching & Forward-Only Merge") {
+                Text(
+                    text = "• Episodes are matched by GUID first, then by enclosure URL, and finally by title plus publish date.\n" +
+                        "• Imports only move playback state forward: Lohe never marks a played episode unplayed and never lowers a saved resume position.\n" +
+                        "• Positions within the last 10 seconds or past 95% of episode duration automatically count as played.\n" +
+                        "• All changes execute atomically inside a single database transaction.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("import_matching_rules_text")
+                )
+            }
+        }
+
+        item {
+            SettingsCard(title = "Pocket Casts, Apple Podcasts & Spotify") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("import_opml_only_help_card"),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Pocket Casts, Apple Podcasts and Spotify can only export subscriptions via OPML. They do not include episode listening history or playback positions in their exports.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("import_opml_only_help_text")
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportFormatOptionRow(
+    title: String,
+    description: String,
+    buttonLabel: String,
+    testTag: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        OutlinedButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier
+                .height(48.dp)
+                .testTag(testTag)
+        ) {
+            Text(buttonLabel)
         }
     }
 }

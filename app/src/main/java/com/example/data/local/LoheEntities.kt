@@ -88,7 +88,9 @@ data class EpisodeEntity(
     val chaptersJson: String = "",
     val transcriptUrl: String = "",
     val transcriptMimeType: String = "",
-    val transcriptText: String = ""
+    val transcriptText: String = "",
+    val guid: String = "",
+    val playedAt: Long = 0L
 )
 
 @Entity(tableName = "episode_bookmarks")

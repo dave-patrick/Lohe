@@ -123,6 +123,8 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
     val notesBookmarks by viewModel.notesBookmarks.collectAsStateWithLifecycle()
     val isNotesExtrasLoading by viewModel.isNotesExtrasLoading.collectAsStateWithLifecycle()
     val storageBreakdown by viewModel.storageBreakdown.collectAsStateWithLifecycle()
+    val importProgressState by viewModel.importProgressState.collectAsStateWithLifecycle()
+    val lastImportSummary by viewModel.lastImportSummary.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Google Drive OAuth AppData Consent Launcher
@@ -193,7 +195,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
     val launchImportPicker: () -> Unit = {
         runCatching {
             importOpmlOrJsonLauncher.launch(
-                arrayOf("text/xml", "text/x-opml", "application/xml", "application/json", "*/*")
+                arrayOf("*/*")
             )
         }.onFailure {
             viewModel.postStatusMessage("Storage picker unavailable in headless environment")
@@ -353,6 +355,8 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                             isCloudSyncBusy = isCloudSyncBusy,
                             downloadedEpisodesCount = activeEpisodes.count { it.isDownloaded },
                             storageBreakdown = storageBreakdown,
+                            importProgressState = importProgressState,
+                            lastImportSummary = lastImportSummary,
                             onNavigateSubScreen = { viewModel.openSettings(it) },
                             onBack = { viewModel.navigateBackInSettings() },
                             onThemeChange = viewModel::setThemePreference,
