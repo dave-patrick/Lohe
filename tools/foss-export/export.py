@@ -34,7 +34,7 @@ KEEP = {
 # Paths in the Play Edition that never go public.
 EXCLUDE = {
     ".git", "app/src/main/java/com/example/pro", "app/src/debug",
-    "firebase-applet-config.json", "metadata.json", ".env", ".env.example",
+    "app/src/testDebug", "firebase-applet-config.json", "metadata.json", ".env", ".env.example",
     "public", "local.properties", "google-services.json", "app/google-services.json",
     "my-upload-key.jks", "debug.keystore", ".idea", "build", "app/build", ".gradle", ".kotlin",
 }
