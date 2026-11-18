@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -127,7 +129,7 @@ interface LoheDao {
         EpisodeBookmarkEntity::class
     ],
     version = 6,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class LoheDatabase : RoomDatabase() {
     abstract fun loheDao(): LoheDao
@@ -136,6 +138,13 @@ abstract class LoheDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: LoheDatabase? = null
 
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE episodes ADD COLUMN guid TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE episodes ADD COLUMN playedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): LoheDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -143,7 +152,7 @@ abstract class LoheDatabase : RoomDatabase() {
                     LoheDatabase::class.java,
                     "lohe_preview.db"
                 )
-                    .fallbackToDestructiveMigration(true)
+                    .addMigrations(MIGRATION_5_6)
                     .build()
                 INSTANCE = instance
                 instance
