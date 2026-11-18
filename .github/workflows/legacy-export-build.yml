@@ -49,9 +49,6 @@ jobs:
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/legacy" 2d123a0
           git -C "$RUNNER_TEMP/legacy" apply "$GITHUB_WORKSPACE/tools/legacy-export/new-lohe-export.patch"
-          # The keystore is PKCS12. Android reads it as JKS unless told otherwise.
-          sed -i 's/^\( *\)storeFile = file(path)$/&\n\1storeType = "PKCS12"/' "$RUNNER_TEMP/legacy/app/build.gradle.kts"
-          grep -q 'storeType = "PKCS12"' "$RUNNER_TEMP/legacy/app/build.gradle.kts" || { echo "::error::Could not set the keystore type"; exit 1; }
 
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         if: steps.secrets.outputs.ready == 'true'
@@ -76,17 +73,17 @@ jobs:
           SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -1)"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.jks"
           {
             printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT"
-            printf 'keystore.path=%s\n' "$RUNNER_TEMP/release.p12"
+            printf 'keystore.path=%s\n' "$RUNNER_TEMP/release.jks"
             printf 'keystore.password=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keystore.alias=%s\n' "$KEY_ALIAS"
             printf 'keystore.key.password=%s\n' "$KEY_PASSWORD"
           } > local.properties
           chmod +x gradlew
           ./gradlew assembleRelease --console=plain
-          rm -f local.properties "$RUNNER_TEMP/release.p12"
+          rm -f local.properties "$RUNNER_TEMP/release.jks"
           APK=app/build/outputs/apk/release/app-release.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate (DN|SHA-256)"
           mkdir -p "$RUNNER_TEMP/out"
