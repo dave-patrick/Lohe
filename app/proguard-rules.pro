@@ -1,4 +1,4 @@
-# Add project-specific ProGuard rules here.
-
-# Room and Media3 supply their own consumer rules. Lohe constructs its
-# ViewModels explicitly; no blanket entity, DAO, or ExoPlayer keeps are needed.
+# Lohe FOSS ProGuard / R8 rules
+#
+# Room, Media3, and Glance supply their own consumer rules.
+# No proprietary Play or Pro reflection keeps are needed in the FOSS edition.

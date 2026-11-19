@@ -29,13 +29,18 @@ The current release is **0.11.1 (build 2026.08.11.80)**. The APK is built with t
 
 Android Auto exposes media browsing and playback through Android's media browser. Android Automotive OS is a separate integration and still needs verification on a head unit.
 
+## Editions
+
+- **FOSS Edition (this repository)**: 100% open source with zero proprietary Google Play Billing or Play Services libraries. Includes full podcast playback, Android Auto support, unlimited playlists & smart playlists, per-show auto-queue & audio overrides, Podcasting 2.0 chapters & transcripts, offline downloads, and OPML/JSON import & export.
+- **Google Play Edition**: Distributed via Google Play with an optional **Lohe Pro** subscription (floating cross-app mini-player, extra Up Next indicator styles & custom HEX colors, and automatic Google Drive AppData sync).
+
 ## Install the release
 
-Download `Lohe-0.11.1-build-2026.08.11.80-release.apk` from the [latest GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.80), open it on your Android device, and allow app installs from your browser or file manager if Android asks. Lohe currently distributes its signed Android APK through GitHub; it is not listed on Google Play.
+Download the latest signed FOSS APK from [GitHub Releases](https://github.com/dave-patrick/Lohe/releases), open it on your Android device, and allow app installs from your browser or file manager if Android asks.
 
 ## Build from source
 
-Requires JDK 17 and Android SDK platform 37. Create `local.properties` in the repository root with your SDK path:
+Requires JDK 17 and Android SDK platform 36. Create `local.properties` in the repository root with your SDK path:
 
 ```properties
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk

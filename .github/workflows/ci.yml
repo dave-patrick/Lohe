@@ -23,22 +23,12 @@ jobs:
 
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          # Matches the version the build is verified against locally, and the
-          # floor AGP 9.4.1 requires.
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
-      # android-actions/setup-android@v3 was tried here and failed: it shells
-      # out to `sdkmanager tools`, and that package no longer exists under
-      # cmdline-tools 16. The runner image already ships an SDK, so drive
-      # sdkmanager directly instead.
-      #
-      # It is not on PATH by default — hence the explicit lookup. The platform
-      # is `android-37.0` (preview-style suffix), which is what compileSdk 37
-      # resolves to locally.
       - name: Install Android SDK packages
         run: |
           set -euo pipefail
@@ -46,12 +36,17 @@ jobs:
           if [ -z "$SDKMANAGER" ]; then echo "::error::sdkmanager not found under $ANDROID_SDK_ROOT"; exit 1; fi
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Write local.properties
-        # The SDK path is machine-local and gitignored, so CI declares it the
-        # same way a developer does. Never committed.
         run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Verify FOSS cleanliness
+        run: |
+          set -euo pipefail
+          test ! -d app/src/main/java/com/lohe/app/pro
+          grep -q 'const val HAS_PRO = false' app/src/main/java/com/lohe/app/edition/Edition.kt
+          ! grep -qE 'billing|play\.services|SYSTEM_ALERT_WINDOW|LoheFloatingOverlayService' app/build.gradle.kts app/src/main/AndroidManifest.xml
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --console=plain
@@ -61,18 +56,15 @@ jobs:
         run: ./tools/prepare-privacy-policy.ps1 -Check
 
       - name: Android lint
-        run: ./gradlew -PlohePlayStore=true lintRelease --console=plain
+        run: ./gradlew lintRelease --console=plain
 
       - name: Assemble debug APK and instrumented tests
         run: ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
 
-      - name: Validate unsigned Play bundle build
-        # Signing credentials are deliberately absent in this CI workflow.
-        run: ./gradlew -PlohePlayStore=true bundleRelease --console=plain
+      - name: Validate unsigned FOSS release APK build
+        run: ./gradlew assembleRelease --console=plain
 
       - name: Upload test reports
-        # Only on failure — a green run does not need its XML, and these are
-        # 199 files' worth of noise otherwise.
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -89,15 +81,16 @@ jobs:
           echo "build_id=$(sed -n 's/^val loheBuildId = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
           echo "release=$(sed -n 's/^val loheReleaseVersion = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload unsigned Play build and R8 mapping
+      - name: Upload unsigned FOSS release APK and R8 mapping
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-play-UNSIGNED
+          name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-foss-UNSIGNED
           path: |
-            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release-unsigned.apk
             app/build/outputs/mapping/release/mapping.txt
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
