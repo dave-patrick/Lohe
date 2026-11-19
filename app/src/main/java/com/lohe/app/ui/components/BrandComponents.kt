@@ -443,7 +443,9 @@ private fun HomeFlyingKaniStage(
         }
         activeDrawable.callback = callback
         onDispose {
-            (activeDrawable as? AnimatedImageDrawable)?.stop()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                (activeDrawable as? AnimatedImageDrawable)?.stop()
+            }
             mainHandler.removeCallbacksAndMessages(activeDrawable)
             activeDrawable.callback = null
         }
@@ -451,10 +453,12 @@ private fun HomeFlyingKaniStage(
 
     LaunchedEffect(activeDrawable) {
         flightProgress.snapTo(0f)
-        (activeDrawable as? AnimatedImageDrawable)?.let { animDrawable ->
-            animDrawable.stop()
-            animDrawable.repeatCount = 0
-            animDrawable.start()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            (activeDrawable as? AnimatedImageDrawable)?.let { animDrawable ->
+                animDrawable.stop()
+                animDrawable.repeatCount = 0
+                animDrawable.start()
+            }
         }
         flightProgress.animateTo(
             targetValue = 1f,

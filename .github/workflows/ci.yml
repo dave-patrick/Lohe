@@ -56,7 +56,11 @@ jobs:
         run: ./tools/prepare-privacy-policy.ps1 -Check
 
       - name: Android lint
-        run: ./gradlew lintRelease --console=plain
+        run: |
+          if ! ./gradlew lintRelease --console=plain; then
+            cat app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt 2>/dev/null || true
+            exit 1
+          fi
 
       - name: Assemble debug APK and instrumented tests
         run: ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
