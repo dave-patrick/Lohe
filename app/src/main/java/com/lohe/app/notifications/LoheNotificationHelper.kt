@@ -85,8 +85,10 @@ object LoheNotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        runCatching {
+        try {
             NotificationManagerCompat.from(context).notify(12001, notification)
+        } catch (_: SecurityException) {
+            // Permission may have been revoked between check and notify.
         }
     }
 }

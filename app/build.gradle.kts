@@ -89,6 +89,10 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  lint {
+    textReport = true
+    textOutput = file("stdout")
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = false
