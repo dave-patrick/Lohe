@@ -72,6 +72,7 @@ import com.lohe.app.ui.theme.SettingsStore
 import com.lohe.app.utils.FileScanner
 import com.lohe.app.utils.LocalFileManager
 import com.lohe.app.utils.LocalFolderStore
+import com.lohe.app.data.db.DatabaseExporter
 import com.lohe.app.data.db.entity.toSummary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -185,6 +186,7 @@ private fun LoheNavigationContent(
     val localFolderStore = remember { LocalFolderStore(context) }
     var pendingOpml by remember { mutableStateOf<ByteArray?>(null) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
+    var pendingDatabaseExportUri by remember { mutableStateOf<Uri?>(null) }
     var importMessage by remember { mutableStateOf<String?>(null) }
     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
 
@@ -335,6 +337,24 @@ private fun LoheNavigationContent(
         }.fold(
             onSuccess = { "Exported subscriptions." },
             onFailure = { "Couldn't write the export file." },
+        )
+    }
+
+    val dbExportWriter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.sqlite3"),
+    ) { uri ->
+        if (uri != null) pendingDatabaseExportUri = uri
+    }
+
+    LaunchedEffect(pendingDatabaseExportUri) {
+        val uri = pendingDatabaseExportUri ?: return@LaunchedEffect
+        pendingDatabaseExportUri = null
+        importMessage = DatabaseExporter.exportToUri(context, uri).fold(
+            onSuccess = { bytes ->
+                val kb = (bytes + 1023L) / 1024L
+                "Exported lohe.db ($kb KB)."
+            },
+            onFailure = { "Couldn't export database." },
         )
     }
 
@@ -737,6 +757,7 @@ private fun LoheNavigationContent(
                     onOpenAbout = { navController.navigate(Routes.ABOUT) },
                     settingsStore = settingsStore,
                     onOpenCategory = { navController.navigate(Routes.settings(it)) },
+                    onExportDatabase = { dbExportWriter.launch("lohe.db") },
                 )
             }
 

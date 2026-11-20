@@ -69,6 +69,7 @@ fun SettingsScreen(
     settingsStore: SettingsStore,
     category: SettingsCategory? = null,
     onOpenCategory: (SettingsCategory) -> Unit = {},
+    onExportDatabase: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -102,6 +103,13 @@ fun SettingsScreen(
         if (category == null) {
             SettingsCategory.entries.forEach { section ->
                 SettingsMenuRow(section.title, section.summary) { onOpenCategory(section) }
+            }
+            if (onExportDatabase != null) {
+                SettingsMenuRow(
+                    title = "Export database",
+                    summary = "Save a copy of lohe.db (podcasts, episodes, playlists, history)",
+                    onClick = onExportDatabase,
+                )
             }
             SettingsMenuRow("About", "Version and app information", onOpenAbout)
         }
