@@ -1,129 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Lohe</string>
-
-
-    <string name="player_now_playing">Now playing</string>
-    <string name="player_nothing_queued">Nothing queued yet.</string>
-    <string name="player_volume_boost_on">Volume boost on</string>
-    <string name="player_volume_boost_off">Volume boost off</string>
-    <string name="player_skip_back">Back 10 seconds</string>
-    <string name="player_skip_forward">Forward 30 seconds</string>
-
-    <string name="sleep_timer_title">Sleep timer</string>
-    <string name="sleep_timer_end_of_episode">End of this episode</string>
-    <string name="sleep_timer_minutes">%1$d min</string>
-    <string name="sleep_timer_cancel">Cancel timer</string>
-
-    <string name="podcasts_title">Podcasts</string>
-    <string name="podcasts_search_label">Search shows</string>
-    <string name="podcasts_add_folder">Import a folder from this device</string>
-    <string name="podcasts_empty_title">No shows yet</string>
-    <string name="podcasts_empty_hint">Subscribe to a feed, or bring in audio already on this phone.</string>
-    <string name="podcasts_empty_search">Nothing matches that.</string>
-    <string name="podcasts_empty_search_hint">Try a different title, author, or topic.</string>
-    <string name="podcasts_local_badge">On this device</string>
-
-    <string name="podcasts_add_feed">Add a feed</string>
-    <string name="podcasts_add">Add</string>
-    <string name="podcasts_fetching">Fetching…</string>
-    <string name="podcasts_feed_url_label">Feed URL</string>
-    <string name="podcasts_feed_url_hint">example.com/show/feed.xml</string>
-    <string name="podcasts_feed_added">Subscribed to %1$s</string>
-    <string name="podcasts_more">More options</string>
-
-    <string name="opml_import">Import subscriptions (OPML)</string>
-    <string name="opml_export">Export subscriptions (OPML)</string>
-    <string name="opml_export_failed">Couldn\'t build the export.</string>
-    <string name="opml_imported_clean">Imported %1$d show(s)</string>
-    <string name="opml_file_name">lohe-subscriptions.opml</string>
-
-    <string name="refresh_feeds">Check for new episodes</string>
-    <string name="refreshing">Refreshing…</string>
-    <string name="refresh_clean">Checked %1$d show(s)</string>
-    <string name="refresh_partial">Checked %1$d, %2$d unreachable</string>
-
-    <string name="storage_management">Storage</string>
-    <string name="storage_downloads">Offline downloads</string>
-    <string name="storage_imported">Imported from this device</string>
-    <string name="storage_no_downloads">Nothing downloaded yet.</string>
-    <string name="storage_delete_downloads">Delete downloads</string>
-    <string name="storage_delete_downloads_hint">Removes every downloaded episode from this device. The shows themselves stay in your library.</string>
-    <string name="storage_clear_imports">Clear imported audio</string>
-    <string name="storage_clear_imports_hint">Removes imported episodes from your library. Your audio files stay on the device, untouched.</string>
-    <string name="storage_delete_one">Delete this download</string>
-    <string name="storage_download_hint">Downloaded episodes play without a connection.</string>
-    <string name="yes">Yes</string>
-    <string name="no">No</string>
-
-    <string name="action_back">Back</string>
-
-    <string name="episodes_loading">Loading…</string>
-    <string name="episodes_empty">No episodes yet. Import a folder, or add a feed.</string>
-    <string name="episodes_star">Star episode</string>
-    <string name="episodes_show_settings">Show settings</string>
-    <string name="episodes_archive">Archive episode</string>
-    <string name="episodes_refresh">Refresh episode</string>
-    <string name="episodes_unarchive">Bring back from archive</string>
-    <string name="episodes_sort">Change sort order</string>
-    <string name="episodes_mark_played">Mark as played</string>
-    <string name="episodes_mark_unplayed">Mark as unplayed</string>
-
-    <string name="queue_drag_handle">Drag to reorder</string>
-    <string name="queue_remove">Remove from queue</string>
-
-    <string name="episodes_add_to_queue">Add to queue</string>
-    <string name="episodes_queued">In queue</string>
-    <string name="episodes_download">Download</string>
-    <string name="episodes_downloaded">Downloaded</string>
-    <string name="episodes_cancel_download">Cancel download</string>
-
-    <string name="home_empty_title">Nothing queued up</string>
-    <string name="home_mascot_description">Kani, waiting for something to play</string>
-    <string name="home_empty_body">Find a show to follow, or import audio already on this phone.</string>
-    <string name="home_cta_discover">Find a show</string>
-    <string name="home_cta_import">Import from this device</string>
-    <string name="home_kani_title">ua lohe ʻoe? - Have you heard?</string>
-    <string name="home_kani_body">Kani has been counting your listening. Here is where it stands.</string>
-    <string name="home_kani_in_progress">%1$d episodes in progress.</string>
-    <string name="home_kani_played">%1$d episodes listened to. Kani is impressed.</string>
-
+    <string name="tagline">ua lohe ‘oe? • Have you heard?</string>
+    <string name="version_display">v0.12.0</string>
+    <string name="about_version_display">Version 0.12.0</string>
+    <string name="about_build_display">Build 2026.12.17.120</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_podcasts">Podcasts</string>
+    <string name="tab_playlists">Playlists</string>
+    <string name="tab_up_next">Up Next</string>
+    <string name="tab_discover">Discover</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_dark">Dark</string>
-    <string name="settings_light">Light</string>
-    <string name="settings_skip_back">Skip back</string>
-    <string name="settings_skip_forward">Skip forward</string>
-    <string name="settings_seconds">%1$ds</string>
-    <string name="settings_volume_boost">Volume boost</string>
-    <string name="settings_volume_boost_hint">Starts every episode amplified.</string>
-    <string name="discovery_title">Discover</string>
-    <string name="discovery_search_label">Search the catalog</string>
-    <string name="discovery_search_hint">topic, show, or host</string>
-    <string name="discovery_idle">Search thousands of shows, then subscribe in one tap.</string>
-    <string name="discovery_no_results">Nothing matched that.</string>
-    <string name="discovery_subscribe">Subscribe</string>
-    <string name="discovery_unsubscribe">Following</string>
-    <string name="discovery_open_show">Open</string>
-<string name="discovery_episodes">Episodes</string>
-    <string name="show_setting_auto_download">Download new episodes</string>
-    <string name="show_setting_auto_download_summary">Save them as soon as a refresh finds them</string>
-    <string name="discovery_already_subscribed">Already subscribed</string>
-
-    <!-- About -->
-    <string name="about_title">About</string>
-    <string name="about_tagline">ua lohe ʻoe? - Have you heard?</string>
-    <string name="about_version">Version %1$s (build %2$s)</string>
-    <string name="about_version_unknown">Version unavailable</string>
-    <string name="about_name_heading">To hear. To listen. To take something to heart.</string>
-    <string name="about_name_body">In Hawaiian, that is Lohe (lōhe). We built the app around the simple idea of listening on your own terms. Whether you are into gripping stories, honest conversations, the daily news, or a deep dive on a random obsession, Lohe lets you hear what you want, exactly how you want to hear it. It stays out of your way and remembers where you left off.\n\nUa lohe ʻoe?</string>
-    <string name="about_kani_heading">Kani</string>
-    <string name="about_kani_body">That little dragonfly on your home screen is Kani. His name comes from the Hawaiian idea of listening with quiet, focused attention. He keeps an eye on your library so your next listen is always ready when you are.</string>
-    <string name="about_credits_heading">Credits</string>
-    <string name="about_studio">An Atomic 22 Industries app.</string>
-    <string name="about_copyright">© 2026 Atomic 22 Industries\nKani mascot by Atomic 22 Design</string>
-    <string name="about_mark_description">Lohe hero mark</string>
-    <string name="about_wordmark_description">Lohe</string>
-    <string name="floating_player_turn_on">Turn on floating player</string>
-    <string name="floating_player_turn_off">Turn off floating player</string>
-    <string name="about_studio_logo_description">Atomic 22 Industries</string>
+    <string name="your_signal_title">Your Signal</string>
+    <string name="continue_listening_title">Continue Listening</string>
+    <string name="import_opml_button">Import OPML / JSON</string>
+    <string name="export_backup_button">Export Backup</string>
+    <string name="widget_player_description">Quick Play/Pause, Skip, and active episode controls for Lohe</string>
 </resources>

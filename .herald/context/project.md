@@ -3,6 +3,11 @@
 ## Overview
 Native Android podcast client using Kotlin, Jetpack Compose, Room, and a debug MCP/REST surface.
 
+## Editions architecture
+- **FOSS Edition (`dave-patrick/Lohe`, public)**: Built with `Edition.HAS_PRO = false`, `BuildConfig.EDITION = "foss"`, and `NoOpProFeatures`. Contains zero `com.lohe.app.pro` sources, zero proprietary Google Play Billing or Play Services dependencies, and no `SYSTEM_ALERT_WINDOW` / floating overlay service. Sets `dependenciesInfo { includeInApk = false; includeInBundle = false }` for F-Droid compatibility.
+- **Google Play Edition (`dave-patrick/Lohe-Play-Edition-`, private)**: Upstream repository with `Edition.HAS_PRO = true`, `BuildConfig.EDITION = "play"`, `com.lohe.app.pro` (Play Billing 8.3.0 `lohe_pro_yearly`, floating overlay service, Google Drive AppData sync, extra Up Next styles & custom HEX color), and `-PlohePlayStore=true` car-manifest stripping.
+- Shared source changes flow from `Lohe-Play-Edition-` into `Lohe` via `python3 tools/sync-foss.py --target ../Lohe` (with `--audit-only` to verify zero Pro/Play leaks).
+
 ## Library mirrors
 - Android Auto projection uses `PlaybackService`'s `MediaLibrarySession` and `MediaLibrary` browse tree for Continue listening, Up Next, Downloads, Shows, Playlists, and episode/show search. AAOS additionally uses `CarPlaybackService` and `CarHomeScreen`, registering the same platform media-session token so car and phone share playback state. The media service declares the launcher icon, and the car media card uses a monochrome tintable attribution vector.
 - The Playlists tab has six derived smart playlists: Played, In Progress, Unplayed, Not Downloaded, Downloaded, and New Releases (last seven days). They update from episode state, default to visible, and each visibility preference persists in DataStore.

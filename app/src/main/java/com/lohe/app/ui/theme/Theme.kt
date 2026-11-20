@@ -1,61 +1,81 @@
 package com.lohe.app.ui.theme
 
-import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.SideEffect
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.Color
 
-/**
- * Lohe appearance.
- *
- * Dark is the product's primary mode and the default — it does **not** follow
- * the system setting. Light is an explicit user choice from Settings.
- *
- * Rationale: the palette, the glass surfaces and the artwork treatment are all
- * designed dark-first. Treating light as a derived variant rather than a peer
- * keeps that honest.
- */
-enum class Appearance { DARK, LIGHT }
+private val LoheDarkColorScheme = darkColorScheme(
+    primary = LoheElectricBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E3B57),
+    onPrimaryContainer = LoheCyanAccent,
+    secondary = LoheCyanAccent,
+    onSecondary = LoheBackgroundDark,
+    secondaryContainer = LoheSurfaceElevatedDark,
+    onSecondaryContainer = LoheTextPrimaryDark,
+    tertiary = LoheElectricBlue,
+    background = LoheBackgroundDark,
+    onBackground = LoheTextPrimaryDark,
+    surface = LoheSurfaceDark,
+    onSurface = LoheTextPrimaryDark,
+    surfaceVariant = LoheSurfaceElevatedDark,
+    onSurfaceVariant = LoheTextMutedDark,
+    outline = LoheBorderDark,
+    outlineVariant = LoheBorderDark
+)
+
+private val LoheLightColorScheme = lightColorScheme(
+    primary = LoheElectricBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD6EEFF),
+    onPrimaryContainer = Color(0xFF002B52),
+    secondary = Color(0xFF0077CC),
+    onSecondary = Color.White,
+    secondaryContainer = LoheSurfaceElevatedLight,
+    onSecondaryContainer = LoheTextPrimaryLight,
+    tertiary = LoheElectricBlue,
+    background = LoheBackgroundLight,
+    onBackground = LoheTextPrimaryLight,
+    surface = LoheSurfaceLight,
+    onSurface = LoheTextPrimaryLight,
+    surfaceVariant = LoheSurfaceElevatedLight,
+    onSurfaceVariant = LoheTextMutedLight,
+    outline = LoheBorderLight,
+    outlineVariant = LoheBorderLight
+)
+
+enum class ThemePreference {
+    DARK, LIGHT
+}
 
 @Composable
 fun LoheTheme(
-    appearance: Appearance = Appearance.DARK,
-    content: @Composable () -> Unit,
+    themePreference: ThemePreference = ThemePreference.DARK,
+    content: @Composable () -> Unit
 ) {
-    val colors = when (appearance) {
-        Appearance.DARK -> LoheDarkColors
-        Appearance.LIGHT -> LoheLightColors
+    val useDark = when (themePreference) {
+        ThemePreference.DARK -> true
+        ThemePreference.LIGHT -> false
     }
-
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = appearance == Appearance.LIGHT
-                isAppearanceLightNavigationBars = appearance == Appearance.LIGHT
-            }
-        }
-    }
+    val colorScheme = if (useDark) LoheDarkColorScheme else LoheLightColorScheme
 
     MaterialTheme(
-        colorScheme = colors,
-        typography = LoheTypography,
-        shapes = LoheShapes,
-        content = {
-            // Material3's default LocalContentColor is Color.Black, and
-            // Scaffold with a transparent container does not replace it. Any
-            // Text that does not set an explicit colour therefore came out
-            // black on the charcoal surfaces — playlist names, for one.
-            // Setting it here fixes that everywhere at once.
-            CompositionLocalProvider(
-                LocalContentColor provides colors.onSurface,
-                content = content,
-            )
-        },
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
+}
+
+@Composable
+fun MyApplicationTheme(
+    darkTheme: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    LoheTheme(
+        themePreference = if (darkTheme) ThemePreference.DARK else ThemePreference.LIGHT,
+        content = content
     )
 }
