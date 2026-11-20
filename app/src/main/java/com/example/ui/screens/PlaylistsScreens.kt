@@ -826,8 +826,8 @@ fun PlaylistDetailScreen(
                             PodcastArtworkThumbnail(
                                 artworkUrl = ep.artworkUrl,
                                 title = ep.podcastTitle,
-                                cornerRadius = 8.dp,
-                                modifier = Modifier.size(40.dp)
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.size(54.dp)
                             )
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {

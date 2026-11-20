@@ -105,7 +105,7 @@ class V12FeaturesTest {
         composeTestRule.onNodeWithTag("full_player_active_chapter").assertIsDisplayed()
         composeTestRule.onNodeWithTag("sleep_timer_end_of_ep").performScrollTo().performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("full_player_save_bookmark_button").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("full_player_save_bookmark_button").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("bookmark_note_input").performScrollTo().performTextInput("Key takeaway")
         composeTestRule.onNodeWithTag("save_bookmark_confirm_button").performScrollTo().performClick()

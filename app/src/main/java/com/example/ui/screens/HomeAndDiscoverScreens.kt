@@ -148,26 +148,11 @@ fun HomeTabScreen(
 
     val showHeaderKani = podcasts.isNotEmpty() || activeEpisodes.isNotEmpty()
     val listState = rememberLazyListState()
-    var rootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var kaniRestCenterPx by remember { mutableStateOf<Offset?>(null) }
-    var kaniRestSizePx by remember { mutableFloatStateOf(0f) }
-    var isFlightDrawableReady by remember { mutableStateOf(false) }
-    val restCenter = kaniRestCenterPx
-    val isFlightOverlayActive = showHeaderKani &&
-        !settings.reducedMotion &&
-        !hasPlayedHomeFlight &&
-        restCenter != null &&
-        listState.firstVisibleItemIndex == 0 &&
-        restCenter.y > -40f
 
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned { rootCoords = it }
+        modifier = Modifier.fillMaxSize()
     ) {
         val isTwoColumn = maxWidth >= 600.dp
-        val containerWidthPx = constraints.maxWidth.toFloat()
-        val containerHeightPx = constraints.maxHeight.toFloat()
 
         LazyColumn(
             state = listState,
@@ -186,18 +171,7 @@ fun HomeTabScreen(
                         inProgressEpisodes.firstOrNull()?.let(onPlayEpisode) ?: onNavigateToPodcasts()
                     },
                     showKani = showHeaderKani,
-                    showStaticKani = settings.reducedMotion || hasPlayedHomeFlight || !isFlightOverlayActive || !isFlightDrawableReady,
-                    onKaniSlotPositioned = { slotCoords ->
-                        val root = rootCoords
-                        if (root != null && root.isAttached && slotCoords.isAttached) {
-                            val topLeft = root.localPositionOf(slotCoords, Offset.Zero)
-                            kaniRestSizePx = slotCoords.size.width.toFloat()
-                            kaniRestCenterPx = Offset(
-                                x = topLeft.x + slotCoords.size.width / 2f,
-                                y = topLeft.y + slotCoords.size.height / 2f
-                            )
-                        }
-                    }
+                    showStaticKani = true
                 )
             }
 
@@ -466,20 +440,6 @@ fun HomeTabScreen(
             }
         }
         }
-
-        if (isFlightOverlayActive) {
-            restCenter?.let { center ->
-                HomeFlyingKaniOverlay(
-                    restCenterPx = center,
-                    restSlotSizePx = kaniRestSizePx,
-                    containerWidthPx = containerWidthPx,
-                    containerHeightPx = containerHeightPx,
-                    reducedMotion = settings.reducedMotion,
-                    onDrawableReady = { ready -> isFlightDrawableReady = ready },
-                    onFlightFinished = onHomeFlightFinished
-                )
-            }
-        }
     }
 }
 
@@ -516,8 +476,8 @@ fun CompactEpisodeRowCard(
             PodcastArtworkThumbnail(
                 artworkUrl = episode.artworkUrl,
                 title = episode.podcastTitle,
-                cornerRadius = 10.dp,
-                modifier = Modifier.size(52.dp)
+                cornerRadius = 12.dp,
+                modifier = Modifier.size(68.dp)
             )
 
             Spacer(modifier = Modifier.width(12.dp))

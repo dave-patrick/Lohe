@@ -9,12 +9,16 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.importer.ImportProgressState
 import com.example.data.importer.ImportSourceFormat
 import com.example.data.importer.PodcastAppImporter
+import com.example.data.local.AutoQueueMode
+import com.example.data.local.EpisodeBookmarkEntity
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.LoheDatabase
+import com.example.data.local.PlaylistEntity
 import com.example.data.local.PodcastEntity
 import com.example.data.network.RssAndOpmlParser
 import com.example.ui.SettingsSubScreen
@@ -570,6 +574,15 @@ class PodcastAppImportTest {
             .performScrollToNode(hasTestTag("import_format_lohe_json_button"))
         composeTestRule.onNodeWithTag("import_format_lohe_json_button").assertIsDisplayed()
 
+        // Scroll down to verify Lohe DB migration option and export button
+        composeTestRule.onNodeWithTag("import_from_app_settings_list")
+            .performScrollToNode(hasTestTag("import_format_lohe_db_button"))
+        composeTestRule.onNodeWithTag("import_format_lohe_db_button").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("import_from_app_settings_list")
+            .performScrollToNode(hasTestTag("import_screen_export_db_button"))
+        composeTestRule.onNodeWithTag("import_screen_export_db_button").assertIsDisplayed()
+
         // Scroll down to verify the OPML-only help text for Pocket Casts, Apple Podcasts, and Spotify
         composeTestRule.onNodeWithTag("import_from_app_settings_list")
             .performScrollToNode(hasTestTag("import_opml_only_help_text"))
@@ -577,5 +590,137 @@ class PodcastAppImportTest {
         composeTestRule.onNodeWithTag("import_opml_only_help_text")
             .assertIsDisplayed()
             .assertTextContains("Pocket Casts, Apple Podcasts and Spotify can only export subscriptions via OPML", substring = true)
+    }
+
+    @Test
+    fun loheDatabaseExportAndMigration_transfersShowsEpisodesPlaylistsAndBookmarks() = runBlocking {
+        val context = getContext()
+        val legacyDbName = "legacy_lohe_source_${System.currentTimeMillis()}.db"
+        val legacyDb = Room.databaseBuilder(context, LoheDatabase::class.java, legacyDbName)
+            .allowMainThreadQueries()
+            .build()
+        val exportedFile = File.createTempFile("lohe_exported_", ".db", context.cacheDir)
+
+        try {
+            val legacyDao = legacyDb.loheDao()
+            legacyDao.insertPodcast(
+                PodcastEntity(
+                    id = "legacy_pod_1",
+                    title = "Legacy Lohe Show",
+                    author = "Lohe Host",
+                    description = "Migrated from earlier Lohe install",
+                    feedUrl = "https://example.org/legacy-lohe-show.xml",
+                    artworkUrl = "https://example.org/legacy.jpg",
+                    category = "Technology",
+                    autoQueueMode = AutoQueueMode.BEGINNING.name,
+                    useCustomAudio = true,
+                    customSpeed = 1.6f,
+                    customSkipSilence = true,
+                    customVolumeBoostDb = 6,
+                    notifyNewEpisodes = true,
+                    isSubscribed = true
+                )
+            )
+            legacyDao.insertEpisode(
+                EpisodeEntity(
+                    id = "legacy_ep_1",
+                    podcastId = "legacy_pod_1",
+                    podcastTitle = "Legacy Lohe Show",
+                    title = "Episode One: Migration",
+                    descriptionHtml = "<p>Notes from legacy Lohe DB</p>",
+                    audioUrl = "https://example.org/legacy_ep1.mp3",
+                    artworkUrl = "https://example.org/legacy.jpg",
+                    publishedAt = 1_715_000_000_000L,
+                    durationMs = 1_800_000L,
+                    resumePositionMs = 420_000L,
+                    isPlayed = false,
+                    isArchived = false,
+                    isDownloaded = true,
+                    localFilePath = "/data/user/0/com.lohe.old/files/ep1.mp3",
+                    isStarred = true,
+                    inUpNext = true,
+                    upNextOrder = 2,
+                    chaptersUrl = "https://example.org/ep1-chapters.json",
+                    transcriptUrl = "https://example.org/ep1.vtt",
+                    guid = "legacy-guid-001",
+                    playedAt = 1_715_100_000_000L
+                )
+            )
+            legacyDao.insertPlaylist(
+                PlaylistEntity(
+                    id = "legacy_pl_1",
+                    name = "Morning Commute",
+                    folderName = "Daily",
+                    episodeIdsCsv = "legacy_ep_1",
+                    assignedPodcastIdsCsv = "legacy_pod_1",
+                    isPinned = true
+                )
+            )
+            legacyDao.insertBookmark(
+                EpisodeBookmarkEntity(
+                    id = "legacy_bm_1",
+                    episodeId = "legacy_ep_1",
+                    positionMs = 180_000L,
+                    label = "Great insight"
+                )
+            )
+
+            // Export WAL-checkpointed SQLite database file from legacy Lohe instance
+            val legacyExporter = PodcastAppImporter(context, legacyDb)
+            val exportResult = legacyExporter.exportLoheDatabaseToFile(exportedFile)
+            assertTrue("Expected DB export to succeed: ${exportResult.exceptionOrNull()}", exportResult.isSuccess)
+            assertTrue("Exported .db must be non-empty", exportedFile.length() > 0L)
+
+            // Import into fresh target Play Edition DB
+            val targetDb = LoheDatabase.getInstance(context)
+            val targetImporter = PodcastAppImporter(context, targetDb)
+            val importResult = targetImporter.importFromFile(exportedFile, "lohe_preview.db")
+            assertTrue("Expected Lohe DB import to succeed: ${importResult.exceptionOrNull()}", importResult.isSuccess)
+
+            val summary = importResult.getOrThrow()
+            assertEquals(ImportSourceFormat.LOHE_DB, summary.format)
+            assertTrue("Expected show added", summary.showsAdded >= 1)
+            assertTrue("Expected episode migrated", summary.episodesUpdated >= 1)
+            assertEquals(1, summary.playlistsImported)
+            assertEquals(1, summary.bookmarksImported)
+
+            val targetDao = targetDb.loheDao()
+            val migratedPod = targetDao.getAllPodcasts().first().firstOrNull {
+                it.feedUrl == "https://example.org/legacy-lohe-show.xml"
+            }
+            assertNotNull("Migrated podcast should exist", migratedPod)
+            assertTrue("Per-show custom audio must be preserved", migratedPod!!.useCustomAudio)
+            assertEquals(1.6f, migratedPod.customSpeed, 0.01f)
+            assertEquals(6, migratedPod.customVolumeBoostDb)
+            assertEquals(AutoQueueMode.BEGINNING.name, migratedPod.autoQueueMode)
+
+            val migratedEp = targetDao.getAllEpisodes().first().firstOrNull { it.guid == "legacy-guid-001" }
+            assertNotNull("Migrated episode should exist", migratedEp)
+            assertEquals(420_000L, migratedEp!!.resumePositionMs)
+            assertTrue(migratedEp.isStarred)
+            assertTrue(migratedEp.inUpNext)
+            assertEquals("https://example.org/ep1-chapters.json", migratedEp.chaptersUrl)
+            assertEquals("https://example.org/ep1.vtt", migratedEp.transcriptUrl)
+            assertFalse("Cross-app local download flag must reset safely", migratedEp.isDownloaded)
+            assertEquals("", migratedEp.localFilePath)
+
+            val migratedPlaylist = targetDao.getCustomPlaylists().first().firstOrNull { it.id == "legacy_pl_1" }
+            assertNotNull("Migrated playlist should exist", migratedPlaylist)
+            assertEquals("Morning Commute", migratedPlaylist!!.name)
+
+            val migratedBookmarks = targetDao.getBookmarksForEpisode(migratedEp.id).first()
+            assertEquals(1, migratedBookmarks.size)
+            assertEquals("Great insight", migratedBookmarks.first().label)
+            assertEquals(180_000L, migratedBookmarks.first().positionMs)
+
+            // Re-importing the same DB must not duplicate bookmarks
+            val secondImport = targetImporter.importFromFile(exportedFile, "lohe_preview.db").getOrThrow()
+            assertEquals(0, secondImport.bookmarksImported)
+            assertEquals(1, targetDao.getBookmarksForEpisode(migratedEp.id).first().size)
+        } finally {
+            legacyDb.close()
+            context.deleteDatabase(legacyDbName)
+            exportedFile.delete()
+        }
     }
 }

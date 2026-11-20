@@ -249,8 +249,8 @@ fun UpNextTabScreen(
                                 PodcastArtworkThumbnail(
                                     artworkUrl = ep.artworkUrl,
                                     title = ep.podcastTitle,
-                                    cornerRadius = 8.dp,
-                                    modifier = Modifier.size(42.dp)
+                                    cornerRadius = 10.dp,
+                                    modifier = Modifier.size(56.dp)
                                 )
 
                                 Spacer(Modifier.width(10.dp))

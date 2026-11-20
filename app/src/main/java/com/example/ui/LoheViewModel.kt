@@ -188,6 +188,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeEpisodeChapters = MutableStateFlow<List<EpisodeChapter>>(emptyList())
     val activeEpisodeChapters: StateFlow<List<EpisodeChapter>> = _activeEpisodeChapters.asStateFlow()
 
+    private val _activeEpisodeTranscriptCues = MutableStateFlow<List<TranscriptCue>>(emptyList())
+    val activeEpisodeTranscriptCues: StateFlow<List<TranscriptCue>> = _activeEpisodeTranscriptCues.asStateFlow()
+
     private val _activeEpisodeBookmarks = MutableStateFlow<List<EpisodeBookmarkEntity>>(emptyList())
     val activeEpisodeBookmarks: StateFlow<List<EpisodeBookmarkEntity>> = _activeEpisodeBookmarks.asStateFlow()
 
@@ -478,8 +481,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshChaptersForActiveEpisode(episode: EpisodeEntity) {
         viewModelScope.launch {
-            val (chapters, _) = repository.loadChaptersAndTranscript(episode)
+            val (chapters, cues) = repository.loadChaptersAndTranscript(episode)
             _activeEpisodeChapters.value = chapters
+            _activeEpisodeTranscriptCues.value = cues
         }
     }
 
@@ -854,6 +858,17 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (e: Exception) {
                 postStatusMessage("Export failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun exportDatabaseToUri(uri: Uri) {
+        viewModelScope.launch {
+            val result = podcastAppImporter.exportLoheDatabaseToUri(uri)
+            result.onSuccess { msg ->
+                postStatusMessage(msg)
+            }.onFailure { err ->
+                postStatusMessage("Database export failed: ${err.localizedMessage ?: "Unknown error"}")
             }
         }
     }

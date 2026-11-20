@@ -232,13 +232,31 @@ fun HomeBrandingHeader(
         label = "wordmark_scale"
     )
     val hoverY by infiniteTransition.animateFloat(
-        initialValue = -2.5f,
-        targetValue = 2.5f,
+        initialValue = -5f,
+        targetValue = 5f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3400, easing = FastOutSlowInEasing),
+            animation = tween(3600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "kani_hover_y"
+    )
+    val hoverX by infiniteTransition.animateFloat(
+        initialValue = -6f,
+        targetValue = 6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "kani_hover_x"
+    )
+    val hoverTilt by infiniteTransition.animateFloat(
+        initialValue = -7f,
+        targetValue = 7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "kani_hover_tilt"
     )
 
     BoxWithConstraints(
@@ -263,7 +281,6 @@ fun HomeBrandingHeader(
                 Box(
                     modifier = Modifier
                         .size(kaniSlotSize)
-                        .clip(RoundedCornerShape(14.dp))
                         .onGloballyPositioned(onKaniSlotPositioned)
                         .clickable(onClick = onKaniClick)
                         .testTag("home_kani_mascot"),
@@ -276,10 +293,13 @@ fun HomeBrandingHeader(
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .size(kaniArtworkSize)
-                                .offset(y = if (reducedMotion) 0.dp else hoverY.dp)
+                                .offset(
+                                    x = if (reducedMotion) 0.dp else hoverX.dp,
+                                    y = if (reducedMotion) 0.dp else hoverY.dp
+                                )
+                                .rotate(if (reducedMotion) 0f else hoverTilt)
                         )
                     } else {
-                        // Reserve semantics/accessibility label on active slot while overlay renders the flying animation
                         Spacer(
                             modifier = Modifier
                                 .size(kaniArtworkSize)

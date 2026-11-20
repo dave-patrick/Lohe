@@ -497,8 +497,9 @@ class LoheRepository(
                 if (backup.podcasts.isNotEmpty()) dao.insertPodcasts(backup.podcasts)
                 if (backup.episodes.isNotEmpty()) dao.insertEpisodes(backup.episodes)
                 if (backup.playlists.isNotEmpty()) dao.insertPlaylists(backup.playlists)
+                if (backup.bookmarks.isNotEmpty()) dao.insertBookmarks(backup.bookmarks)
                 Result.success(
-                    "Imported JSON backup: ${backup.podcasts.size} shows, ${backup.episodes.size} episodes, ${backup.playlists.size} playlists."
+                    "Imported JSON backup: ${backup.podcasts.size} shows, ${backup.episodes.size} episodes, ${backup.playlists.size} playlists, ${backup.bookmarks.size} bookmarks."
                 )
             } else {
                 val outlines = parser.parseOpml(trimmed)
@@ -556,8 +557,9 @@ class LoheRepository(
         val podcasts = dao.getAllPodcasts().first()
         val episodes = dao.getAllEpisodes().first()
         val playlists = dao.getCustomPlaylists().first()
+        val bookmarks = dao.getAllBookmarks().first()
         return if (asJson) {
-            parser.exportJsonBackup(podcasts, episodes, playlists)
+            parser.exportJsonBackup(podcasts, episodes, playlists, bookmarks)
         } else {
             parser.exportOpml(podcasts)
         }

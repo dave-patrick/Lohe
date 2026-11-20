@@ -13,8 +13,8 @@ android {
     applicationId = "com.lohe.app.foss"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1202
-    versionName = "0.12.2"
+    versionCode = 1206
+    versionName = "1206.0"
     buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
