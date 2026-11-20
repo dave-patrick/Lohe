@@ -1,0 +1,347 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 1fdff2c..f69a285 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -8,9 +8,9 @@ plugins {
+ 
+ // Release version changes only when requested. The final component of the
+ // custom build ID increases for each distinct build, even within one release.
+-val loheReleaseVersion = "0.11.1"
++val loheReleaseVersion = "0.11.2"
+ // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
+-val loheBuildId = "2026.10.11.90"
++val loheBuildId = "2026.18.11.91"
+ val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
+ val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
+ check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
+diff --git a/app/src/main/java/com/lohe/app/data/NewLoheExport.kt b/app/src/main/java/com/lohe/app/data/NewLoheExport.kt
+new file mode 100644
+index 0000000..565468c
+--- /dev/null
++++ b/app/src/main/java/com/lohe/app/data/NewLoheExport.kt
+@@ -0,0 +1,218 @@
++package com.lohe.app.data
++
++import com.lohe.app.LOHE_USER_AGENT
++import com.lohe.app.data.db.entity.EpisodeEntity
++import com.lohe.app.data.db.entity.PodcastEntity
++import com.lohe.app.data.fetch.FeedParser
++import com.lohe.app.network.readBoundedBytes
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.withContext
++import okhttp3.OkHttpClient
++import okhttp3.Request
++import org.json.JSONArray
++import org.json.JSONObject
++import org.xmlpull.v1.XmlPullParser
++import org.xmlpull.v1.XmlPullParserFactory
++import java.io.StringReader
++import java.util.concurrent.TimeUnit
++
++/**
++ * One-time export of this library as a backup the new Lohe (Play Edition) imports
++ * through Settings > Import from another app > Lohe JSON backup.
++ *
++ * Episode and podcast ids are written in the new app's own scheme, so its later
++ * feed refreshes recognise imported episodes instead of adding duplicates:
++ *  - podcast: "pod_" + feedUrl.trim().lowercase().hashCode()
++ *  - episode: "ep_" + (guid.trim() or "$feedUrl#$title").hashCode()
++ *
++ * This app never stored publisher GUIDs (episode uuids are a hash of them), so
++ * each feed is downloaded once to recover the GUID of every exported episode.
++ * Feeds that fail to download fall back to the title-based id.
++ */
++object NewLoheExport {
++
++    data class Result(val json: String, val shows: Int, val episodes: Int, val playlists: Int, val feedsUnreachable: Int)
++
++    private const val MAX_FEED_BYTES = 16 * 1024 * 1024
++
++    private val client by lazy {
++        OkHttpClient.Builder()
++            .connectTimeout(20, TimeUnit.SECONDS)
++            .readTimeout(30, TimeUnit.SECONDS)
++            .callTimeout(60, TimeUnit.SECONDS)
++            .build()
++    }
++
++    suspend fun build(onProgress: (String) -> Unit = {}): Result = withContext(Dispatchers.IO) {
++        val db = ServiceLocator.database()
++        val podcasts = db.podcastDao().allOnce()
++        val allEpisodes = db.episodeDao().allOnce().filter { !it.isDeleted }
++        val playlists = ServiceLocator.playlistRepository().playlists.value
++
++        val playlistMembers = playlists.flatMap { it.episodeUuids }.toSet()
++        val exported = allEpisodes.filter { ep ->
++            ep.playingStatus != EpisodeEntity.UNPLAYED ||
++                ep.playedAt != null ||
++                ep.starred ||
++                ep.isArchived ||
++                ep.queuePosition != null ||
++                ep.uuid in playlistMembers
++        }
++        val podcastsByUuid = podcasts.associateBy { it.uuid }
++        val newPodcastId = podcasts.associate { it.uuid to newPodcastId(it.feedUrl) }
++
++        // Recover publisher GUIDs, one feed download per show that has exported episodes.
++        val guidByUuid = HashMap<String, String>()
++        var unreachable = 0
++        val showsNeedingGuids = exported.map { it.podcastUuid }.distinct()
++        showsNeedingGuids.forEachIndexed { index, podcastUuid ->
++            val podcast = podcastsByUuid[podcastUuid] ?: return@forEachIndexed
++            onProgress("Reading feeds ${index + 1} / ${showsNeedingGuids.size}: ${podcast.title}")
++            val guids = runCatching { downloadGuids(podcast.feedUrl) }.getOrNull()
++            if (guids == null) {
++                unreachable++
++                return@forEachIndexed
++            }
++            for ((oldRawGuid, newGuid) in guids) {
++                guidByUuid[FeedParser.stableUuid(podcastUuid, oldRawGuid)] = newGuid
++            }
++        }
++
++        onProgress("Writing backup")
++        val newEpisodeId = HashMap<String, String>()
++        val episodeArray = JSONArray()
++        val queueOrder = exported.filter { it.queuePosition != null }
++            .sortedBy { it.queuePosition }
++            .mapIndexed { i, ep -> ep.uuid to i }
++            .toMap()
++        for (ep in exported) {
++            val podcast = podcastsByUuid[ep.podcastUuid] ?: continue
++            val guid = guidByUuid[ep.uuid]?.trim().orEmpty()
++            val id = "ep_" + guid.ifBlank { "${podcast.feedUrl}#${ep.title.trim()}" }.hashCode()
++            newEpisodeId[ep.uuid] = id
++            val durationMs = (ep.durationSeconds ?: 0).toLong() * 1000L
++            episodeArray.put(
++                JSONObject()
++                    .put("id", id)
++                    .put("podcastId", newPodcastId.getValue(podcast.uuid))
++                    .put("podcastTitle", podcast.title)
++                    .put("title", ep.title)
++                    .put("description", ep.description ?: "")
++                    .put("audioUrl", ep.audioUrl)
++                    .put("artworkUrl", ep.artworkUrl ?: podcast.artworkUrl ?: "")
++                    .put("publishedAt", ep.published * 1000L)
++                    .apply { if (durationMs > 0) put("durationMs", durationMs) }
++                    .put(
++                        "resumePositionMs",
++                        if (ep.playingStatus == EpisodeEntity.PLAYED) 0L else ep.playedUpToSeconds * 1000L,
++                    )
++                    .put("isPlayed", ep.playingStatus == EpisodeEntity.PLAYED)
++                    .put("playedAt", ep.playedAt ?: 0L)
++                    .put("isArchived", ep.isArchived)
++                    .put("isStarred", ep.starred)
++                    .put("inUpNext", ep.queuePosition != null)
++                    .put("upNextOrder", queueOrder[ep.uuid] ?: 0)
++                    .put("guid", guid),
++            )
++        }
++
++        val podcastArray = JSONArray()
++        for (podcast in podcasts) {
++            podcastArray.put(
++                JSONObject()
++                    .put("id", newPodcastId.getValue(podcast.uuid))
++                    .put("title", podcast.title)
++                    .put("author", podcast.author ?: "")
++                    .put("description", podcast.description ?: "")
++                    .put("feedUrl", podcast.feedUrl)
++                    .put("artworkUrl", podcast.artworkUrl ?: "")
++                    .put("isSubscribed", true)
++                    .put(
++                        "autoQueueMode",
++                        when {
++                            !podcast.autoAddNewEpisodesToUpNext -> "OFF"
++                            podcast.autoAddNewEpisodesAtTop -> "BEGINNING"
++                            else -> "END"
++                        },
++                    ),
++            )
++        }
++
++        val playlistArray = JSONArray()
++        for (playlist in playlists) {
++            playlistArray.put(
++                JSONObject()
++                    .put("id", "pl_legacy_${playlist.id}")
++                    .put("name", playlist.name)
++                    .put("folderName", playlist.folder.ifBlank { "General" })
++                    .put("episodeIdsCsv", playlist.episodeUuids.mapNotNull { newEpisodeId[it] }.joinToString(","))
++                    .put(
++                        "assignedPodcastIdsCsv",
++                        (playlist.assignedPodcastUuids + playlist.shows).distinct()
++                            .mapNotNull { newPodcastId[it] }.joinToString(","),
++                    )
++                    .put("isPinned", playlist.pinned)
++                    .put("autoDownload", playlist.autoDownload)
++                    .put("createdAt", playlist.createdAt),
++            )
++        }
++
++        val root = JSONObject()
++            .put("format", "lohe-legacy-export")
++            .put("version", 1)
++            .put("exportedAt", System.currentTimeMillis())
++            .put("podcasts", podcastArray)
++            .put("episodes", episodeArray)
++            .put("playlists", playlistArray)
++        Result(root.toString(2), podcasts.size, episodeArray.length(), playlistArray.length(), unreachable)
++    }
++
++    fun newPodcastId(feedUrl: String): String = "pod_" + feedUrl.trim().lowercase().hashCode()
++
++    /**
++     * For every item in [feedUrl] that has an id: the raw id as this app's FeedParser
++     * read it (first guid/id tag, namespace prefix ignored, untrimmed) paired with the
++     * id the new Lohe reads (last unprefixed guid/id tag, trimmed).
++     */
++    private fun downloadGuids(feedUrl: String): List<Pair<String, String>> {
++        val request = Request.Builder().url(feedUrl).header("User-Agent", LOHE_USER_AGENT).build()
++        val text = client.newCall(request).execute().use { response ->
++            check(response.isSuccessful) { "HTTP ${response.code}" }
++            val body = response.body ?: error("empty body")
++            String(body.readBoundedBytes(MAX_FEED_BYTES), Charsets.UTF_8)
++        }
++        val start = text.indexOf('<').coerceAtLeast(0)
++        val parser = XmlPullParserFactory.newInstance().newPullParser().apply {
++            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
++            setInput(StringReader(text.substring(start)))
++        }
++        val guids = mutableListOf<Pair<String, String>>()
++        var inItem = false
++        var oldGuid: String? = null
++        var newGuid = ""
++        var event = parser.eventType
++        while (event != XmlPullParser.END_DOCUMENT) {
++            when (event) {
++                // Same tag matching as FeedParser: namespace prefixes are ignored.
++                XmlPullParser.START_TAG -> when (parser.name?.substringAfterLast(':').orEmpty()) {
++                    "item", "entry" -> { inItem = true; oldGuid = null; newGuid = "" }
++                    "guid", "id" -> if (inItem) {
++                        val unprefixed = parser.name == "guid" || parser.name == "id" ||
++                            parser.name.equals("guid", ignoreCase = true) || parser.name.equals("id", ignoreCase = true)
++                        val text = runCatching { parser.nextText() }.getOrNull()
++                        if (text != null) {
++                            if (oldGuid == null) oldGuid = text
++                            if (unprefixed) newGuid = text.trim()
++                        }
++                    }
++                }
++                XmlPullParser.END_TAG -> if (parser.name == "item" || parser.name == "entry") {
++                    inItem = false
++                    oldGuid?.let { guids.add(it to newGuid) }
++                }
++            }
++            event = parser.next()
++        }
++        return guids
++    }
++}
+diff --git a/app/src/main/java/com/lohe/app/ui/navigation/LoheNavHost.kt b/app/src/main/java/com/lohe/app/ui/navigation/LoheNavHost.kt
+index 1d9030d..72a9b04 100644
+--- a/app/src/main/java/com/lohe/app/ui/navigation/LoheNavHost.kt
++++ b/app/src/main/java/com/lohe/app/ui/navigation/LoheNavHost.kt
+@@ -185,6 +185,7 @@ private fun LoheNavigationContent(
+     val localFolderStore = remember { LocalFolderStore(context) }
+     var pendingOpml by remember { mutableStateOf<ByteArray?>(null) }
+     var pendingExport by remember { mutableStateOf<String?>(null) }
++    var pendingNewLoheExport by remember { mutableStateOf<String?>(null) }
+     var importMessage by remember { mutableStateOf<String?>(null) }
+     var nowPlaying by remember { mutableStateOf<NowPlaying?>(null) }
+ 
+@@ -338,6 +339,22 @@ private fun LoheNavigationContent(
+         )
+     }
+ 
++    val newLoheExportWriter = rememberLauncherForActivityResult(
++        ActivityResultContracts.CreateDocument("application/json"),
++    ) { uri ->
++        val document = pendingNewLoheExport
++        pendingNewLoheExport = null
++        if (uri == null || document == null) return@rememberLauncherForActivityResult
++        importMessage = runCatching {
++            context.contentResolver.openOutputStream(uri)?.use { out ->
++                out.write(document.toByteArray(Charsets.UTF_8))
++            } ?: error("no output stream")
++        }.fold(
++            onSuccess = { "Exported your library for the new Lohe." },
++            onFailure = { "Couldn't write the export file." },
++        )
++    }
++
+     LaunchedEffect(pendingTree) {
+         val tree = pendingTree ?: return@LaunchedEffect
+         pendingTree = null
+@@ -558,6 +575,10 @@ private fun LoheNavigationContent(
+                         pendingExport = document
+                         exportWriter.launch(resources.getString(R.string.opml_file_name))
+                     },
++                    onExportForNewLohe = { document ->
++                        pendingNewLoheExport = document
++                        newLoheExportWriter.launch(resources.getString(R.string.new_lohe_export_file_name))
++                    },
+                 )
+             }
+ 
+diff --git a/app/src/main/java/com/lohe/app/ui/navigation/PodcastsScreen.kt b/app/src/main/java/com/lohe/app/ui/navigation/PodcastsScreen.kt
+index 09b3e51..6370389 100644
+--- a/app/src/main/java/com/lohe/app/ui/navigation/PodcastsScreen.kt
++++ b/app/src/main/java/com/lohe/app/ui/navigation/PodcastsScreen.kt
+@@ -135,6 +135,7 @@ fun PodcastsScreen(
+     onManageStorage: () -> Unit,
+     onPickOpmlToImport: () -> Unit,
+     onPickExportDestination: (String) -> Unit,
++    onExportForNewLohe: (String) -> Unit = {},
+ ) {
+     val resources = androidx.compose.ui.platform.LocalResources.current
+     val context = LocalContext.current
+@@ -629,6 +630,33 @@ fun PodcastsScreen(
+                                     }
+                                 },
+                             )
++                            DropdownMenuItem(
++                                text = { Text(stringResource(R.string.new_lohe_export)) },
++                                leadingIcon = {
++                                    Icon(Icons.Filled.FileUpload, contentDescription = null)
++                                },
++                                enabled = podcasts.isNotEmpty(),
++                                onClick = {
++                                    menuOpen = false
++                                    scope.launch {
++                                        snackbarHostState.showSnackbar(
++                                            resources.getString(R.string.new_lohe_export_preparing),
++                                        )
++                                    }
++                                    scope.launch {
++                                        val result = runCatching {
++                                            com.lohe.app.data.NewLoheExport.build()
++                                        }.getOrNull()
++                                        if (result == null) {
++                                            snackbarHostState.showSnackbar(
++                                                resources.getString(R.string.new_lohe_export_failed),
++                                            )
++                                        } else {
++                                            onExportForNewLohe(result.json)
++                                        }
++                                    }
++                                },
++                            )
+                             DropdownMenuItem(
+                                 text = { Text(stringResource(R.string.storage_management)) },
+                                 leadingIcon = {
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index c26d7c7..355c556 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -37,6 +37,10 @@
+     <string name="opml_export_failed">Couldn\'t build the export.</string>
+     <string name="opml_imported_clean">Imported %1$d show(s)</string>
+     <string name="opml_file_name">lohe-subscriptions.opml</string>
++    <string name="new_lohe_export">Export library for new Lohe</string>
++    <string name="new_lohe_export_preparing">Preparing your library export. This reads each feed once and can take a minute.</string>
++    <string name="new_lohe_export_failed">Couldn\'t prepare the library export.</string>
++    <string name="new_lohe_export_file_name">lohe-library-export.json</string>
+ 
+     <string name="refresh_feeds">Check for new episodes</string>
+     <string name="refreshing">Refreshing…</string>

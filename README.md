@@ -33,9 +33,15 @@ Android Auto exposes media browsing and playback through Android's media browser
 
 Download `Lohe-0.11.1-build-2026.08.11.80-release.apk` from the [latest GitHub release](https://github.com/dave-patrick/Lohe/releases/tag/v0.11.1-build-2026.08.11.80), open it on your Android device, and allow app installs from your browser or file manager if Android asks. Lohe currently distributes its signed Android APK through GitHub; it is not listed on Google Play.
 
+## Free, open source, and Lohe Pro
+
+This repository is the free, open-source edition of Lohe. It has every free feature of the Google Play version. The optional Lohe Pro subscription on Google Play adds the floating player, extra Up Next indicator styles, custom colours and Google Drive sync; those parts are not in this repository.
+
+The app code here is exported automatically from the main Lohe codebase by `tools/foss-export`. Please open issues here; code changes to `app/` are made upstream and arrive through the export.
+
 ## Build from source
 
-Requires JDK 17 and Android SDK platform 37. Create `local.properties` in the repository root with your SDK path:
+Requires JDK 17 and the Android SDK (Gradle downloads the platform it needs once licenses are accepted). Create `local.properties` in the repository root with your SDK path:
 
 ```properties
 sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
@@ -48,13 +54,13 @@ gradlew.bat assembleRelease         # Windows release APK
 ./gradlew assembleRelease           # macOS / Linux release APK
 ```
 
-The build writes `app/build/outputs/apk/release/app-release.apk`; published copies include the release and build ID in their filenames. Debug APKs are separate and are not the public release. To run JVM unit tests:
+The build writes an unsigned `app/build/outputs/apk/release/app-release-unsigned.apk` unless you set the `LOHE_KEYSTORE`, `LOHE_KEYSTORE_PASSWORD`, `LOHE_KEY_ALIAS` and `LOHE_KEY_PASSWORD` environment variables; published copies include the release and build ID in their filenames. Debug APKs are separate and are not the public release. To run JVM unit tests:
 
 ```cmd
 ./gradlew testDebugUnitTest
 ```
 
-Gradle 9.6.0 comes from the wrapper. The app uses Kotlin, Jetpack Compose, Room, and AndroidX Media3.
+Gradle comes from the wrapper. The app uses Kotlin, Jetpack Compose, Room, and AndroidX Media3.
 
 ## Project docs
 

@@ -1,0 +1,90 @@
+name: FOSS export
+
+# Rebuilds this public repository from the private Play Edition (built in
+# Google AI Studio), strips Pro and private material with
+# tools/foss-export/export.py, checks the result builds and passes tests, and
+# opens a pull request. Nothing reaches main without review.
+#
+# Needs the repository secret PLAY_EDITION_TOKEN: a fine-grained GitHub token
+# with read-only "Contents" access to dave-patrick/Lohe-Play-Edition- only.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: foss-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+
+      - name: Fetch Play Edition
+        env:
+          PLAY_EDITION_TOKEN: ${{ secrets.PLAY_EDITION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PLAY_EDITION_TOKEN" ]; then echo "::error::Add the PLAY_EDITION_TOKEN repository secret"; exit 1; fi
+          git clone --depth 1 "https://x-access-token:${PLAY_EDITION_TOKEN}@github.com/dave-patrick/Lohe-Play-Edition-.git" "$RUNNER_TEMP/play"
+          echo "PLAY_SHA=$(git -C "$RUNNER_TEMP/play" rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "PLAY_SUBJECT=$(git -C "$RUNNER_TEMP/play" log -1 --format=%s)" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/play/.git"
+
+      - name: Export FOSS edition
+        run: python3 -I tools/foss-export/export.py --play "$RUNNER_TEMP/play" --out "$GITHUB_WORKSPACE"
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git add -A
+          if git diff --cached --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; echo "Already up to date with Play Edition $PLAY_SHA"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        if: steps.diff.outputs.changed == 'true'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Build and test
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -1)"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug assembleRelease --console=plain
+          rm local.properties
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="foss-export/${PLAY_SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -q -m "FOSS export of Play Edition ${PLAY_SHA}" -m "Play Edition commit: ${PLAY_SUBJECT}"
+          git push -f origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base main --head "$branch" \
+              --title "FOSS export of Play Edition ${PLAY_SHA}" \
+              --body "Automatic export of Play Edition commit \`${PLAY_SHA}\` (${PLAY_SUBJECT}) with Pro features, debug-only tools and private configuration removed. Unit tests, debug build and release build passed in the export job."
+          fi

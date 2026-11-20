@@ -28,9 +28,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-      - name: Check privacy policy copies
-        shell: pwsh
-        run: ./tools/prepare-privacy-policy.ps1 -Check
       - name: Stage public site only
         shell: bash
         run: |

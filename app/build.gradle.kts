@@ -1,224 +1,135 @@
-import java.util.Properties
 
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.compose)
+  alias(libs.plugins.google.devtools.ksp)
 }
-
-// Release version changes only when requested. The final component of the
-// custom build ID increases for each distinct build, even within one release.
-val loheReleaseVersion = "0.11.1"
-// Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
-val loheBuildId = "2026.10.11.90"
-val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
-val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
-check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
-    "Lohe release version must be major.minor.patch with each component from 0 to 99"
-}
-// Android's update-ordering code identifies the release version only. The
-// custom build number is separate and is shown in About.
-val loheAndroidVersionCode =
-    loheVersionParts[0] * 10_000 + loheVersionParts[1] * 100 + loheVersionParts[2]
 
 android {
-    namespace = "com.lohe.app"
-    compileSdk = 37
+  namespace = "com.example"
+  compileSdk { version = release(36) { minorApiLevel = 1 } }
 
-    defaultConfig {
-        applicationId = "com.lohe.app"
-        minSdk = 26
-        targetSdk = 37
-        versionCode = loheAndroidVersionCode
-        versionName = loheReleaseVersion
-        buildConfigField("String", "BUILD_ID", "\"$loheBuildId\"")
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
+  defaultConfig {
+    applicationId = "com.lohe.app.foss"
+    minSdk = 26
+    targetSdk = 36
+    versionCode = 1206
+    versionName = "1206.0"
+    buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
 
-    buildTypes {
-        debug {
-            // Optional isolated installation for device tests; never replaces the user's app.
-            applicationIdSuffix = providers.gradleProperty("loheDebugApplicationIdSuffix").orNull
-        }
-        release {
-            isMinifyEnabled = true
-            // Drop images, strings and layouts nothing references (R8 already
-            // removes unused code). Nothing looks resources up by name.
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
-            val props = Properties()
-            rootProject.file("local.properties")
-                .takeIf { it.exists() }
-                ?.inputStream()
-                ?.use { props.load(it) }
-            val path = props.getProperty("keystore.path", "")
-            // CI can validate an unsigned bundle. Never silently sign Play builds with Debug.
-            if (path.isNotEmpty()) {
-                signingConfig = signingConfigs.create("release") {
-                    storeFile = file(path)
-                    storePassword = props.getProperty("keystore.password", "")
-                    keyAlias = props.getProperty("keystore.alias", "")
-                    keyPassword = props.getProperty("keystore.key.password", "")
-                }
-            }
-        }
-        create("smokeRelease") {
-            initWith(getByName("release"))
-            applicationIdSuffix = ".releaseaudit"
-            isDebuggable = false
-            matchingFallbacks += listOf("release")
-        }
-    }
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
 
-    if (lohePlayStore) {
-        // A phone/tablet Play submission defers car review; other distributions keep it.
-        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
-        sourceSets.getByName("smokeRelease").manifest.srcFile("src/play/AndroidManifest.xml")
+  // Release signing is optional: set LOHE_KEYSTORE, LOHE_KEYSTORE_PASSWORD,
+  // LOHE_KEY_ALIAS and LOHE_KEY_PASSWORD to sign; otherwise the release APK is unsigned.
+  val foss = System.getenv("LOHE_KEYSTORE")
+  if (foss != null) {
+    signingConfigs.create("release") {
+      storeFile = file(foss)
+      storePassword = System.getenv("LOHE_KEYSTORE_PASSWORD")
+      keyAlias = System.getenv("LOHE_KEY_ALIAS")
+      keyPassword = System.getenv("LOHE_KEY_PASSWORD")
     }
+  }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+  buildTypes {
+    release {
+      if (foss != null) signingConfig = signingConfigs.getByName("release")
+      isCrunchPngs = false
+      isMinifyEnabled = false
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
-
-    buildFeatures {
-        compose = true
-        // The debug control surface checks BuildConfig.DEBUG to decide
-        // whether it may run at all.
-        buildConfig = true
+    debug {
     }
+  }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+  }
+  buildFeatures {
+    compose = true
+    buildConfig = true
+  }
+  testOptions { unitTests { isIncludeAndroidResources = true } }
+  dependenciesInfo {
+    includeInApk = false
+    includeInBundle = false
+  }
 }
 
-// Room writes each database version's layout here (see AppDatabase.exportSchema).
 ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
+  arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+
+
+// Some unused dependencies are commented out below instead of being removed.
+// This makes it easy to add them back in the future if needed.
 dependencies {
-    implementation(libs.androidx.core.ktx)
-implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.activity.compose)
+  implementation(platform(libs.androidx.compose.bom))
+  // implementation(platform(libs.firebase.bom))
+  // implementation(libs.accompanist.permissions)
+  implementation(libs.androidx.activity.compose)
+  // implementation(libs.androidx.camera.camera2)
+  // implementation(libs.androidx.camera.core)
+  // implementation(libs.androidx.camera.lifecycle)
+  // implementation(libs.androidx.camera.view)
+  implementation(libs.androidx.compose.material.icons.core)
+  implementation(libs.androidx.compose.material.icons.extended)
+  implementation(libs.androidx.compose.material3)
+  implementation(libs.androidx.compose.ui)
+  implementation(libs.androidx.compose.ui.graphics)
+  implementation(libs.androidx.compose.ui.tooling.preview)
+  implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.datastore.preferences)
+  implementation(libs.androidx.lifecycle.runtime.compose)
+  implementation(libs.androidx.lifecycle.runtime.ktx)
+  implementation(libs.androidx.lifecycle.viewmodel.compose)
+  // implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.room.ktx)
+  implementation(libs.androidx.room.runtime)
+  implementation(libs.coil.compose)
+  implementation(libs.coil.gif)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.session)
+  implementation(libs.androidx.media3.common)
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.androidx.concurrent.futures.ktx)
+  implementation(libs.androidx.glance.appwidget)
+  implementation(libs.androidx.glance.material3)
+  // implementation(libs.converter.moshi)
+  // implementation(libs.firebase.ai)
+  // Uncomment to use Firestore:
+  // implementation(libs.firebase.firestore)
 
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
-
-    // Durable preferences (theme choice, etc.)
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.work.runtime.ktx)
-    // datastore pulls in an older serialization; pin the cached one.
-    implementation(libs.kotlinx.serialization.json)
-
-    // Data layer
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
-
-    // Navigation
-    implementation(libs.androidx.navigation.compose)
-
-    // Networking (for podcast search + RSS)
-    implementation(libs.com.squareup.okhttp)
-    implementation(libs.com.squareup.okhttp.logging)
-
-    // Media3
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.common)
-    implementation(libs.androidx.media3.session)
-
-    // Android Automotive OS embedded app surface (CarAppService).
-    implementation(libs.androidx.car.app)
-    // The in-vehicle CarAppActivity the head unit launches for templated apps.
-    implementation(libs.androidx.car.app.automotive)
-    implementation(libs.androidx.media)
-
-    // SAF tree traversal for local folder playback
-    implementation(libs.androidx.documentfile)
-
-    // ViewModel Compose integration
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    // Declared so Gradle settles on 1.5.0: activity 1.13 asks for a savedstate
-    // version that resolves fine online but is absent from this cache.
-    implementation(libs.androidx.savedstate)
-
-    debugImplementation(libs.androidx.ui.tooling)
-
-    testImplementation(libs.junit)
-    // JVM XmlPullParser so FeedParser can be exercised off-device; Android's
-    // android.util.Xml is unavailable in plain unit tests.
-    testImplementation(libs.kxml2)
-    // For the repository's suspend fan-out logic: runTest gives the test a
-    // scope without needing Android's main looper.
-    testImplementation(libs.coroutines.test)
-
-    // Instrumented tests: real Room, real SQLite, real foreign keys. The
-    // cascade that wiped a listener's episode state only reproduces against a
-    // genuine foreign-key-enforcing database, so it cannot be faked on the JVM.
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.room.testing)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-}
-
-/**
- * Runs the instrumented tests on a connected device *without uninstalling the
- * app afterwards*.
- *
- * `connectedAndroidTest` uninstalls both the app and the test package when it
- * finishes, which throws away everything in the app's data directory — the
- * library, the playlists, the listening history. On a device that holds a real
- * library that is not a cost worth paying for a test run, so this task
- * installs over the top with `adb install -r` and drives the runner directly.
- */
-tasks.register("deviceTest") {
-    group = "verification"
-    description = "Runs the instrumented tests on a connected device, keeping the app's data."
-
-    dependsOn("assembleDebug", "assembleDebugAndroidTest")
-
-    val localProps = Properties()
-    rootProject.file("local.properties")
-        .takeIf { it.exists() }
-        ?.inputStream()
-        ?.use { localProps.load(it) }
-    val sdkDir = localProps.getProperty("sdk.dir")
-        ?: System.getenv("ANDROID_HOME")
-        ?: System.getenv("ANDROID_SDK_ROOT")
-        ?: error("No Android SDK found: set sdk.dir in local.properties or ANDROID_HOME.")
-    val adb = "$sdkDir${File.separator}platform-tools${File.separator}adb"
-    val appApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
-    val testApk = layout.buildDirectory.file("outputs/apk/androidTest/debug/app-debug-androidTest.apk")
-
-    fun run(vararg command: String) {
-        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val exitCode = process.waitFor()
-        if (output.isNotBlank()) logger.lifecycle(output.trim())
-        check(exitCode == 0) {
-            "Command failed (exit $exitCode): ${command.joinToString(" ")}"
-        }
-    }
-
-    doFirst {
-        run(adb, "install", "-r", "-t", appApk.get().asFile.absolutePath)
-        run(adb, "install", "-r", "-t", testApk.get().asFile.absolutePath)
-    }
-
-    doLast {
-        run(
-            adb, "shell", "am", "instrument", "-w",
-            "com.lohe.app.test/androidx.test.runner.AndroidJUnitRunner",
-        )
-    }
+  // Uncomment ALL FOUR of the following dependencies together to use Firebase Auth and Google
+  // Sign-In via Credential Manager:
+  // implementation(libs.firebase.auth)
+  // implementation(libs.androidx.credentials)
+  // implementation(libs.androidx.credentials.play.services)
+  // implementation(libs.googleid)
+  // implementation(libs.firebase.appcheck.recaptcha)
+  // implementation(libs.firebase.appcheck.debug)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.core)
+  // implementation(libs.logging.interceptor)
+  // implementation(libs.moshi.kotlin)
+  implementation(libs.okhttp)
+  // implementation(libs.play.services.location)
+  // implementation(libs.retrofit)
+  testImplementation(libs.androidx.compose.ui.test.junit4)
+  testImplementation(libs.androidx.core)
+  testImplementation(libs.androidx.junit)
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.robolectric)
+  androidTestImplementation(platform(libs.androidx.compose.bom))
+  androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+  androidTestImplementation(libs.androidx.espresso.core)
+  androidTestImplementation(libs.androidx.junit)
+  androidTestImplementation(libs.androidx.runner)
+  debugImplementation(libs.androidx.compose.ui.test.manifest)
+  debugImplementation(libs.androidx.compose.ui.tooling)
+  "ksp"(libs.androidx.room.compiler)
+  // "ksp"(libs.moshi.kotlin.codegen)
 }
