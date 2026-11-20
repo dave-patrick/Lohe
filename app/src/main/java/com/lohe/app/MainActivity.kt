@@ -193,6 +193,14 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
         }
     }
 
+    val exportDbLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/x-sqlite3")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportDatabaseToUri(uri)
+        }
+    }
+
     val launchImportPicker: () -> Unit = {
         runCatching {
             importOpmlOrJsonLauncher.launch(
@@ -218,6 +226,15 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
             exportJsonLauncher.launch("lohe_library_backup_$stamp.json")
         }.onFailure {
             viewModel.postStatusMessage("Export picker unavailable in headless environment")
+        }
+    }
+
+    val launchExportDbPicker: () -> Unit = {
+        val stamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        runCatching {
+            exportDbLauncher.launch("lohe_database_$stamp.db")
+        }.onFailure {
+            viewModel.postStatusMessage("Database export picker unavailable in headless environment")
         }
     }
 
@@ -390,6 +407,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                             onImportOpmlOrJson = launchImportPicker,
                             onExportOpml = launchExportOpmlPicker,
                             onExportJsonBackup = launchExportJsonPicker,
+                            onExportDatabase = launchExportDbPicker,
                             onSyncToGoogleDrive = { viewModel.syncWithGoogleDrive(restore = false) },
                             onRestoreFromGoogleDrive = { viewModel.syncWithGoogleDrive(restore = true) },
                             onToggleCloudAutoBackup = viewModel::setCloudSyncAutoBackup,

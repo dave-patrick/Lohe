@@ -10,7 +10,7 @@ plugins {
 // custom build ID increases for each distinct build, even within one release.
 val loheReleaseVersion = "0.12.0"
 // Format: YYYY.DD.MM.revision (for example, 2026.19.11.120).
-val loheBuildId = "2026.19.11.120"
+val loheBuildId = "2026.19.11.121"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
   "Lohe release version must be major.minor.patch with each component from 0 to 99"

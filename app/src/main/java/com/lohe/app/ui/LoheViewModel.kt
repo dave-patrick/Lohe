@@ -862,6 +862,17 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportDatabaseToUri(uri: Uri) {
+        viewModelScope.launch {
+            val result = podcastAppImporter.exportLoheDatabaseToUri(uri)
+            result.onSuccess { msg ->
+                postStatusMessage(msg)
+            }.onFailure { err ->
+                postStatusMessage("Database export failed: ${err.localizedMessage ?: "Unknown error"}")
+            }
+        }
+    }
+
     // Settings updates
     fun setThemePreference(theme: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(theme) }

@@ -2,6 +2,7 @@ package com.lohe.app.data.network
 
 import android.util.Xml
 import com.lohe.app.data.local.AutoQueueMode
+import com.lohe.app.data.local.EpisodeBookmarkEntity
 import com.lohe.app.data.local.EpisodeEntity
 import com.lohe.app.data.local.PlaylistEntity
 import com.lohe.app.data.local.PodcastEntity
@@ -30,7 +31,8 @@ data class OpmlOutlineItem(
 data class ParsedLibraryBackup(
     val podcasts: List<PodcastEntity>,
     val episodes: List<EpisodeEntity>,
-    val playlists: List<PlaylistEntity>
+    val playlists: List<PlaylistEntity>,
+    val bookmarks: List<EpisodeBookmarkEntity> = emptyList()
 )
 
 class RssAndOpmlParser(
@@ -299,13 +301,31 @@ class RssAndOpmlParser(
             )
         }
 
-        return ParsedLibraryBackup(podcasts, episodes, playlists)
+        val bookmarks = mutableListOf<EpisodeBookmarkEntity>()
+        val bookmarkArray = root.optJSONArray("bookmarks") ?: root.optJSONArray("episodeBookmarks") ?: JSONArray()
+        for (i in 0 until bookmarkArray.length()) {
+            val obj = bookmarkArray.optJSONObject(i) ?: continue
+            val episodeId = obj.optString("episodeId", "").trim()
+            if (episodeId.isBlank()) continue
+            bookmarks.add(
+                EpisodeBookmarkEntity(
+                    id = obj.optString("id", UUID.randomUUID().toString()),
+                    episodeId = episodeId,
+                    positionMs = obj.optLong("positionMs", 0L).coerceAtLeast(0L),
+                    label = obj.optString("label", "Bookmark"),
+                    createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                )
+            )
+        }
+
+        return ParsedLibraryBackup(podcasts, episodes, playlists, bookmarks)
     }
 
     fun exportJsonBackup(
         podcasts: List<PodcastEntity>,
         episodes: List<EpisodeEntity>,
-        playlists: List<PlaylistEntity>
+        playlists: List<PlaylistEntity>,
+        bookmarks: List<EpisodeBookmarkEntity> = emptyList()
     ): String {
         val root = JSONObject()
         root.put("app", "Lohe")
@@ -386,6 +406,20 @@ class RssAndOpmlParser(
             )
         }
         root.put("playlists", plArr)
+
+        val bmArr = JSONArray()
+        bookmarks.forEach { bm ->
+            bmArr.put(
+                JSONObject().apply {
+                    put("id", bm.id)
+                    put("episodeId", bm.episodeId)
+                    put("positionMs", bm.positionMs)
+                    put("label", bm.label)
+                    put("createdAt", bm.createdAt)
+                }
+            )
+        }
+        root.put("bookmarks", bmArr)
 
         return root.toString(2)
     }

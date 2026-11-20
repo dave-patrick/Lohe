@@ -146,6 +146,7 @@ fun SettingsContainerScreen(
     onImportOpmlOrJson: () -> Unit,
     onExportOpml: () -> Unit,
     onExportJsonBackup: () -> Unit,
+    onExportDatabase: () -> Unit = {},
     onSyncToGoogleDrive: () -> Unit,
     onRestoreFromGoogleDrive: () -> Unit,
     onToggleCloudAutoBackup: (Boolean) -> Unit,
@@ -273,6 +274,7 @@ fun SettingsContainerScreen(
                             onImportOpmlOrJson = onImportOpmlOrJson,
                             onExportOpml = onExportOpml,
                             onExportJsonBackup = onExportJsonBackup,
+                            onExportDatabase = onExportDatabase,
                             onSyncToGoogleDrive = onSyncToGoogleDrive,
                             onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
                             onToggleCloudAutoBackup = onToggleCloudAutoBackup,
@@ -330,6 +332,7 @@ fun SettingsContainerScreen(
                         onImportOpmlOrJson = onImportOpmlOrJson,
                         onExportOpml = onExportOpml,
                         onExportJsonBackup = onExportJsonBackup,
+                        onExportDatabase = onExportDatabase,
                         onSyncToGoogleDrive = onSyncToGoogleDrive,
                         onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
                         onToggleCloudAutoBackup = onToggleCloudAutoBackup,
@@ -382,6 +385,7 @@ private fun SettingsDetailContent(
     onImportOpmlOrJson: () -> Unit,
     onExportOpml: () -> Unit,
     onExportJsonBackup: () -> Unit,
+    onExportDatabase: () -> Unit,
     onSyncToGoogleDrive: () -> Unit,
     onRestoreFromGoogleDrive: () -> Unit,
     onToggleCloudAutoBackup: (Boolean) -> Unit,
@@ -446,13 +450,15 @@ private fun SettingsDetailContent(
             onRefreshFeedsNow = onRefreshFeedsNow,
             onImportOpmlOrJson = onImportOpmlOrJson,
             onExportOpml = onExportOpml,
-            onExportJsonBackup = onExportJsonBackup
+            onExportJsonBackup = onExportJsonBackup,
+            onExportDatabase = onExportDatabase
         )
 
         SettingsSubScreen.IMPORT_FROM_APP -> ImportFromAnotherAppSettingsSubScreen(
             importProgressState = importProgressState,
             lastImportSummary = lastImportSummary,
-            onPickImportFile = onImportOpmlOrJson
+            onPickImportFile = onImportOpmlOrJson,
+            onExportDatabase = onExportDatabase
         )
 
         SettingsSubScreen.CLOUD_SYNC -> {
@@ -1417,7 +1423,8 @@ private fun DownloadsSettingsSubScreen(
     onRefreshFeedsNow: () -> Unit,
     onImportOpmlOrJson: () -> Unit,
     onExportOpml: () -> Unit,
-    onExportJsonBackup: () -> Unit
+    onExportJsonBackup: () -> Unit,
+    onExportDatabase: () -> Unit
 ) {
     val totalMbFormatted = remember(storageBreakdown.first) {
         String.format(Locale.US, "%.1f MB", storageBreakdown.first / (1024f * 1024f))
@@ -1431,7 +1438,7 @@ private fun DownloadsSettingsSubScreen(
         item {
             SettingsCard(title = "On-Device Library Import / Export (SAF)") {
                 Text(
-                    text = "Personal subscriptions are never bundled in APK assets. Import your OPML (.opml/.xml) or Lohe JSON backup directly from device storage or Google Drive.",
+                    text = "Export or migrate your Lohe database (.db), JSON library backup, or OPML subscriptions directly via Android's Storage Access Framework.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1446,7 +1453,7 @@ private fun DownloadsSettingsSubScreen(
                 ) {
                     Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(8.dp))
-                    Text("Import OPML (.opml/.xml) or JSON Backup", color = Color.White)
+                    Text("Import Backup (.db, .json, .opml)", color = Color.White)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -1475,6 +1482,18 @@ private fun DownloadsSettingsSubScreen(
                         Spacer(Modifier.width(6.dp))
                         Text("Export JSON")
                     }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onExportDatabase,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("downloads_export_db_button")
+                ) {
+                    Icon(Icons.Filled.FileUpload, contentDescription = null, tint = LoheCyanAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export Lohe Database (.db) for Migration")
                 }
             }
         }
@@ -1673,7 +1692,8 @@ private fun DownloadsSettingsSubScreen(
 private fun ImportFromAnotherAppSettingsSubScreen(
     importProgressState: ImportProgressState,
     lastImportSummary: ImportResultSummary?,
-    onPickImportFile: () -> Unit
+    onPickImportFile: () -> Unit,
+    onExportDatabase: () -> Unit
 ) {
     LazyColumn(
         contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
@@ -1840,12 +1860,55 @@ private fun ImportFromAnotherAppSettingsSubScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                     ImportFormatOptionRow(
                         title = "4. Lohe JSON Backup (.json)",
-                        description = "Complete Lohe library backup with subscriptions, played state, positions, and custom playlists.",
+                        description = "Complete Lohe library backup with subscriptions, played state, positions, playlists, and bookmarks.",
                         buttonLabel = "Import .json",
                         testTag = "import_format_lohe_json_button",
                         enabled = !importProgressState.isImporting,
                         onClick = onPickImportFile
                     )
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "5. Migrate Existing Lohe DB (.db)") {
+                Text(
+                    text = "Moving from an earlier Lohe install to Lohe Play Edition?\n" +
+                        "1. Export your database (.db) from your existing Lohe app (or locate lohe_preview.db).\n" +
+                        "2. Import that .db file here to migrate shows, playback history, Up Next, playlists, bookmarks, and per-show audio settings atomically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onPickImportFile,
+                        enabled = !importProgressState.isImporting,
+                        colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("import_format_lohe_db_button")
+                    ) {
+                        Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Import .db", color = Color.White)
+                    }
+                    OutlinedButton(
+                        onClick = onExportDatabase,
+                        enabled = !importProgressState.isImporting,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("import_screen_export_db_button")
+                    ) {
+                        Icon(Icons.Filled.FileUpload, contentDescription = null, tint = LoheCyanAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Export .db")
+                    }
                 }
             }
         }

@@ -5,6 +5,8 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import androidx.room.withTransaction
+import com.lohe.app.data.local.AutoQueueMode
+import com.lohe.app.data.local.EpisodeBookmarkEntity
 import com.lohe.app.data.local.EpisodeEntity
 import com.lohe.app.data.local.LoheDatabase
 import com.lohe.app.data.local.PlaylistEntity
@@ -24,7 +26,8 @@ enum class ImportSourceFormat(val label: String) {
     OPML("OPML Subscriptions"),
     ANTENNAPOD_DB("AntennaPod Database (.db)"),
     PODCAST_ADDICT_BACKUP("Podcast Addict Backup (.backup)"),
-    LOHE_JSON("Lohe JSON Backup (.json)")
+    LOHE_JSON("Lohe JSON Backup (.json)"),
+    LOHE_DB("Lohe Database (.db)")
 }
 
 data class ImportProgressState(
@@ -39,10 +42,17 @@ data class ImportResultSummary(
     val format: ImportSourceFormat,
     val showsAdded: Int,
     val episodesUpdated: Int,
-    val itemsSkipped: Int
+    val itemsSkipped: Int,
+    val playlistsImported: Int = 0,
+    val bookmarksImported: Int = 0
 ) {
     fun toDisplayBanner(): String {
-        return "${format.label}: $showsAdded shows added, $episodesUpdated episodes updated, $itemsSkipped items skipped"
+        val extras = buildList {
+            if (playlistsImported > 0) add("$playlistsImported playlists")
+            if (bookmarksImported > 0) add("$bookmarksImported bookmarks")
+        }.joinToString(", ")
+        val suffix = if (extras.isNotEmpty()) ", $extras" else ""
+        return "${format.label}: $showsAdded shows added, $episodesUpdated episodes updated, $itemsSkipped items skipped$suffix"
     }
 }
 
@@ -50,7 +60,8 @@ private data class ParsedImportPayload(
     val format: ImportSourceFormat,
     val podcasts: List<PodcastEntity>,
     val episodes: List<EpisodeEntity>,
-    val playlists: List<PlaylistEntity> = emptyList()
+    val playlists: List<PlaylistEntity> = emptyList(),
+    val bookmarks: List<EpisodeBookmarkEntity> = emptyList()
 )
 
 class PodcastAppImporter(
@@ -150,7 +161,8 @@ class PodcastAppImporter(
             val payload = when (format) {
                 ImportSourceFormat.OPML -> parseOpmlFile(file)
                 ImportSourceFormat.LOHE_JSON -> parseLoheJsonFile(file)
-                ImportSourceFormat.ANTENNAPOD_DB -> parseAntennaPodSqliteFile(file)
+                ImportSourceFormat.LOHE_DB,
+                ImportSourceFormat.ANTENNAPOD_DB -> parseSqliteFileAutoDetect(file, format)
                 ImportSourceFormat.PODCAST_ADDICT_BACKUP -> parsePodcastAddictBackupFile(file)
             }
 
@@ -244,8 +256,62 @@ class PodcastAppImporter(
             format = ImportSourceFormat.LOHE_JSON,
             podcasts = backup.podcasts,
             episodes = backup.episodes,
-            playlists = backup.playlists
+            playlists = backup.playlists,
+            bookmarks = backup.bookmarks
         )
+    }
+
+    /**
+     * Safely flushes Room's WAL journal and copies the active Lohe SQLite database
+     * to a user-selected SAF URI so it can be migrated into Lohe Play Edition.
+     */
+    suspend fun exportLoheDatabaseToUri(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+        val tempExport = File.createTempFile("lohe_db_export_", ".db", context.cacheDir)
+        try {
+            exportLoheDatabaseToFile(tempExport).getOrThrow()
+            val out = context.contentResolver.openOutputStream(uri)
+                ?: return@withContext Result.failure(IllegalStateException("Unable to open export destination"))
+            out.use { output ->
+                FileInputStream(tempExport).use { input ->
+                    input.copyTo(output)
+                }
+            }
+            Result.success("Exported Lohe SQLite database (${tempExport.length() / 1024} KB)")
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            tempExport.delete()
+        }
+    }
+
+    suspend fun exportLoheDatabaseToFile(destFile: File): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            // Checkpoint WAL so all committed rows are materialized into the primary .db file
+            val writableDb = database.openHelper.writableDatabase
+            writableDb.query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
+                if (cursor.moveToFirst()) {
+                    // Checkpoint completed
+                }
+            }
+            val dbPath = writableDb.path
+            val sourceFile = if (!dbPath.isNullOrBlank() && dbPath != ":memory:") {
+                File(dbPath)
+            } else {
+                context.getDatabasePath("lohe_preview.db")
+            }
+            if (!sourceFile.exists() || sourceFile.length() == 0L) {
+                return@withContext Result.failure(IllegalStateException("Local Lohe database file was not found"))
+            }
+            destFile.parentFile?.mkdirs()
+            FileInputStream(sourceFile).use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Result.success(destFile)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     private fun parsePodcastAddictBackupFile(zipFile: File): ParsedImportPayload {
@@ -291,13 +357,13 @@ class PodcastAppImporter(
         }
     }
 
-    private fun parseAntennaPodSqliteFile(dbFile: File): ParsedImportPayload {
+    private fun parseSqliteFileAutoDetect(dbFile: File, hintFormat: ImportSourceFormat): ParsedImportPayload {
         if (!isSqliteFile(dbFile)) {
-            throw IllegalArgumentException("File is not a valid AntennaPod SQLite database")
+            throw IllegalArgumentException("File is not a valid SQLite podcast database")
         }
         return parseSqliteDatabase(
             dbFile = dbFile,
-            format = ImportSourceFormat.ANTENNAPOD_DB
+            format = hintFormat
         )
     }
 
@@ -319,12 +385,15 @@ class PodcastAppImporter(
         )
         try {
             val tableNames = getTableNames(db)
+            val isLoheDb = isLoheSqliteDatabase(db, tableNames)
             val hasAntennaPodTables = tableNames.any { it.equals("Feeds", ignoreCase = true) } ||
                 tableNames.any { it.equals("FeedItems", ignoreCase = true) }
             val hasPodcastAddictTables = tableNames.any { it.equals("podcasts", ignoreCase = true) } ||
                 tableNames.any { it.equals("episodes", ignoreCase = true) }
 
             return when {
+                isLoheDb ->
+                    readLoheSqliteTables(db)
                 format == ImportSourceFormat.ANTENNAPOD_DB && hasAntennaPodTables ->
                     readAntennaPodTables(db, format)
                 format == ImportSourceFormat.PODCAST_ADDICT_BACKUP && hasPodcastAddictTables ->
@@ -339,6 +408,177 @@ class PodcastAppImporter(
         } finally {
             db.close()
         }
+    }
+
+    private fun isLoheSqliteDatabase(db: SQLiteDatabase, tableNames: Set<String>): Boolean {
+        val hasPodcasts = tableNames.any { it.equals("podcasts", ignoreCase = true) }
+        val hasEpisodes = tableNames.any { it.equals("episodes", ignoreCase = true) }
+        if (!hasPodcasts && !hasEpisodes) return false
+
+        // Lohe-specific Room tables
+        if (tableNames.any { it.equals("custom_playlists", ignoreCase = true) } ||
+            tableNames.any { it.equals("episode_bookmarks", ignoreCase = true) }
+        ) {
+            return true
+        }
+
+        // Distinguish Lohe camelCase Room columns from Podcast Addict snake_case columns
+        if (hasPodcasts) {
+            val podCols = getColumnNames(db, "podcasts")
+            if ("feedUrl" in podCols || "autoQueueMode" in podCols || "isSubscribed" in podCols) {
+                return true
+            }
+        }
+        if (hasEpisodes) {
+            val epCols = getColumnNames(db, "episodes")
+            if ("podcastId" in epCols || "resumePositionMs" in epCols || "inUpNext" in epCols) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun getColumnNames(db: SQLiteDatabase, tableName: String): Set<String> {
+        val cols = mutableSetOf<String>()
+        runCatching {
+            db.rawQuery("PRAGMA table_info($tableName)", null).use { cursor ->
+                val nameIdx = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (nameIdx >= 0) {
+                        cursor.getString(nameIdx)?.let { cols.add(it) }
+                    }
+                }
+            }
+        }
+        return cols
+    }
+
+    private fun readLoheSqliteTables(db: SQLiteDatabase): ParsedImportPayload {
+        val tables = getTableNames(db)
+        val podcasts = mutableListOf<PodcastEntity>()
+        val episodes = mutableListOf<EpisodeEntity>()
+        val playlists = mutableListOf<PlaylistEntity>()
+        val bookmarks = mutableListOf<EpisodeBookmarkEntity>()
+
+        val podcastsTable = tables.firstOrNull { it.equals("podcasts", ignoreCase = true) }
+        if (podcastsTable != null) {
+            db.rawQuery("SELECT * FROM $podcastsTable", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getStringOrBlank("id").ifBlank { continue }
+                    val title = cursor.getStringOrBlank("title").ifBlank { "Migrated Podcast" }
+                    val feedUrl = cursor.getStringOrBlank("feedUrl")
+                    podcasts.add(
+                        PodcastEntity(
+                            id = id,
+                            title = title,
+                            author = cursor.getStringOrBlank("author").ifBlank { "Independent Creator" },
+                            description = cursor.getStringOrBlank("description"),
+                            feedUrl = feedUrl,
+                            artworkUrl = cursor.getStringOrBlank("artworkUrl"),
+                            category = cursor.getStringOrBlank("category").ifBlank { "Podcasts" },
+                            autoQueueMode = cursor.getStringOrBlank("autoQueueMode").ifBlank { AutoQueueMode.OFF.name },
+                            useCustomAudio = cursor.getIntOrDefault(0, "useCustomAudio") != 0,
+                            customSpeed = cursor.getDoubleOrDefault(1.0, "customSpeed").toFloat().coerceIn(0.5f, 3.0f),
+                            customSkipSilence = cursor.getIntOrDefault(0, "customSkipSilence") != 0,
+                            customVolumeBoostDb = cursor.getIntOrDefault(0, "customVolumeBoostDb"),
+                            notifyNewEpisodes = cursor.getIntOrDefault(1, "notifyNewEpisodes") != 0,
+                            isSubscribed = cursor.getIntOrDefault(1, "isSubscribed") != 0,
+                            lastSyncedAt = cursor.getLongOrDefault(System.currentTimeMillis(), "lastSyncedAt")
+                        )
+                    )
+                }
+            }
+        }
+
+        val episodesTable = tables.firstOrNull { it.equals("episodes", ignoreCase = true) }
+        if (episodesTable != null) {
+            db.rawQuery("SELECT * FROM $episodesTable", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getStringOrBlank("id").ifBlank { continue }
+                    val podcastId = cursor.getStringOrBlank("podcastId")
+                    val title = cursor.getStringOrBlank("title").ifBlank { "Migrated Episode" }
+                    episodes.add(
+                        EpisodeEntity(
+                            id = id,
+                            podcastId = podcastId,
+                            podcastTitle = cursor.getStringOrBlank("podcastTitle"),
+                            title = title,
+                            descriptionHtml = cursor.getStringOrBlank("descriptionHtml"),
+                            audioUrl = cursor.getStringOrBlank("audioUrl"),
+                            artworkUrl = cursor.getStringOrBlank("artworkUrl"),
+                            publishedAt = cursor.getLongOrDefault(0L, "publishedAt").coerceAtLeast(0L),
+                            durationMs = cursor.getLongOrDefault(0L, "durationMs").coerceAtLeast(0L),
+                            resumePositionMs = cursor.getLongOrDefault(0L, "resumePositionMs").coerceAtLeast(0L),
+                            isPlayed = cursor.getIntOrDefault(0, "isPlayed") != 0,
+                            isArchived = cursor.getIntOrDefault(0, "isArchived") != 0,
+                            // Local files inside another package's private directory cannot be accessed cross-app
+                            isDownloaded = false,
+                            localFilePath = "",
+                            isStarred = cursor.getIntOrDefault(0, "isStarred") != 0,
+                            inUpNext = cursor.getIntOrDefault(0, "inUpNext") != 0,
+                            upNextOrder = cursor.getIntOrDefault(0, "upNextOrder"),
+                            chaptersUrl = cursor.getStringOrBlank("chaptersUrl"),
+                            chaptersJson = cursor.getStringOrBlank("chaptersJson"),
+                            transcriptUrl = cursor.getStringOrBlank("transcriptUrl"),
+                            transcriptMimeType = cursor.getStringOrBlank("transcriptMimeType"),
+                            transcriptText = cursor.getStringOrBlank("transcriptText"),
+                            guid = cursor.getStringOrBlank("guid"),
+                            playedAt = cursor.getLongOrDefault(0L, "playedAt").coerceAtLeast(0L)
+                        )
+                    )
+                }
+            }
+        }
+
+        val playlistsTable = tables.firstOrNull { it.equals("custom_playlists", ignoreCase = true) }
+        if (playlistsTable != null) {
+            db.rawQuery("SELECT * FROM $playlistsTable", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getStringOrBlank("id").ifBlank { continue }
+                    val name = cursor.getStringOrBlank("name").ifBlank { "Migrated Playlist" }
+                    playlists.add(
+                        PlaylistEntity(
+                            id = id,
+                            name = name,
+                            folderName = cursor.getStringOrBlank("folderName").ifBlank { "General" },
+                            episodeIdsCsv = cursor.getStringOrBlank("episodeIdsCsv"),
+                            assignedPodcastIdsCsv = cursor.getStringOrBlank("assignedPodcastIdsCsv"),
+                            smartRuleType = cursor.getStringOrBlank("smartRuleType"),
+                            isPinned = cursor.getIntOrDefault(0, "isPinned") != 0,
+                            autoDownload = cursor.getIntOrDefault(0, "autoDownload") != 0,
+                            createdAt = cursor.getLongOrDefault(System.currentTimeMillis(), "createdAt")
+                        )
+                    )
+                }
+            }
+        }
+
+        val bookmarksTable = tables.firstOrNull { it.equals("episode_bookmarks", ignoreCase = true) }
+        if (bookmarksTable != null) {
+            db.rawQuery("SELECT * FROM $bookmarksTable", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getStringOrBlank("id").ifBlank { continue }
+                    val episodeId = cursor.getStringOrBlank("episodeId").ifBlank { continue }
+                    bookmarks.add(
+                        EpisodeBookmarkEntity(
+                            id = id,
+                            episodeId = episodeId,
+                            positionMs = cursor.getLongOrDefault(0L, "positionMs").coerceAtLeast(0L),
+                            label = cursor.getStringOrBlank("label").ifBlank { "Bookmark" },
+                            createdAt = cursor.getLongOrDefault(System.currentTimeMillis(), "createdAt")
+                        )
+                    )
+                }
+            }
+        }
+
+        return ParsedImportPayload(
+            format = ImportSourceFormat.LOHE_DB,
+            podcasts = podcasts,
+            episodes = episodes,
+            playlists = playlists,
+            bookmarks = bookmarks
+        )
     }
 
     private fun getTableNames(db: SQLiteDatabase): Set<String> {
@@ -641,16 +881,27 @@ class PodcastAppImporter(
         var showsAdded = 0
         var episodesUpdated = 0
         var itemsSkipped = 0
+        var playlistsImported = 0
+        var bookmarksImported = 0
 
-        val totalWorkItems = (payload.podcasts.size + payload.episodes.size + payload.playlists.size).coerceAtLeast(1)
+        val isNativeLoheMigration = payload.format == ImportSourceFormat.LOHE_DB ||
+            payload.format == ImportSourceFormat.LOHE_JSON
+        val totalWorkItems = (
+            payload.podcasts.size +
+                payload.episodes.size +
+                payload.playlists.size +
+                payload.bookmarks.size
+            ).coerceAtLeast(1)
         var processedCount = 0
 
         database.withTransaction {
             val existingPodcasts = dao.getAllPodcasts().first().toMutableList()
             val existingEpisodes = dao.getAllEpisodes().first().toMutableList()
+            val existingBookmarks = dao.getAllBookmarks().first().toMutableList()
 
-            // Map imported podcast ID -> resolved local podcast ID
+            // Map imported IDs -> resolved local IDs
             val importedPodIdToLocalPod = mutableMapOf<String, PodcastEntity>()
+            val importedEpIdToLocalEpId = mutableMapOf<String, String>()
 
             for (importedPod in payload.podcasts) {
                 processedCount++
@@ -668,7 +919,13 @@ class PodcastAppImporter(
                     if (!matchedPodcast.isSubscribed && importedPod.isSubscribed) {
                         val resubscribed = matchedPodcast.copy(
                             isSubscribed = true,
-                            artworkUrl = matchedPodcast.artworkUrl.ifBlank { importedPod.artworkUrl }
+                            artworkUrl = matchedPodcast.artworkUrl.ifBlank { importedPod.artworkUrl },
+                            autoQueueMode = if (isNativeLoheMigration && matchedPodcast.autoQueueMode == AutoQueueMode.OFF.name) importedPod.autoQueueMode else matchedPodcast.autoQueueMode,
+                            useCustomAudio = if (isNativeLoheMigration) (matchedPodcast.useCustomAudio || importedPod.useCustomAudio) else matchedPodcast.useCustomAudio,
+                            customSpeed = if (isNativeLoheMigration && importedPod.useCustomAudio && !matchedPodcast.useCustomAudio) importedPod.customSpeed else matchedPodcast.customSpeed,
+                            customSkipSilence = if (isNativeLoheMigration && importedPod.useCustomAudio && !matchedPodcast.useCustomAudio) importedPod.customSkipSilence else matchedPodcast.customSkipSilence,
+                            customVolumeBoostDb = if (isNativeLoheMigration && importedPod.useCustomAudio && !matchedPodcast.useCustomAudio) importedPod.customVolumeBoostDb else matchedPodcast.customVolumeBoostDb,
+                            notifyNewEpisodes = if (isNativeLoheMigration) importedPod.notifyNewEpisodes else matchedPodcast.notifyNewEpisodes
                         )
                         dao.updatePodcast(resubscribed)
                         val idx = existingPodcasts.indexOfFirst { it.id == matchedPodcast.id }
@@ -676,11 +933,25 @@ class PodcastAppImporter(
                         importedPodIdToLocalPod[importedPod.id] = resubscribed
                         showsAdded++
                     } else {
-                        importedPodIdToLocalPod[importedPod.id] = matchedPodcast
+                        if (isNativeLoheMigration && importedPod.useCustomAudio && !matchedPodcast.useCustomAudio) {
+                            val updatedAudio = matchedPodcast.copy(
+                                useCustomAudio = true,
+                                customSpeed = importedPod.customSpeed,
+                                customSkipSilence = importedPod.customSkipSilence,
+                                customVolumeBoostDb = importedPod.customVolumeBoostDb,
+                                autoQueueMode = if (matchedPodcast.autoQueueMode == AutoQueueMode.OFF.name) importedPod.autoQueueMode else matchedPodcast.autoQueueMode
+                            )
+                            dao.updatePodcast(updatedAudio)
+                            val idx = existingPodcasts.indexOfFirst { it.id == matchedPodcast.id }
+                            if (idx >= 0) existingPodcasts[idx] = updatedAudio
+                            importedPodIdToLocalPod[importedPod.id] = updatedAudio
+                        } else {
+                            importedPodIdToLocalPod[importedPod.id] = matchedPodcast
+                        }
                         itemsSkipped++
                     }
                 } else if (importedPod.feedUrl.isNotBlank() || importedPod.title.isNotBlank()) {
-                    val toInsert = importedPod.copy(isSubscribed = true)
+                    val toInsert = if (isNativeLoheMigration) importedPod else importedPod.copy(isSubscribed = true)
                     dao.insertPodcast(toInsert)
                     existingPodcasts.add(toInsert)
                     importedPodIdToLocalPod[importedPod.id] = toInsert
@@ -726,6 +997,8 @@ class PodcastAppImporter(
                 val importedPlayedAt = importedEp.playedAt.coerceAtLeast(0L)
 
                 if (matchedExisting != null) {
+                    importedEpIdToLocalEpId[importedEp.id] = matchedExisting.id
+
                     // Forward-only state merge:
                     // - never mark a played episode unplayed
                     // - never lower a saved position
@@ -735,12 +1008,14 @@ class PodcastAppImporter(
                     val mergedPlayedAt = maxOf(matchedExisting.playedAt, importedPlayedAt)
                     val mergedStarred = matchedExisting.isStarred || importedEp.isStarred
                     val mergedInUpNext = matchedExisting.inUpNext || importedEp.inUpNext
+                    val mergedArchived = matchedExisting.isArchived || (isNativeLoheMigration && importedEp.isArchived)
 
                     val stateMovedForward = (!matchedExisting.isPlayed && mergedIsPlayed) ||
                         (mergedPositionMs > matchedExisting.resumePositionMs) ||
                         (mergedPlayedAt > matchedExisting.playedAt) ||
                         (!matchedExisting.isStarred && mergedStarred) ||
-                        (!matchedExisting.inUpNext && mergedInUpNext)
+                        (!matchedExisting.inUpNext && mergedInUpNext) ||
+                        (!matchedExisting.isArchived && mergedArchived)
 
                     val updatedEntity = matchedExisting.copy(
                         guid = matchedExisting.guid.ifBlank { importedEp.guid.trim() },
@@ -750,7 +1025,14 @@ class PodcastAppImporter(
                         resumePositionMs = mergedPositionMs,
                         playedAt = mergedPlayedAt,
                         isStarred = mergedStarred,
-                        inUpNext = mergedInUpNext
+                        inUpNext = mergedInUpNext,
+                        upNextOrder = if (!matchedExisting.inUpNext && importedEp.inUpNext) importedEp.upNextOrder else matchedExisting.upNextOrder,
+                        isArchived = mergedArchived,
+                        chaptersUrl = matchedExisting.chaptersUrl.ifBlank { importedEp.chaptersUrl },
+                        chaptersJson = matchedExisting.chaptersJson.ifBlank { importedEp.chaptersJson },
+                        transcriptUrl = matchedExisting.transcriptUrl.ifBlank { importedEp.transcriptUrl },
+                        transcriptMimeType = matchedExisting.transcriptMimeType.ifBlank { importedEp.transcriptMimeType },
+                        transcriptText = matchedExisting.transcriptText.ifBlank { importedEp.transcriptText }
                     )
 
                     if (stateMovedForward) {
@@ -760,7 +1042,7 @@ class PodcastAppImporter(
                         episodesUpdated++
                     } else {
                         if (updatedEntity != matchedExisting) {
-                            // Backfill missing metadata (e.g., GUID) without counting as a state update
+                            // Backfill missing metadata (e.g., GUID, chapters, transcript) without counting as a state update
                             dao.updateEpisode(updatedEntity)
                             val idx = existingEpisodes.indexOfFirst { it.id == matchedExisting.id }
                             if (idx >= 0) existingEpisodes[idx] = updatedEntity
@@ -784,16 +1066,20 @@ class PodcastAppImporter(
                             durationMs = effectiveDuration,
                             resumePositionMs = importedPosition,
                             isPlayed = importedCountsAsPlayed,
-                            playedAt = importedPlayedAt
+                            playedAt = importedPlayedAt,
+                            isDownloaded = false,
+                            localFilePath = ""
                         )
                         dao.insertEpisode(newEntity)
                         existingEpisodes.add(newEntity)
+                        importedEpIdToLocalEpId[importedEp.id] = newEntity.id
 
                         val hasForwardState = importedCountsAsPlayed ||
                             importedPosition > 0L ||
                             importedPlayedAt > 0L ||
                             importedEp.isStarred ||
-                            importedEp.inUpNext
+                            importedEp.inUpNext ||
+                            (isNativeLoheMigration && importedEp.isArchived)
 
                         if (hasForwardState) {
                             episodesUpdated++
@@ -809,13 +1095,54 @@ class PodcastAppImporter(
                         stageMessage = "Updating episodes ($processedCount / $totalWorkItems)...",
                         processedItems = processedCount,
                         totalItems = totalWorkItems,
-                        progressFraction = (0.6f + 0.35f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.6f, 0.95f)
+                        progressFraction = (0.6f + 0.3f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.6f, 0.9f)
                     )
                 )
             }
 
             if (payload.playlists.isNotEmpty()) {
-                dao.insertPlaylists(payload.playlists)
+                val remappedPlaylists = payload.playlists.map { pl ->
+                    val remappedEps = pl.episodeIdsCsv
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .map { oldId -> importedEpIdToLocalEpId[oldId] ?: oldId }
+                        .distinct()
+                        .joinToString(",")
+                    val remappedPods = pl.assignedPodcastIdsCsv
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .map { oldPodId -> importedPodIdToLocalPod[oldPodId]?.id ?: oldPodId }
+                        .distinct()
+                        .joinToString(",")
+                    pl.copy(
+                        episodeIdsCsv = remappedEps,
+                        assignedPodcastIdsCsv = remappedPods
+                    )
+                }
+                dao.insertPlaylists(remappedPlaylists)
+                playlistsImported = remappedPlaylists.size
+            }
+
+            if (payload.bookmarks.isNotEmpty()) {
+                val bookmarksToInsert = mutableListOf<EpisodeBookmarkEntity>()
+                for (bm in payload.bookmarks) {
+                    val targetEpId = importedEpIdToLocalEpId[bm.episodeId] ?: bm.episodeId
+                    val alreadyExists = existingBookmarks.any {
+                        it.id == bm.id ||
+                            (it.episodeId == targetEpId && it.positionMs == bm.positionMs && it.label == bm.label)
+                    }
+                    if (!alreadyExists) {
+                        val remapped = bm.copy(episodeId = targetEpId)
+                        bookmarksToInsert.add(remapped)
+                        existingBookmarks.add(remapped)
+                    }
+                }
+                if (bookmarksToInsert.isNotEmpty()) {
+                    dao.insertBookmarks(bookmarksToInsert)
+                    bookmarksImported = bookmarksToInsert.size
+                }
             }
         }
 
@@ -823,7 +1150,9 @@ class PodcastAppImporter(
             format = payload.format,
             showsAdded = showsAdded,
             episodesUpdated = episodesUpdated,
-            itemsSkipped = itemsSkipped
+            itemsSkipped = itemsSkipped,
+            playlistsImported = playlistsImported,
+            bookmarksImported = bookmarksImported
         )
     }
 
@@ -950,5 +1279,11 @@ class PodcastAppImporter(
         val idx = findColumnIndexIgnoreCase(*names)
         if (idx < 0 || isNull(idx)) return defaultValue
         return runCatching { getInt(idx) }.getOrDefault(defaultValue)
+    }
+
+    private fun Cursor.getDoubleOrDefault(defaultValue: Double, vararg names: String): Double {
+        val idx = findColumnIndexIgnoreCase(*names)
+        if (idx < 0 || isNull(idx)) return defaultValue
+        return runCatching { getDouble(idx) }.getOrDefault(defaultValue)
     }
 }
