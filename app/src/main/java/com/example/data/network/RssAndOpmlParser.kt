@@ -385,8 +385,8 @@ class RssAndOpmlParser(
         bookmarks: List<EpisodeBookmarkEntity> = emptyList()
     ): String {
         val root = JSONObject()
-        root.put("app", "Lohe Android Preview")
-        root.put("packageId", "com.lohe.app.preview")
+        root.put("app", "Lohe")
+        root.put("packageId", if (com.example.edition.Edition.HAS_PRO) "com.lohe.app" else "com.lohe.app.foss")
             root.put("version", "0.12.0")
             root.put("build", "2026.12.17.120")
             root.put("exportedAt", System.currentTimeMillis())
