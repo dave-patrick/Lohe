@@ -10,8 +10,8 @@
 
 ## Editions
 
-- **Play free** and **FOSS** have identical free features.
-- **Play Pro** (`lohe_pro_yearly` subscription) adds the floating cross-app player, extra Up Next indicator styles (Pill, Diamond, Glow), custom hex colours and Google Drive AppData sync.
+- **Play free** and **FOSS** (`com.lohe.app.foss`, labeled **"Lohe (FOSS)"**) have identical core features, and FOSS additionally unlocks direct Cloud Sync via Nextcloud/WebDAV (with automatic `MKCOL` folder creation) and Android SAF file sync (OneDrive, Dropbox, Box, pCloud, Syncthing) so libraries sync seamlessly between Play and FOSS without proprietary dependencies.
+- **Play Pro** (`lohe_pro_yearly` subscription) adds the floating cross-app player, extra Up Next indicator styles (Pill, Diamond, Glow), custom hex colours, and Google Drive AppData OAuth sync.
 - Pro code lives only in `com.example.pro`; everything else reaches it through `com.example.edition.ProFeatures`, loaded by reflection, with `NoOpProFeatures` when absent. All Pro UI is gated by `Edition.HAS_PRO` and hidden (not shown locked) when it is false.
 - Diagnostics and the local MCP/REST debug API are owner-only and belong in the Play Edition's debug source set, so they ship in neither Play nor FOSS releases.
 
