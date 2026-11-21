@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
@@ -104,6 +105,7 @@ fun UpNextTabScreen(
     onMarkPlayed: (EpisodeEntity, Boolean) -> Unit,
     onRemoveFromQueue: (EpisodeEntity) -> Unit,
     onClearQueue: () -> Unit,
+    onOpenNotes: (EpisodeEntity) -> Unit = {},
     onBatchUpNextAction: (List<EpisodeEntity>, EpisodeBatchAction) -> Unit = { _, _ -> }
 ) {
     val visibleUpNext = remember(upNextEpisodes) {
@@ -333,7 +335,7 @@ fun UpNextTabScreen(
                                                 selectedEpisodeIds + ep.id
                                             }
                                         } else {
-                                            actionTargetId = if (isExpanded) null else ep.id
+                                            onOpenNotes(ep)
                                         }
                                     },
                                     onLongClick = {
@@ -468,6 +470,10 @@ fun UpNextTabScreen(
                                 ) {
                                     QueueStripAction("Cancel", Icons.Filled.Close, MaterialTheme.colorScheme.onSurface) {
                                         actionTargetId = null
+                                    }
+                                    QueueStripAction("Notes", Icons.Filled.Description, LoheBrightBlueText) {
+                                        actionTargetId = null
+                                        onOpenNotes(ep)
                                     }
                                     QueueStripAction("Top", Icons.Filled.KeyboardDoubleArrowUp, LoheBrightBlueText) {
                                         onMoveEpisodeEdge(ep, true)

@@ -584,6 +584,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                                                 viewModel.openDiscoverPreview(null)
                                                 viewModel.playEpisode(ep)
                                             },
+                                            onOpenNotes = { viewModel.openEpisodeNotes(it) },
                                             onImportOpmlOrJson = launchImportPicker,
                                             onOpenSettings = { viewModel.openSettings(SettingsSubScreen.OVERVIEW) },
                                             isProUnlocked = settings.isProUnlocked,
@@ -640,6 +641,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                                             onMarkPlayed = viewModel::markEpisodePlayed,
                                             onRemoveFromQueue = { viewModel.toggleEpisodeUpNext(it, false) },
                                             onClearQueue = viewModel::clearUpNextQueue,
+                                            onOpenNotes = { viewModel.openEpisodeNotes(it) },
                                             onBatchUpNextAction = viewModel::executeBatchEpisodeAction
                                         )
                                     }
@@ -761,8 +763,12 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
         }
 
         episodeNotesTarget?.let { targetEp ->
-            val liveEp = activeEpisodes.find { it.id == targetEp.id } ?: targetEp
+            val liveEp = activeEpisodes.find { it.id == targetEp.id }
+                ?: allEpisodes.find { it.id == targetEp.id }
+                ?: previewEpisodes.find { it.id == targetEp.id }
+                ?: targetEp
             val isEpCurrentlyPlaying = playbackState.currentEpisode?.id == liveEp.id && playbackState.isPlaying
+            val matchingPodcast = podcasts.find { it.id == liveEp.podcastId }
             EpisodeNotesBottomSheet(
                 episode = liveEp,
                 chapters = notesChapters,
@@ -797,7 +803,27 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                 },
                 onToggleStarred = { viewModel.toggleStarred(liveEp) },
                 onToggleDownloaded = { viewModel.toggleDownloaded(liveEp) },
-                onMarkPlayed = { viewModel.markEpisodePlayed(liveEp, !liveEp.isPlayed) }
+                onMarkPlayed = { viewModel.markEpisodePlayed(liveEp, !liveEp.isPlayed) },
+                customPlaylists = customPlaylists,
+                onToggleEpisodeInPlaylist = { playlist ->
+                    viewModel.toggleEpisodeInPlaylist(playlist, liveEp)
+                },
+                onCreatePlaylistWithEpisode = { name ->
+                    viewModel.createPlaylist(name, "General", listOf(liveEp.id))
+                },
+                onOpenPodcast = if (matchingPodcast != null) {
+                    {
+                        viewModel.openEpisodeNotes(null)
+                        viewModel.openPodcastDetail(matchingPodcast.id)
+                    }
+                } else {
+                    null
+                },
+                onResetProgress = { viewModel.resetEpisodeProgress(liveEp) },
+                onArchiveEpisode = {
+                    viewModel.archiveEpisode(liveEp)
+                    viewModel.openEpisodeNotes(null)
+                }
             )
         }
 

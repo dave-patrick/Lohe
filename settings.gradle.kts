@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Lohe"
 
 include(":app")
+include(":sync-app")

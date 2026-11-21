@@ -893,6 +893,7 @@ fun UpNextSpotlightCard(
     playbackState: PlaybackUiState,
     onPlayEpisode: (EpisodeEntity) -> Unit,
     onNavigateToUpNext: () -> Unit,
+    onOpenNotes: (EpisodeEntity) -> Unit = onPlayEpisode,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
@@ -966,7 +967,7 @@ fun UpNextSpotlightCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onPlayEpisode(ep) }
+                                .clickable { onOpenNotes(ep) }
                                 .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

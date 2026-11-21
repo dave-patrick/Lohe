@@ -1006,6 +1006,24 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun archiveEpisode(episode: EpisodeEntity) {
+        viewModelScope.launch {
+            repository.archiveEpisodes(listOf(episode))
+            postStatusMessage("Archived \"${episode.title}\"")
+        }
+    }
+
+    fun toggleEpisodeInPlaylist(playlist: PlaylistEntity, episode: EpisodeEntity) {
+        viewModelScope.launch {
+            val wasInPlaylist = episode.id in playlist.episodeIdList()
+            repository.toggleEpisodeInPlaylist(playlist, episode.id)
+            postStatusMessage(
+                if (wasInPlaylist) "Removed from \"${playlist.name}\""
+                else "Added to \"${playlist.name}\""
+            )
+        }
+    }
+
     fun updatePodcastAutoQueue(podcast: PodcastEntity, mode: AutoQueueMode) {
         viewModelScope.launch {
             repository.updatePodcastAutoQueue(podcast, mode)

@@ -250,7 +250,8 @@ fun HomeTabScreen(
                 upNextEpisodes = upNextEpisodes,
                 playbackState = playbackState,
                 onPlayEpisode = onPlayEpisode,
-                onNavigateToUpNext = onNavigateToUpNext
+                onNavigateToUpNext = onNavigateToUpNext,
+                onOpenNotes = onOpenNotes
             )
 
             HomeCardType.CONTINUE_LISTENING -> {
@@ -512,7 +513,7 @@ fun CompactEpisodeRowCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, border, RoundedCornerShape(16.dp))
-            .clickable(onClick = onPlay)
+            .clickable(onClick = onOpenNotes)
             .testTag("episode_card_${episode.id}")
     ) {
         Row(
@@ -647,6 +648,7 @@ fun DiscoverTabScreen(
     onSubscribeCatalog: (DiscoverCatalogItem) -> Unit,
     onSubscribeRssUrl: (String) -> Unit,
     onPlayPreviewEpisode: (EpisodeEntity) -> Unit,
+    onOpenNotes: (EpisodeEntity) -> Unit = {},
     onImportOpmlOrJson: () -> Unit,
     onOpenSettings: () -> Unit,
     isProUnlocked: Boolean = false,
@@ -1364,6 +1366,7 @@ fun DiscoverTabScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                                        .clickable { onOpenNotes(ep) }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(10.dp),

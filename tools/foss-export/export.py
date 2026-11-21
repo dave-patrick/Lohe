@@ -30,7 +30,7 @@ KEEP = {
     ".git", ".github", ".gitattributes", "docs", "tools", "README.md", "LICENSE",
     "AGENTS.md", ".herald", "gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar",
     "local.properties", ".gradle", ".kotlin", ".idea", ".claude", ".codex-attachments",
-    "build", "app/build",
+    "build", "app/build", "sync-app", "sync-app/build",
 }
 
 # Paths in the Play Edition that never go public.
@@ -242,6 +242,11 @@ def main():
           lambda t: sub_once(t, r"const val HAS_PRO = true", "const val HAS_PRO = false", "Edition.HAS_PRO"))
     patch(out / "app/build.gradle.kts", patch_app_gradle)
     patch(out / "build.gradle.kts", patch_root_gradle)
+    if (out / "sync-app/build.gradle.kts").exists():
+        patch(
+            out / "settings.gradle.kts",
+            lambda t: t if 'include(":sync-app")' in t else t.rstrip() + '\ninclude(":sync-app")\n',
+        )
     patch(out / "app/src/main/AndroidManifest.xml", patch_manifest)
     write_foss_resources(out)
     check_leaks(out)

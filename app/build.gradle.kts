@@ -54,7 +54,12 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      all { it.maxHeapSize = "2048m" }
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = false

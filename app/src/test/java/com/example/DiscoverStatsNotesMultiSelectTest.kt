@@ -534,4 +534,117 @@ class DiscoverStatsNotesMultiSelectTest {
 
         assertEquals(PodcastSortOption.CATEGORY_ASC, pickedSort)
     }
+
+    @Test
+    fun upNextTap_opensEpisodeShowNotes() {
+        val ep = EpisodeEntity(
+            id = "ep_tap_1",
+            podcastId = "pod_1",
+            podcastTitle = "Signal Tech",
+            title = "Deep Dive Episode",
+            descriptionHtml = "<p>Episode show notes content</p>",
+            audioUrl = "https://example.com/ep1.mp3",
+            artworkUrl = "",
+            publishedAt = 1_750_000_000_000L,
+            durationMs = 1_800_000L,
+            resumePositionMs = 300_000L,
+            isPlayed = false,
+            inUpNext = true
+        )
+        var notesOpenedId: String? = null
+
+        composeTestRule.setContent {
+            LoheTheme {
+                com.example.ui.screens.UpNextTabScreen(
+                    settings = LoheUserSettings(),
+                    upNextEpisodes = listOf(ep),
+                    playbackState = PlaybackUiState(),
+                    onOpenSettings = {},
+                    onBrowsePodcasts = {},
+                    onPlayEpisode = {},
+                    onMoveEpisode = { _, _ -> },
+                    onMoveEpisodeEdge = { _, _ -> },
+                    onMarkPlayed = { _, _ -> },
+                    onRemoveFromQueue = {},
+                    onClearQueue = {},
+                    onOpenNotes = { notesOpenedId = it.id }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("up_next_item_ep_tap_1").performClick()
+        assertEquals("ep_tap_1", notesOpenedId)
+    }
+
+    @Test
+    fun episodeNotesSheet_exposesExpandedActionsAndPlaylistPicker() {
+        val ep = EpisodeEntity(
+            id = "ep_tap_2",
+            podcastId = "pod_1",
+            podcastTitle = "Signal Tech",
+            title = "Deep Dive Episode",
+            descriptionHtml = "<p>Episode show notes content</p>",
+            audioUrl = "https://example.com/ep1.mp3",
+            artworkUrl = "",
+            publishedAt = 1_750_000_000_000L,
+            durationMs = 1_800_000L,
+            resumePositionMs = 300_000L,
+            isPlayed = false,
+            inUpNext = false
+        )
+        val playlist = PlaylistEntity(
+            id = "pl_favs",
+            name = "Weekend Queue",
+            folderName = "General",
+            smartRuleType = ""
+        )
+
+        var playNextCalled = false
+        var openPodcastCalled = false
+        var resetProgressCalled = false
+        var archiveCalled = false
+        var toggledPlaylistId: String? = null
+
+        composeTestRule.setContent {
+            LoheTheme {
+                com.example.ui.components.EpisodeNotesBottomSheet(
+                    episode = ep,
+                    onDismiss = {},
+                    onSeekToMs = {},
+                    onPlayToggle = {},
+                    onAddToUpNext = { beg -> if (beg) playNextCalled = true },
+                    onToggleStarred = {},
+                    onToggleDownloaded = {},
+                    onMarkPlayed = {},
+                    customPlaylists = listOf(playlist),
+                    onToggleEpisodeInPlaylist = { toggledPlaylistId = it.id },
+                    onCreatePlaylistWithEpisode = {},
+                    onOpenPodcast = { openPodcastCalled = true },
+                    onResetProgress = { resetProgressCalled = true },
+                    onArchiveEpisode = { archiveCalled = true }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("episode_sheet_secondary_actions_row").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("episode_sheet_play_next_chip").performClick()
+        assertTrue(playNextCalled)
+
+        composeTestRule.onNodeWithTag("episode_sheet_open_podcast_chip").performClick()
+        assertTrue(openPodcastCalled)
+
+        composeTestRule.onNodeWithTag("episode_sheet_reset_progress_chip").performClick()
+        assertTrue(resetProgressCalled)
+
+        composeTestRule.onNodeWithTag("episode_sheet_archive_chip").performClick()
+        assertTrue(archiveCalled)
+
+        composeTestRule.onNodeWithTag("episode_sheet_playlist_chip").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("episode_sheet_playlist_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("episode_sheet_playlist_item_pl_favs").performClick()
+        assertEquals("pl_favs", toggledPlaylistId)
+    }
 }

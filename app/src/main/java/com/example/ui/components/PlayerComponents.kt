@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -66,6 +68,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
@@ -144,6 +147,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.EpisodeBookmarkEntity
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.LoheUserSettings
+import com.example.data.local.PlaylistEntity
 import com.example.data.network.EpisodeChapter
 import com.example.data.network.PodcastingChaptersAndTranscripts
 import com.example.data.network.TranscriptCue
@@ -2098,7 +2102,13 @@ fun EpisodeNotesBottomSheet(
     onRemoveFromUpNext: (() -> Unit)? = null,
     onToggleStarred: (() -> Unit)? = null,
     onToggleDownloaded: (() -> Unit)? = null,
-    onMarkPlayed: (() -> Unit)? = null
+    onMarkPlayed: (() -> Unit)? = null,
+    customPlaylists: List<PlaylistEntity> = emptyList(),
+    onToggleEpisodeInPlaylist: ((PlaylistEntity) -> Unit)? = null,
+    onCreatePlaylistWithEpisode: ((String) -> Unit)? = null,
+    onOpenPodcast: (() -> Unit)? = null,
+    onResetProgress: (() -> Unit)? = null,
+    onArchiveEpisode: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2107,6 +2117,11 @@ fun EpisodeNotesBottomSheet(
     }
     var selectedTabIndex by remember(episode.id) { mutableIntStateOf(0) }
     var transcriptQuery by remember(episode.id) { mutableStateOf("") }
+    var showPlaylistDialog by remember(episode.id) { mutableStateOf(false) }
+    var newPlaylistName by remember(episode.id) { mutableStateOf("") }
+    val userPlaylists = remember(customPlaylists) {
+        customPlaylists.filter { it.smartRuleType.isEmpty() }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2140,7 +2155,12 @@ fun EpisodeNotesBottomSheet(
                         style = MaterialTheme.typography.labelMedium,
                         color = LoheCyanAccent,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (onOpenPodcast != null) {
+                            Modifier.clickable { onOpenPodcast() }
+                        } else {
+                            Modifier
+                        }
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
@@ -2268,6 +2288,236 @@ fun EpisodeNotesBottomSheet(
                                 contentDescription = if (episode.isPlayed) "Mark Unplayed" else "Mark Played",
                                 tint = if (episode.isPlayed) Color(0xFF22C55E) else LoheTextMutedDark
                             )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .testTag("episode_sheet_secondary_actions_row"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onAddToUpNext != null) {
+                        EpisodeSheetQuickActionChip(
+                            label = "Play Next",
+                            icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                            tint = LoheCyanAccent,
+                            testTag = "episode_sheet_play_next_chip",
+                            onClick = { onAddToUpNext(true) }
+                        )
+                        if (episode.inUpNext && onRemoveFromUpNext != null) {
+                            EpisodeSheetQuickActionChip(
+                                label = "Remove Queue",
+                                icon = Icons.Filled.Remove,
+                                tint = Color(0xFFF59E0B),
+                                testTag = "episode_sheet_remove_queue_chip",
+                                onClick = onRemoveFromUpNext
+                            )
+                        } else {
+                            EpisodeSheetQuickActionChip(
+                                label = "Play Last",
+                                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                                tint = LoheBrightBlueText,
+                                testTag = "episode_sheet_play_last_chip",
+                                onClick = { onAddToUpNext(false) }
+                            )
+                        }
+                    }
+
+                    if (onToggleEpisodeInPlaylist != null || onCreatePlaylistWithEpisode != null) {
+                        val matchingCount = userPlaylists.count { episode.id in it.episodeIdList() }
+                        EpisodeSheetQuickActionChip(
+                            label = if (matchingCount > 0) "Playlists ($matchingCount)" else "Add to Playlist",
+                            icon = Icons.Filled.Add,
+                            tint = if (matchingCount > 0 || showPlaylistDialog) LoheCyanAccent else LoheTextPrimaryDark,
+                            testTag = "episode_sheet_playlist_chip",
+                            onClick = { showPlaylistDialog = !showPlaylistDialog }
+                        )
+                    }
+
+                    if (onOpenPodcast != null) {
+                        EpisodeSheetQuickActionChip(
+                            label = "Go to Show",
+                            icon = Icons.Filled.Podcasts,
+                            tint = LoheBrightBlueText,
+                            testTag = "episode_sheet_open_podcast_chip",
+                            onClick = onOpenPodcast
+                        )
+                    }
+
+                    if (onResetProgress != null && (episode.resumePositionMs > 0L || episode.isPlayed)) {
+                        EpisodeSheetQuickActionChip(
+                            label = "Reset Progress",
+                            icon = Icons.Filled.RestartAlt,
+                            tint = LoheTextPrimaryDark,
+                            testTag = "episode_sheet_reset_progress_chip",
+                            onClick = onResetProgress
+                        )
+                    }
+
+                    if (onArchiveEpisode != null && !episode.isArchived) {
+                        EpisodeSheetQuickActionChip(
+                            label = "Archive",
+                            icon = Icons.Filled.Archive,
+                            tint = LoheTextPrimaryDark,
+                            testTag = "episode_sheet_archive_chip",
+                            onClick = onArchiveEpisode
+                        )
+                    }
+
+                    EpisodeSheetQuickActionChip(
+                        label = "Share",
+                        icon = Icons.Filled.Share,
+                        tint = LoheTextPrimaryDark,
+                        testTag = "episode_sheet_share_chip",
+                        onClick = {
+                            val shareText = buildString {
+                                append(episode.title)
+                                if (episode.podcastTitle.isNotBlank()) {
+                                    append(" — ")
+                                    append(episode.podcastTitle)
+                                }
+                                if (episode.audioUrl.isNotBlank()) {
+                                    append("\n")
+                                    append(episode.audioUrl)
+                                }
+                            }
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "${episode.title} — ${episode.podcastTitle}")
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            try {
+                                context.startActivity(
+                                    Intent.createChooser(sendIntent, "Share Episode")
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (_: Exception) {
+                            }
+                        }
+                    )
+                }
+
+                AnimatedVisibility(visible = showPlaylistDialog) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = LoheBackgroundDark,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .border(1.dp, LoheBorderDark, RoundedCornerShape(14.dp))
+                            .testTag("episode_sheet_playlist_dialog")
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Add to Playlist",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LoheTextPrimaryDark
+                                )
+                                TextButton(onClick = { showPlaylistDialog = false }) {
+                                    Text("Done", color = LoheCyanAccent)
+                                }
+                            }
+                            if (userPlaylists.isEmpty()) {
+                                Text(
+                                    text = "No custom playlists yet. Create one below to add this episode.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LoheTextMutedDark
+                                )
+                            } else {
+                                userPlaylists.forEach { playlist ->
+                                    val inPlaylist = episode.id in playlist.episodeIdList()
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (inPlaylist) LoheElectricBlue.copy(alpha = 0.16f) else LoheSurfaceDark,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(
+                                                1.dp,
+                                                if (inPlaylist) LoheElectricBlue else LoheBorderDark,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable {
+                                                onToggleEpisodeInPlaylist?.invoke(playlist)
+                                            }
+                                            .testTag("episode_sheet_playlist_item_${playlist.id}")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = playlist.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = LoheTextPrimaryDark
+                                                )
+                                                Text(
+                                                    text = playlist.folderName.ifBlank { "General" },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = LoheTextMutedDark
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = if (inPlaylist) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                                                contentDescription = if (inPlaylist) "In playlist" else "Not in playlist",
+                                                tint = if (inPlaylist) LoheCyanAccent else LoheTextMutedDark
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (onCreatePlaylistWithEpisode != null) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = newPlaylistName,
+                                        onValueChange = { newPlaylistName = it },
+                                        placeholder = { Text("New playlist name...") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("episode_sheet_new_playlist_input")
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val trimmed = newPlaylistName.trim()
+                                            if (trimmed.isNotBlank()) {
+                                                onCreatePlaylistWithEpisode(trimmed)
+                                                newPlaylistName = ""
+                                            }
+                                        },
+                                        enabled = newPlaylistName.trim().isNotBlank(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                                        modifier = Modifier.testTag("episode_sheet_new_playlist_create")
+                                    ) {
+                                        Text("Create", color = Color.White)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2631,6 +2881,44 @@ fun EpisodeNotesBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun EpisodeSheetQuickActionChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = LoheBackgroundDark,
+        modifier = Modifier
+            .border(1.dp, LoheBorderDark, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .testTag(testTag)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = LoheTextPrimaryDark,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
