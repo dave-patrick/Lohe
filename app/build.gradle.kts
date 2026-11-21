@@ -11,7 +11,6 @@ plugins {
 val loheReleaseVersion = "0.11.1"
 // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
 val loheBuildId = "2026.10.11.90"
-val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
     "Lohe release version must be major.minor.patch with each component from 0 to 99"
@@ -35,6 +34,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+            // Phone/tablet Play Store build; merges src/play/AndroidManifest.xml to omit
+            // unverified car declarations until separately validated.
+            buildConfigField("String", "DISTRIBUTION", "\"play\"")
+            buildConfigField("Boolean", "IS_FOSS", "false")
+        }
+        create("foss") {
+            dimension = "distribution"
+            // Libre standalone APK (GitHub Releases / F-Droid), installable side-by-side
+            // with Google Play builds and free of proprietary Play dependencies.
+            applicationIdSuffix = ".foss"
+            versionNameSuffix = "-foss"
+            buildConfigField("String", "DISTRIBUTION", "\"foss\"")
+            buildConfigField("Boolean", "IS_FOSS", "true")
+        }
+    }
+
     buildTypes {
         debug {
             // Optional isolated installation for device tests; never replaces the user's app.
@@ -54,14 +74,26 @@ android {
                 .takeIf { it.exists() }
                 ?.inputStream()
                 ?.use { props.load(it) }
-            val path = props.getProperty("keystore.path", "")
-            // CI can validate an unsigned bundle. Never silently sign Play builds with Debug.
-            if (path.isNotEmpty()) {
+            val keystorePath = providers.environmentVariable("LOHE_KEYSTORE_PATH").orNull
+                ?.takeIf { it.isNotEmpty() }
+                ?: props.getProperty("keystore.path", "")
+            val keystorePassword = providers.environmentVariable("LOHE_KEYSTORE_PASSWORD").orNull
+                ?.takeIf { it.isNotEmpty() }
+                ?: props.getProperty("keystore.password", "")
+            val keyAliasValue = providers.environmentVariable("LOHE_KEY_ALIAS").orNull
+                ?.takeIf { it.isNotEmpty() }
+                ?: props.getProperty("keystore.alias", "")
+            val keyPasswordValue = providers.environmentVariable("LOHE_KEY_PASSWORD").orNull
+                ?.takeIf { it.isNotEmpty() }
+                ?: props.getProperty("keystore.key.password", "")
+            // CI can validate an unsigned Play bundle or sign FOSS builds when secrets are supplied.
+            // Never silently sign release builds with the Debug key.
+            if (keystorePath.isNotEmpty()) {
                 signingConfig = signingConfigs.create("release") {
-                    storeFile = file(path)
-                    storePassword = props.getProperty("keystore.password", "")
-                    keyAlias = props.getProperty("keystore.alias", "")
-                    keyPassword = props.getProperty("keystore.key.password", "")
+                    storeFile = file(keystorePath)
+                    storePassword = keystorePassword
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
                 }
             }
         }
@@ -71,12 +103,6 @@ android {
             isDebuggable = false
             matchingFallbacks += listOf("release")
         }
-    }
-
-    if (lohePlayStore) {
-        // A phone/tablet Play submission defers car review; other distributions keep it.
-        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
-        sourceSets.getByName("smokeRelease").manifest.srcFile("src/play/AndroidManifest.xml")
     }
 
     compileOptions {
@@ -171,6 +197,55 @@ implementation(libs.androidx.compose.foundation)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
+abstract class VerifyFossDependenciesTask : DefaultTask() {
+    @get:Input
+    abstract val resolvedModules: ListProperty<String>
+
+    @TaskAction
+    fun verify() {
+        val forbiddenPrefixes = listOf(
+            "com.android.billingclient:",
+            "com.google.android.gms:",
+            "com.google.firebase:",
+            "com.google.android.play:",
+        )
+        val resolved = resolvedModules.get()
+        val violations = resolved.filter { coord ->
+            forbiddenPrefixes.any { prefix -> coord.startsWith(prefix) }
+        }
+        check(violations.isEmpty()) {
+            "FOSS release runtime classpath must not include proprietary Google/Play dependencies:\n" +
+                violations.joinToString("\n") { " - $it" }
+        }
+        logger.lifecycle("FOSS dependency check passed (${resolved.size} resolved modules, 0 proprietary Play/Firebase modules).")
+    }
+}
+
+tasks.register<VerifyFossDependenciesTask>("verifyFossDependencies") {
+    group = "verification"
+    description = "Verifies that the FOSS release runtime classpath contains no proprietary Google Play or Firebase dependencies."
+
+    resolvedModules.set(
+        configurations.named("fossReleaseRuntimeClasspath").flatMap { config ->
+            config.incoming.resolutionResult.rootComponent.map { root ->
+                val seen = LinkedHashSet<String>()
+                fun visit(node: org.gradle.api.artifacts.result.ResolvedComponentResult) {
+                    val mv = node.moduleVersion
+                    val key = mv?.let { "${it.group}:${it.name}:${it.version}" } ?: node.id.displayName
+                    if (!seen.add(key)) return
+                    node.dependencies.forEach { dep ->
+                        if (dep is org.gradle.api.artifacts.result.ResolvedDependencyResult) {
+                            visit(dep.selected)
+                        }
+                    }
+                }
+                visit(root)
+                seen.sorted()
+            }
+        },
+    )
+}
+
 /**
  * Runs the instrumented tests on a connected device *without uninstalling the
  * app afterwards*.
@@ -180,12 +255,28 @@ implementation(libs.androidx.compose.foundation)
  * library, the playlists, the listening history. On a device that holds a real
  * library that is not a cost worth paying for a test run, so this task
  * installs over the top with `adb install -r` and drives the runner directly.
+ *
+ * Defaults to the `play` flavor (`com.lohe.app`). Pass `-PloheDeviceTestFlavor=foss`
+ * to target the `foss` flavor (`com.lohe.app.foss`).
  */
 tasks.register("deviceTest") {
     group = "verification"
     description = "Runs the instrumented tests on a connected device, keeping the app's data."
 
-    dependsOn("assembleDebug", "assembleDebugAndroidTest")
+    val flavor = providers.gradleProperty("loheDeviceTestFlavor").orNull ?: "play"
+    check(flavor == "play" || flavor == "foss") {
+        "loheDeviceTestFlavor must be 'play' or 'foss' (got '$flavor')"
+    }
+    val flavorCap = flavor.replaceFirstChar { it.uppercase() }
+    val debugSuffix = providers.gradleProperty("loheDebugApplicationIdSuffix").orNull.orEmpty()
+    val testPackage = buildString {
+        append("com.lohe.app")
+        if (flavor == "foss") append(".foss")
+        append(debugSuffix)
+        append(".test")
+    }
+
+    dependsOn("assemble${flavorCap}Debug", "assemble${flavorCap}DebugAndroidTest")
 
     val localProps = Properties()
     rootProject.file("local.properties")
@@ -197,8 +288,8 @@ tasks.register("deviceTest") {
         ?: System.getenv("ANDROID_SDK_ROOT")
         ?: error("No Android SDK found: set sdk.dir in local.properties or ANDROID_HOME.")
     val adb = "$sdkDir${File.separator}platform-tools${File.separator}adb"
-    val appApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
-    val testApk = layout.buildDirectory.file("outputs/apk/androidTest/debug/app-debug-androidTest.apk")
+    val appApk = layout.buildDirectory.file("outputs/apk/$flavor/debug/app-$flavor-debug.apk")
+    val testApk = layout.buildDirectory.file("outputs/apk/androidTest/$flavor/debug/app-$flavor-debug-androidTest.apk")
 
     fun run(vararg command: String) {
         val process = ProcessBuilder(*command).redirectErrorStream(true).start()
@@ -218,7 +309,7 @@ tasks.register("deviceTest") {
     doLast {
         run(
             adb, "shell", "am", "instrument", "-w",
-            "com.lohe.app.test/androidx.test.runner.AndroidJUnitRunner",
+            "$testPackage/androidx.test.runner.AndroidJUnitRunner",
         )
     }
 }

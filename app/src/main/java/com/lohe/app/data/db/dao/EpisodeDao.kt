@@ -121,6 +121,9 @@ interface EpisodeDao {
     @Query("UPDATE episodes SET queuePosition = NULL WHERE uuid = :uuid")
     suspend fun dequeue(uuid: String)
 
+    @Query("UPDATE episodes SET queuePosition = NULL WHERE queuePosition IS NOT NULL")
+    suspend fun clearAllQueuePositions()
+
     /** Moves [uuid] to the head of the queue and renumbers the rest. */
     @Transaction
     suspend fun promoteInQueue(uuid: String) {

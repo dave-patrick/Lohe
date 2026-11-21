@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Selected only by -PlohePlayStore=true. The car implementation stays available
-     in ordinary Release and Debug; submit a separately verified car build later. -->
+<!-- Merged automatically for the `play` product flavor. The car implementation
+     stays available in the `foss` flavor; submit a separately verified car build later. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" tools:node="remove" />

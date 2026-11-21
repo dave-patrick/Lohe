@@ -16,6 +16,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Owner-only signature permission for syncing library state with the private Lohe Sync companion app. -->
+    <permission
+        android:name="${applicationId}.permission.OWNER_SYNC"
+        android:protectionLevel="signature" />
+
     <!-- Local audio uses user-granted Storage Access Framework tree access. -->
 
     <!-- Playback continues while the app is backgrounded. -->
@@ -95,7 +100,7 @@
             -->
             <meta-data
                 android:name="androidx.car.app.media.CalMediaActivityComponent"
-                android:value="com.lohe.app/androidx.car.app.activity.CarAppActivity" />
+                android:value="${applicationId}/androidx.car.app.activity.CarAppActivity" />
         </service>
 
         <!--
@@ -171,6 +176,13 @@
         <meta-data
             android:name="com.android.automotive"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- Owner-only signature-locked provider for syncing podcasts, playlists, episodes, and Up Next. -->
+        <provider
+            android:name=".sync.OwnerSyncProvider"
+            android:authorities="${applicationId}.ownersync"
+            android:exported="true"
+            android:permission="${applicationId}.permission.OWNER_SYNC" />
 
     </application>
 

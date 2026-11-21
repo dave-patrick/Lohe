@@ -44,6 +44,7 @@ class SubscriptionRepositoryTest {
     ) : com.lohe.app.data.db.dao.PodcastDao {
         override fun observeAll() = kotlinx.coroutines.flow.flowOf(rows.toList())
         override suspend fun allOnce() = rows.toList()
+        override suspend fun allIncludingUnsubscribed() = rows.toList()
         override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
 
         /**
@@ -159,6 +160,10 @@ class SubscriptionRepositoryTest {
 
         override fun observeQueue() =
             kotlinx.coroutines.flow.flowOf(rows.filter { it.isQueued }.sortedBy { it.queuePosition })
+
+        override suspend fun clearAllQueuePositions() {
+            rows.replaceAll { it.copy(queuePosition = null) }
+        }
 
         override suspend fun upsertAll(episodes: List<EpisodeEntity>) {
             upsertCalls++

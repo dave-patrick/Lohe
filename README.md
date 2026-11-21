@@ -44,14 +44,15 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 Build the app:
 
 ```cmd
-gradlew.bat assembleRelease         # Windows release APK
-./gradlew assembleRelease           # macOS / Linux release APK
+gradlew.bat assembleFossRelease         # Windows FOSS release APK (com.lohe.app.foss)
+./gradlew assembleFossRelease           # macOS / Linux FOSS release APK (com.lohe.app.foss)
+./gradlew bundlePlayRelease             # Google Play release AAB (com.lohe.app)
 ```
 
-The build writes `app/build/outputs/apk/release/app-release.apk`; published copies include the release and build ID in their filenames. Debug APKs are separate and are not the public release. To run JVM unit tests:
+The FOSS build writes `app/build/outputs/apk/foss/release/app-foss-release.apk` (or `-unsigned.apk` without signing credentials); the Play build writes `app/build/outputs/bundle/playRelease/app-play-release.aab`. Published copies include the release and build ID in their filenames. Debug APKs are separate and are not the public release. To run JVM unit tests and FOSS dependency isolation checks:
 
 ```cmd
-./gradlew testDebugUnitTest
+./gradlew testFossDebugUnitTest testPlayDebugUnitTest :app:verifyFossDependencies
 ```
 
 Gradle 9.6.0 comes from the wrapper. The app uses Kotlin, Jetpack Compose, Room, and AndroidX Media3.

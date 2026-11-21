@@ -116,6 +116,26 @@ class PlaylistRepository(
         return created
     }
 
+    /**
+     * Atomically replaces all custom playlists and podcast folder assignments
+     * (used by owner library sync).
+     */
+    fun replaceAll(
+        newPlaylists: List<UserPlaylist>,
+        newPodcastFolders: Map<String, String>,
+    ) {
+        val cleaned = newPlaylists.filterNot { it.name.isLegacySmartPlaylistName() }
+        val cleanFolders = newPodcastFolders
+            .mapValues { it.value.trim() }
+            .filter { it.key.isNotBlank() && it.value.isNotEmpty() }
+        synchronized(lock) {
+            _playlists.value = cleaned
+            _podcastFolders.value = cleanFolders
+            saveToDisk(cleaned)
+            savePodcastFoldersToDisk(cleanFolders)
+        }
+    }
+
     fun deletePlaylist(playlistId: String) {
         synchronized(lock) {
             val next = _playlists.value.filterNot { it.id == playlistId }

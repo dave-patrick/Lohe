@@ -37,6 +37,7 @@ class PocketCastsImporterTest {
     ) : PodcastDao {
         override fun observeAll(): Flow<List<PodcastEntity>> = flowOf(rows.toList())
         override suspend fun allOnce() = rows.toList()
+        override suspend fun allIncludingUnsubscribed() = rows.toList()
         override suspend fun get(uuid: String) = rows.firstOrNull { it.uuid == uuid }
         override suspend fun insertIfAbsent(podcast: PodcastEntity): Long {
             if (rows.any { it.uuid == podcast.uuid }) return -1L
@@ -136,6 +137,10 @@ class PocketCastsImporterTest {
         override fun observeInProgress() = flowOf(rows.filter { it.isInProgress })
         override fun observeQueue() =
             flowOf(rows.filter { it.isQueued }.sortedBy { it.queuePosition })
+
+        override suspend fun clearAllQueuePositions() {
+            rows.replaceAll { it.copy(queuePosition = null) }
+        }
 
         override suspend fun upsertAll(episodes: List<EpisodeEntity>) {
             episodes.forEach { incoming ->

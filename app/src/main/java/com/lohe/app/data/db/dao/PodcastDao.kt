@@ -19,6 +19,17 @@ interface PodcastDao {
     @Query("SELECT * FROM podcasts WHERE isSubscribed = 1 ORDER BY title COLLATE NOCASE")
     suspend fun allOnce(): List<PodcastEntity>
 
+    /** Every podcast row including unsubscribed shows retained for episode history. */
+    @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE")
+    suspend fun allIncludingUnsubscribed(): List<PodcastEntity>
+
+    @Transaction
+    suspend fun upsertForSync(podcast: PodcastEntity) {
+        if (insertIfAbsent(podcast) == -1L) {
+            update(podcast)
+        }
+    }
+
     @Query("SELECT * FROM podcasts WHERE uuid = :uuid")
     suspend fun get(uuid: String): PodcastEntity?
 

@@ -32,9 +32,9 @@ jobs:
           echo "release=$(sed -n 's/^val loheReleaseVersion = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
       - name: Build isolated debug APK
         run: |
-          ./gradlew :app:assembleDebug -PloheDebugApplicationIdSuffix=.codexdebug --console=plain
+          ./gradlew :app:assembleFossDebug -PloheDebugApplicationIdSuffix=.codexdebug --console=plain
           mkdir -p debug-output
-          cp app/build/outputs/apk/debug/app-debug.apk debug-output/Lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-codexdebug.apk
+          cp app/build/outputs/apk/foss/debug/app-foss-debug.apk debug-output/Lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-foss-codexdebug.apk
           sha256sum debug-output/*.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging debug-output/*.apk | head -5
       - name: Upload debug APK for owner

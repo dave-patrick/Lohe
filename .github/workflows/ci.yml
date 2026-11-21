@@ -54,21 +54,97 @@ jobs:
         run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --console=plain
+        run: ./gradlew :app:testFossDebugUnitTest :app:testPlayDebugUnitTest :sync-app:testDebugUnitTest --console=plain
 
       - name: Check privacy policy copies
         shell: pwsh
         run: ./tools/prepare-privacy-policy.ps1 -Check
 
-      - name: Android lint
-        run: ./gradlew -PlohePlayStore=true lintRelease --console=plain
+      - name: Verify FOSS dependency isolation
+        run: ./gradlew :app:verifyFossDependencies --console=plain
 
-      - name: Assemble debug APK and instrumented tests
-        run: ./gradlew assembleDebug assembleDebugAndroidTest --console=plain
+      - name: Android lint
+        run: ./gradlew :app:lintFossRelease :app:lintPlayRelease :sync-app:lintRelease --console=plain
+
+      - name: Assemble debug APKs and instrumented tests
+        run: ./gradlew assembleFossDebug assembleFossDebugAndroidTest assemblePlayDebug assemblePlayDebugAndroidTest --console=plain
 
       - name: Validate unsigned Play bundle build
-        # Signing credentials are deliberately absent in this CI workflow.
-        run: ./gradlew -PlohePlayStore=true bundleRelease --console=plain
+        # Signing credentials are deliberately absent from this step so the CI Play
+        # artifact stays explicitly unsigned.
+        run: ./gradlew bundlePlayRelease --console=plain
+
+      - name: Read build metadata
+        id: metadata
+        run: |
+          echo "build_id=$(sed -n 's/^val loheBuildId = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+          echo "release=$(sed -n 's/^val loheReleaseVersion = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare FOSS signing keystore
+        id: signing
+        env:
+          LOHE_KEYSTORE_BASE64: ${{ secrets.LOHE_KEYSTORE_BASE64 }}
+          LOHE_KEYSTORE_PASSWORD: ${{ secrets.LOHE_KEYSTORE_PASSWORD }}
+          LOHE_KEY_ALIAS: ${{ secrets.LOHE_KEY_ALIAS }}
+          LOHE_KEY_PASSWORD: ${{ secrets.LOHE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$LOHE_KEYSTORE_BASE64" ] && [ -n "$LOHE_KEYSTORE_PASSWORD" ] && [ -n "$LOHE_KEY_ALIAS" ] && [ -n "$LOHE_KEY_PASSWORD" ]; then
+            KEYSTORE_FILE="$RUNNER_TEMP/lohe-release.keystore"
+            printf '%s' "$LOHE_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE_FILE"
+            chmod 600 "$KEYSTORE_FILE"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "keystore_path=$KEYSTORE_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "keystore_path=" >> "$GITHUB_OUTPUT"
+            echo "::notice::FOSS signing secrets (LOHE_KEYSTORE_BASE64, LOHE_KEYSTORE_PASSWORD, LOHE_KEY_ALIAS, LOHE_KEY_PASSWORD) are not set for this run; building unsigned FOSS APK."
+          fi
+
+      - name: Build FOSS release APK and owner sync APK
+        env:
+          LOHE_KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
+          LOHE_KEYSTORE_PASSWORD: ${{ secrets.LOHE_KEYSTORE_PASSWORD }}
+          LOHE_KEY_ALIAS: ${{ secrets.LOHE_KEY_ALIAS }}
+          LOHE_KEY_PASSWORD: ${{ secrets.LOHE_KEY_PASSWORD }}
+          FOSS_SIGNED: ${{ steps.signing.outputs.signed }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.release }}
+          BUILD_ID: ${{ steps.metadata.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleFossRelease :sync-app:assembleRelease --console=plain
+          mkdir -p foss-output sync-output
+          if [ "$FOSS_SIGNED" = "true" ]; then
+            SRC_APK="app/build/outputs/apk/foss/release/app-foss-release.apk"
+            OUT_NAME="Lohe-${RELEASE_VERSION}-build-${BUILD_ID}-foss-release.apk"
+            SYNC_SRC="sync-app/build/outputs/apk/release/sync-app-release.apk"
+            SYNC_NAME="LoheSync-${RELEASE_VERSION}-build-${BUILD_ID}-release.apk"
+          else
+            SRC_APK="app/build/outputs/apk/foss/release/app-foss-release-unsigned.apk"
+            OUT_NAME="Lohe-${RELEASE_VERSION}-build-${BUILD_ID}-foss-UNSIGNED.apk"
+            SYNC_SRC="sync-app/build/outputs/apk/release/sync-app-release-unsigned.apk"
+            SYNC_NAME="LoheSync-${RELEASE_VERSION}-build-${BUILD_ID}-UNSIGNED.apk"
+          fi
+          cp "$SRC_APK" "foss-output/$OUT_NAME"
+          cp "$SYNC_SRC" "sync-output/$SYNC_NAME"
+          BADGING="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "foss-output/$OUT_NAME" | head -5)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.lohe.app.foss'"
+          SYNC_BADGING="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "sync-output/$SYNC_NAME" | head -5)"
+          echo "$SYNC_BADGING"
+          echo "$SYNC_BADGING" | grep -q "package: name='com.lohe.sync'"
+          if [ "$FOSS_SIGNED" = "true" ]; then
+            "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose "foss-output/$OUT_NAME"
+            "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose "sync-output/$SYNC_NAME"
+          fi
+          (cd foss-output && sha256sum "$OUT_NAME" > "${OUT_NAME}.sha256")
+          (cd sync-output && sha256sum "$SYNC_NAME" > "${SYNC_NAME}.sha256")
+          cat "foss-output/${OUT_NAME}.sha256"
+          cat "sync-output/${SYNC_NAME}.sha256"
+
+      - name: Remove temporary signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/lohe-release.keystore"
 
       - name: Upload test reports
         # Only on failure — a green run does not need its XML, and these are
@@ -78,24 +154,39 @@ jobs:
         with:
           name: test-reports
           path: |
-            app/build/test-results/testDebugUnitTest/*.xml
-            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testFossDebugUnitTest/*.xml
+            app/build/reports/tests/testFossDebugUnitTest/
+            app/build/test-results/testPlayDebugUnitTest/*.xml
+            app/build/reports/tests/testPlayDebugUnitTest/
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Read build metadata
-        id: metadata
-        run: |
-          echo "build_id=$(sed -n 's/^val loheBuildId = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
-          echo "release=$(sed -n 's/^val loheReleaseVersion = "\(.*\)"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+      - name: Upload FOSS release APK and R8 mapping
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-foss-${{ steps.signing.outputs.signed == 'true' && 'release' || 'UNSIGNED' }}
+          path: |
+            foss-output/*
+            app/build/outputs/mapping/fossRelease/mapping.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload owner sync APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lohe-sync-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-${{ steps.signing.outputs.signed == 'true' && 'release' || 'UNSIGNED' }}
+          path: |
+            sync-output/*
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload unsigned Play build and R8 mapping
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lohe-${{ steps.metadata.outputs.release }}-build-${{ steps.metadata.outputs.build_id }}-play-UNSIGNED
           path: |
-            app/build/outputs/bundle/release/app-release.aab
-            app/build/outputs/mapping/release/mapping.txt
+            app/build/outputs/bundle/playRelease/app-play-release.aab
+            app/build/outputs/mapping/playRelease/mapping.txt
           if-no-files-found: error
           retention-days: 14
   dependency-review:
