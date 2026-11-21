@@ -238,7 +238,7 @@ class AndroidAutoMediaLibraryTest {
             service.libraryCallback.onGetSearchResult(
                 session,
                 controllerInfo,
-                "Kani",
+                "99% Invisible",
                 0,
                 20,
                 null
@@ -250,7 +250,7 @@ class AndroidAutoMediaLibraryTest {
         val voiceItem = MediaItem.Builder()
             .setRequestMetadata(
                 MediaItem.RequestMetadata.Builder()
-                    .setSearchQuery("Kani Dragonfly")
+                    .setSearchQuery("99% Invisible")
                     .build()
             )
             .build()
@@ -295,6 +295,13 @@ class AndroidAutoMediaLibraryTest {
             ep2Selection.startIndex,
             ep2Selection.startPositionMs
         )
+        val deadline = System.currentTimeMillis() + 3_000L
+        while (phoneController.state.value.currentEpisode?.id != "sample_ep_2" &&
+            System.currentTimeMillis() < deadline
+        ) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(74_000L, player.currentPosition)

@@ -1,3 +1,4 @@
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -13,22 +14,25 @@ android {
     applicationId = "com.lohe.app.foss"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1206
-    versionName = "1206.0"
+    versionCode = 1219
+    versionName = "1219.0"
     buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
-  // Release signing is optional: set LOHE_KEYSTORE, LOHE_KEYSTORE_PASSWORD,
-  // LOHE_KEY_ALIAS and LOHE_KEY_PASSWORD to sign; otherwise the release APK is unsigned.
-  val foss = System.getenv("LOHE_KEYSTORE")
+  // Release signing is optional: set LOHE_KEYSTORE (or keystore.path in local.properties)
+  // along with password/alias variables to sign; otherwise the release APK is unsigned.
+  val props = Properties().also { p ->
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { p.load(it) }
+  }
+  val foss = (System.getenv("LOHE_KEYSTORE") ?: System.getenv("LOHE_KEYSTORE_PATH") ?: props.getProperty("keystore.path"))?.takeIf { it.isNotBlank() }
   if (foss != null) {
     signingConfigs.create("release") {
       storeFile = file(foss)
-      storePassword = System.getenv("LOHE_KEYSTORE_PASSWORD")
-      keyAlias = System.getenv("LOHE_KEY_ALIAS")
-      keyPassword = System.getenv("LOHE_KEY_PASSWORD")
+      storePassword = System.getenv("LOHE_KEYSTORE_PASSWORD") ?: props.getProperty("keystore.password")
+      keyAlias = System.getenv("LOHE_KEY_ALIAS") ?: props.getProperty("keystore.alias")
+      keyPassword = System.getenv("LOHE_KEY_PASSWORD") ?: props.getProperty("keystore.key.password")
     }
   }
 

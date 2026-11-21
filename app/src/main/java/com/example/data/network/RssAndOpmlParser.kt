@@ -86,7 +86,7 @@ class RssAndOpmlParser(
                     )
                 )
             }
-            Result.success(list)
+            Result.success(deduplicateDiscoverCatalog(list))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -112,32 +112,74 @@ class RssAndOpmlParser(
                         .optJSONObject("feed")
                         ?.optJSONArray("results")
                         ?: JSONArray()
-                    buildList {
-                        for (i in 0 until results.length()) {
-                            val obj = results.optJSONObject(i) ?: continue
-                            val title = obj.optString("name", "").trim()
-                            val author = obj.optString("artistName", "Independent Publisher").trim()
-                            val art = obj.optString("artworkUrl100", "").trim()
-                                .replace("100x100bb", "600x600bb")
-                            val genre = obj.optJSONArray("genres")?.optJSONObject(0)?.optString("name", "Trending") ?: "Trending"
-                            val chartUrl = obj.optString("url", "").trim()
-                            if (title.isBlank()) continue
-                            add(
-                                DiscoverCatalogItem(
-                                    title = title,
-                                    author = author,
-                                    category = genre,
-                                    description = "Top Chart #$i • $genre Podcast",
-                                    feedUrl = chartUrl,
-                                    artworkUrl = art,
-                                    sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
-                                    sampleEpisodeTitle = "$title — Highlight Episode",
-                                    sampleEpisodeHtml = "<p>Discovered from live Apple Top Charts. Search show name or paste direct RSS to load full archive.</p>",
-                                    durationMs = 59_000L
-                                )
-                            )
+                    val chartEntries = mutableListOf<Triple<String, String, String>>() // id, title, fallbackArt
+                    val chartMeta = mutableMapOf<String, Triple<String, String, String>>() // id -> (author, genre, chartUrl)
+                    for (i in 0 until results.length()) {
+                        val obj = results.optJSONObject(i) ?: continue
+                        val id = obj.optString("id", "").trim()
+                        val title = obj.optString("name", "").trim()
+                        val author = obj.optString("artistName", "Independent Publisher").trim()
+                        val art = obj.optString("artworkUrl100", "").trim()
+                            .replace("100x100bb", "600x600bb")
+                        val genre = obj.optJSONArray("genres")?.optJSONObject(0)?.optString("name", "Trending") ?: "Trending"
+                        val chartUrl = obj.optString("url", "").trim()
+                        if (title.isBlank()) continue
+                        chartEntries.add(Triple(id, title, art))
+                        chartMeta[id] = Triple(author, genre, chartUrl)
+                    }
+
+                    // Batch-hydrate real RSS feed URLs and high-res 600x600 artwork via iTunes Lookup
+                    val lookupById = mutableMapOf<String, JSONObject>()
+                    val ids = chartEntries.map { it.first }.filter { it.isNotBlank() }
+                    if (ids.isNotEmpty()) {
+                        runCatching {
+                            val lookupReq = Request.Builder()
+                                .url("https://itunes.apple.com/lookup?id=${ids.joinToString(",")}")
+                                .header("User-Agent", "Lohe/0.12.0 (Android; +https://lohe.app)")
+                                .build()
+                            val lookupBody = httpClient.newCall(lookupReq).execute().use { resp ->
+                                if (resp.isSuccessful) resp.body?.string() else null
+                            }
+                            if (!lookupBody.isNullOrBlank()) {
+                                val arr = JSONObject(lookupBody).optJSONArray("results") ?: JSONArray()
+                                for (j in 0 until arr.length()) {
+                                    val o = arr.optJSONObject(j) ?: continue
+                                    val cid = o.optString("collectionId", o.optString("trackId", ""))
+                                    if (cid.isNotBlank()) lookupById[cid] = o
+                                }
+                            }
                         }
                     }
+
+                    deduplicateDiscoverCatalog(
+                        buildList {
+                            chartEntries.forEachIndexed { idx, (id, title, fallbackArt) ->
+                                val (author, genre, chartUrl) = chartMeta[id] ?: Triple("Podcast", "Trending", "")
+                                val lookedUp = lookupById[id]
+                                val resolvedFeed = lookedUp?.optString("feedUrl", "")?.takeIf { it.isNotBlank() } ?: chartUrl
+                                val resolvedArt = lookedUp?.optString("artworkUrl600", "")?.takeIf { it.isNotBlank() }
+                                    ?: fallbackArt
+                                val resolvedGenre = lookedUp?.optString("primaryGenreName", "")?.takeIf { it.isNotBlank() }
+                                    ?: genre
+                                val epCount = lookedUp?.optInt("trackCount", 0) ?: 0
+                                add(
+                                    DiscoverCatalogItem(
+                                        title = title,
+                                        author = lookedUp?.optString("artistName", author)?.ifBlank { author } ?: author,
+                                        category = resolvedGenre,
+                                        description = "Top Chart #${idx + 1} • $resolvedGenre${if (epCount > 0) " • $epCount episodes" else ""}",
+                                        feedUrl = resolvedFeed,
+                                        artworkUrl = resolvedArt,
+                                        sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
+                                        sampleEpisodeTitle = "$title — Latest Episode",
+                                        sampleEpisodeHtml = "<p>Discovered from live Apple Top Charts. Open preview or subscribe to load full RSS episodes.</p>",
+                                        durationMs = 1_800_000L,
+                                        episodeCountHint = epCount
+                                    )
+                                )
+                            }
+                        }
+                    )
                 }
                 if (topRes.isSuccess && topRes.getOrNull()?.isNotEmpty() == true) {
                     return@withContext topRes
@@ -145,6 +187,21 @@ class RssAndOpmlParser(
             }
             searchItunesPodcasts(if (clean.isBlank() || clean.equals("Trending", true)) "top podcasts" else clean)
         }
+
+    fun deduplicateDiscoverCatalog(items: List<DiscoverCatalogItem>): List<DiscoverCatalogItem> {
+        val seenFeeds = HashSet<String>(items.size)
+        val seenMeta = HashSet<String>(items.size)
+        return items.filter { item ->
+            val feedKey = item.feedUrl.trim().lowercase(Locale.ROOT)
+            val titleKey = item.title.trim().lowercase(Locale.ROOT)
+            val authorKey = item.author.trim().lowercase(Locale.ROOT)
+            val metaKey = if (titleKey.isNotBlank()) "$titleKey|$authorKey" else ""
+
+            val duplicateFeed = feedKey.isNotBlank() && !seenFeeds.add(feedKey)
+            val duplicateMeta = metaKey.isNotBlank() && !seenMeta.add(metaKey)
+            !duplicateFeed && !duplicateMeta
+        }
+    }
 
     fun parseOpml(xmlContent: String): List<OpmlOutlineItem> {
         val items = mutableListOf<OpmlOutlineItem>()
@@ -428,18 +485,19 @@ class RssAndOpmlParser(
         feedUrl: String,
         fallbackTitle: String = "Podcast Feed",
         category: String = "Podcasts",
-        fallbackArtUrl: String = ""
+        fallbackArtUrl: String = "",
+        maxEpisodes: Int = 0 // 0 or negative = sync all episodes in feed
     ): Pair<PodcastEntity, List<EpisodeEntity>>? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(feedUrl)
-                .header("User-Agent", "Lohe/0.11.1 (Android; +https://lohe.app)")
+                .header("User-Agent", "Lohe/0.12.0 (Android; +https://lohe.app)")
                 .build()
             val xml = httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext null
                 response.body?.string() ?: return@withContext null
             }
-            parseRssFeedXml(xml, feedUrl, fallbackTitle, category, fallbackArtUrl)
+            parseRssFeedXml(xml, feedUrl, fallbackTitle, category, fallbackArtUrl, maxEpisodes)
         } catch (_: Exception) {
             null
         }
@@ -450,7 +508,8 @@ class RssAndOpmlParser(
         feedUrl: String,
         fallbackTitle: String = "Subscribed Show",
         category: String = "Podcasts",
-        fallbackArtUrl: String = ""
+        fallbackArtUrl: String = "",
+        maxEpisodes: Int = 0 // 0 or negative = parse all episodes in feed
     ): Pair<PodcastEntity, List<EpisodeEntity>> {
         val podcastId = "pod_${feedUrl.trim().lowercase().hashCode()}"
         var channelTitle = fallbackTitle
@@ -558,7 +617,8 @@ class RssAndOpmlParser(
                         val name = parser.name.lowercase(Locale.ROOT)
                         if ((name == "item" || name == "entry") && inItem) {
                             inItem = false
-                            if (itemTitle.isNotBlank() && episodes.size < 25) {
+                            val withinLimit = maxEpisodes <= 0 || episodes.size < maxEpisodes
+                            if (itemTitle.isNotBlank() && withinLimit) {
                                 val epId = "ep_${(itemGuid.ifBlank { "$feedUrl#$itemTitle" }).hashCode()}"
                                 episodes.add(
                                     EpisodeEntity(

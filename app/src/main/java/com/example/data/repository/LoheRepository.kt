@@ -5,6 +5,7 @@ import com.example.data.local.AutoQueueMode
 import com.example.data.local.EpisodeBookmarkEntity
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.LoheDao
+import com.example.data.local.LohePreferencesRepository
 import com.example.data.local.PlaylistEntity
 import com.example.data.local.PodcastEntity
 import com.example.data.local.SmartPlaylistType
@@ -12,6 +13,9 @@ import com.example.data.network.EpisodeChapter
 import com.example.data.network.PodcastingChaptersAndTranscripts
 import com.example.data.network.RssAndOpmlParser
 import com.example.data.network.TranscriptCue
+import com.example.data.sync.DriveMergeResult
+import com.example.data.sync.DriveSyncEngine
+import com.example.data.sync.DriveSyncLocalJournal
 import com.example.notifications.NewEpisodeAlert
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -32,150 +36,182 @@ data class DiscoverCatalogItem(
     val episodeCountHint: Int = 0
 )
 
+const val EPISODE_AUTO_PLAYED_THRESHOLD = 0.98
+
+fun isEpisodeNearCompletion(positionMs: Long, durationMs: Long): Boolean {
+    if (positionMs <= 0L || durationMs < 10_000L) return false
+    return positionMs.toDouble() / durationMs.toDouble() >= EPISODE_AUTO_PLAYED_THRESHOLD
+}
+
 class LoheRepository(
     private val dao: LoheDao,
     private val parser: RssAndOpmlParser = RssAndOpmlParser(),
-    private val downloadManager: EpisodeDownloadManager? = null
+    private val downloadManager: EpisodeDownloadManager? = null,
+    private val preferencesRepository: LohePreferencesRepository? = null
 ) {
     val subscribedPodcasts: Flow<List<PodcastEntity>> = dao.getSubscribedPodcasts()
     val activeEpisodes: Flow<List<EpisodeEntity>> = dao.getActiveEpisodes()
+    val allEpisodes: Flow<List<EpisodeEntity>> = dao.getAllEpisodes()
     val upNextEpisodes: Flow<List<EpisodeEntity>> = dao.getUpNextEpisodes()
     val inProgressEpisodes: Flow<List<EpisodeEntity>> = dao.getInProgressEpisodes()
     val customPlaylists: Flow<List<PlaylistEntity>> = dao.getCustomPlaylists()
 
+    suspend fun getEpisodeById(episodeId: String): EpisodeEntity? = dao.getEpisodeById(episodeId)
+
     val publicDiscoveryCatalog: List<DiscoverCatalogItem> = listOf(
         DiscoverCatalogItem(
-            title = "Pacific Signal & Acoustic Field Notes",
-            author = "Open Field Audio Collective",
-            category = "Science",
-            description = "Public-domain hydrophone recordings, volcanic ridge acoustics, and Hawaiian ecological soundscapes.",
-            feedUrl = "https://feeds.publicdomainaudio.org/pacific-signal.xml",
-            artworkUrl = "",
-            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
-            sampleEpisodeTitle = "Ep. 42 — Kani Dragonfly Wing Harmonics & Tradewind Acoustics",
-            sampleEpisodeHtml = """
-                <h3>Field Dispatch #42 — Tradewind Harmonics</h3>
-                <p>Recorded across windward valleys using stereo omni condensers. In this episode we examine bio-acoustic resonance and low-latency audio pipelines.</p>
-                <ul>
-                    <li><strong>00:00</strong> — Dawn chorus &amp; stream calibration</li>
-                    <li><strong>00:22</strong> — Dragonfly wingbeat frequency analysis (38 Hz – 44 Hz)</li>
-                    <li><strong>00:45</strong> — Deep ocean swell telemetry wrap-up</li>
-                </ul>
-                <p><em>License: CC0 Public Domain Sample Stream for Lohe 0.11.1 verification.</em></p>
-            """.trimIndent(),
-            durationMs = 59_000L,
-            episodeCountHint = 42
-        ),
-        DiscoverCatalogItem(
-            title = "FOSS Craft & Open Mobile Systems",
-            author = "Indie Systems Guild",
-            category = "Technology",
-            description = "Deep dives into local-first SQLite/Room architectures, Media3 audio pipelines, and open OPML portability.",
-            feedUrl = "https://feeds.publicdomainaudio.org/foss-craft.xml",
-            artworkUrl = "",
-            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
-            sampleEpisodeTitle = "Ep. 19 — Why Local-First OPML & MediaSessionService Matter",
-            sampleEpisodeHtml = """
-                <h3>Episode Notes</h3>
-                <p>We explore building zero-tracking podcast clients with <strong>AndroidX Media3</strong>, deterministic queue indicators, and instant OPML/JSON portability.</p>
-                <ul>
-                    <li><strong>00:00</strong> — MediaSessionService &amp; system notification transport</li>
-                    <li><strong>00:35</strong> — Designing the 6 Smart Playlists &amp; per-podcast Auto-Queue</li>
-                    <li><strong>01:10</strong> — Keeping personal subscription graphs out of APK assets</li>
-                </ul>
-            """.trimIndent(),
-            durationMs = 103_000L,
-            episodeCountHint = 19
-        ),
-        DiscoverCatalogItem(
-            title = "Orbital Telemetry Archive (NASA Audio)",
-            author = "Public Space Archive",
-            category = "History",
-            description = "Restored mission control loops, deep-space dish telemetry, and public-domain engineering debriefs.",
-            feedUrl = "https://feeds.publicdomainaudio.org/orbital-telemetry.xml",
-            artworkUrl = "",
-            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
-            sampleEpisodeTitle = "Mission Log 08 — S-Band Transponder Lock & Signal-to-Noise",
-            sampleEpisodeHtml = """
-                <h3>Mission Telemetry Log 08</h3>
-                <p>Restored tape loop from tracking station Dish 14. Includes S-Band carrier lock and voice loop commentary.</p>
-                <p>Try toggling <strong>Volume Boost (+6 dB)</strong> and <strong>Skip Silence</strong> in Lohe's Playback Settings while listening.</p>
-            """.trimIndent(),
-            durationMs = 59_000L,
-            episodeCountHint = 8
-        ),
-        DiscoverCatalogItem(
-            title = "Linux Kernel & Audio Stack Weekly",
-            author = "Open Audio Contributors",
-            category = "Technology",
-            description = "Weekly updates on low-latency audio scheduling, PipeWire, AAudio, and mobile power efficiency.",
-            feedUrl = "https://feeds.publicdomainaudio.org/kernel-audio.xml",
-            artworkUrl = "",
-            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
-            sampleEpisodeTitle = "Ep. 104 — Zero-Copy Audio Buffers & Battery Optimization",
-            sampleEpisodeHtml = "<p>Weekly engineering roundup covering mobile battery efficiency during long-form background podcast playback.</p>",
-            durationMs = 103_000L,
-            episodeCountHint = 104
-        ),
-        DiscoverCatalogItem(
-            title = "Studio Craft & Interaction Design",
-            author = "Pacific Design Forum",
+            title = "99% Invisible",
+            author = "Roman Mars • SiriusXM Podcasts",
             category = "Design",
-            description = "Conversations with typographers, tactile hardware makers, and mobile motion designers.",
-            feedUrl = "https://feeds.publicdomainaudio.org/studio-design.xml",
-            artworkUrl = "",
+            description = "Design is everywhere in our lives, perhaps most importantly in the places where we've just stopped noticing.",
+            feedUrl = "https://feeds.simplecast.com/BqbsxVfO",
+            artworkUrl = "https://image.simplecastcdn.com/images/313f226d-022c-414b-9e60-2092f11c52c9/5f73219f-37b7-4c1c-b411-0581b9e09e2f/600x600/99pi-show-art.jpg",
             sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
-            sampleEpisodeTitle = "Ep. 14 — Material Motion & Micro-Interaction Rhythm",
-            sampleEpisodeHtml = "<p>Designing calm, tactile dark-mode media interfaces that stay readable at a glance.</p>",
-            durationMs = 59_000L,
-            episodeCountHint = 14
+            sampleEpisodeTitle = "99% Invisible — Latest Episode",
+            sampleEpisodeHtml = "<p>Explore the unnoticed architecture and design that shape our world.</p>",
+            durationMs = 2_400_000L,
+            episodeCountHint = 600
         ),
         DiscoverCatalogItem(
-            title = "Analog Tape & Acoustic Heritage",
-            author = "Honolulu Sound Archive",
-            category = "Music",
-            description = "Field recordings, acoustic guitar preservation, and polyphonic rhythm analysis.",
-            feedUrl = "https://feeds.publicdomainaudio.org/analog-heritage.xml",
-            artworkUrl = "",
+            title = "Darknet Diaries",
+            author = "Jack Rhysider",
+            category = "Technology",
+            description = "True stories from the dark side of the Internet covering cybersecurity, hackers, and digital forensics.",
+            feedUrl = "https://podcast.darknetdiaries.com/",
+            artworkUrl = "https://darknetdiaries.com/imgs/darknet-diaries.jpg",
             sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
-            sampleEpisodeTitle = "Session 07 — Open-Reel Tape Warmth & Slack-Key Harmonics",
-            sampleEpisodeHtml = "<p>Restored acoustic studio session exploring warm harmonic resonance and room acoustics.</p>",
-            durationMs = 103_000L,
-            episodeCountHint = 7
+            sampleEpisodeTitle = "Darknet Diaries — Latest Investigation",
+            sampleEpisodeHtml = "<p>True stories from the dark side of the Internet.</p>",
+            durationMs = 3_600_000L,
+            episodeCountHint = 155
+        ),
+        DiscoverCatalogItem(
+            title = "Radiolab",
+            author = "WNYC Studios",
+            category = "Science",
+            description = "Curiosity-driven investigative storytelling about science, philosophy, and human experience.",
+            feedUrl = "https://feeds.simplecast.com/EmVW7VGp",
+            artworkUrl = "https://image.simplecastcdn.com/images/47a939e1-9359-45a2-b929-f0c0f964e6f8/86085d95-40c5-42f5-a054-0dc3f7510a63/600x600/radiolab-show-art.jpg",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
+            sampleEpisodeTitle = "Radiolab — Featured Broadcast",
+            sampleEpisodeHtml = "<p>Investigative science and sound-rich storytelling from WNYC Studios.</p>",
+            durationMs = 3_000_000L,
+            episodeCountHint = 500
+        ),
+        DiscoverCatalogItem(
+            title = "Lex Fridman Podcast",
+            author = "Lex Fridman",
+            category = "Technology",
+            description = "Conversations about the nature of intelligence, consciousness, love, and power with scientists and builders.",
+            feedUrl = "https://lexfridman.com/feed/podcast/",
+            artworkUrl = "https://lexfridman.com/wordpress/wp-content/uploads/powerpress/artwork_3000-230.png",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
+            sampleEpisodeTitle = "Lex Fridman Podcast — Latest Conversation",
+            sampleEpisodeHtml = "<p>Deep technical and philosophical conversations.</p>",
+            durationMs = 7_200_000L,
+            episodeCountHint = 450
+        ),
+        DiscoverCatalogItem(
+            title = "Dan Carlin's Hardcore History",
+            author = "Dan Carlin",
+            category = "History",
+            description = "Long-form narrative deep dives into pivotal moments, empires, and turning points of world history.",
+            feedUrl = "https://feeds.feedburner.com/dancarlin/history?format=xml",
+            artworkUrl = "https://www.dancarlin.com/graphics/DC_HH_iTunes.jpg",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
+            sampleEpisodeTitle = "Hardcore History — Featured Series",
+            sampleEpisodeHtml = "<p>In-depth narrative history by Dan Carlin.</p>",
+            durationMs = 14_400_000L,
+            episodeCountHint = 70
+        ),
+        DiscoverCatalogItem(
+            title = "Song Exploder",
+            author = "Hrishikesh Hirway",
+            category = "Music",
+            description = "Musicians take apart their songs, and piece by piece, tell the story of how they were made.",
+            feedUrl = "https://feeds.prx.org/songexploder",
+            artworkUrl = "https://songexploder.net/wp-content/uploads/2020/01/songexploder-logo-3000.jpg",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
+            sampleEpisodeTitle = "Song Exploder — Studio Breakdown",
+            sampleEpisodeHtml = "<p>Musicians dissect their tracks stem by stem.</p>",
+            durationMs = 1_500_000L,
+            episodeCountHint = 280
+        ),
+        DiscoverCatalogItem(
+            title = "Philosophize This!",
+            author = "Stephen West",
+            category = "Philosophy",
+            description = "Accessible, chronological explorations of the major thinkers and ideas that shaped human thought.",
+            feedUrl = "https://philosophizethis.libsyn.com/rss",
+            artworkUrl = "https://ssl-static.libsyn.com/p/assets/7/9/8/9/79893d7d1564a6c0/PT_Artwork_3000x3000.jpg",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
+            sampleEpisodeTitle = "Philosophize This! — Latest Essay",
+            sampleEpisodeHtml = "<p>Beginner-friendly philosophy podcast covering ideas across history.</p>",
+            durationMs = 2_100_000L,
+            episodeCountHint = 220
+        ),
+        DiscoverCatalogItem(
+            title = "Waveform: The MKBHD Podcast",
+            author = "Marques Brownlee • Vox Media",
+            category = "Technology",
+            description = "Tech reviews, gadget deep dives, and industry news from Marques Brownlee and the Studio team.",
+            feedUrl = "https://feeds.megaphone.fm/STU4418364045",
+            artworkUrl = "https://megaphone.imgix.net/podcasts/8e503d5e-0b69-11ea-a132-03d00501c875/image/Waveform_Artwork_3000x3000.png",
+            sampleAudioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
+            sampleEpisodeTitle = "Waveform — Tech Roundup",
+            sampleEpisodeHtml = "<p>Weekly hardware, mobile, and tech industry discussion.</p>",
+            durationMs = 3_900_000L,
+            episodeCountHint = 260
         )
     )
 
     suspend fun searchDiscoverPodcasts(query: String): List<DiscoverCatalogItem> {
         val clean = query.trim().ifBlank { "podcast" }
         val live = parser.searchItunesPodcasts(clean)
-        val items = live.getOrNull().orEmpty()
+        val items = parser.deduplicateDiscoverCatalog(live.getOrNull().orEmpty())
         if (items.isNotEmpty()) return items
-        return publicDiscoveryCatalog.filter {
-            it.title.contains(clean, ignoreCase = true) ||
-                it.category.contains(clean, ignoreCase = true) ||
-                it.author.contains(clean, ignoreCase = true) ||
-                clean.equals("podcast", ignoreCase = true)
-        }.ifEmpty { publicDiscoveryCatalog }
+        return parser.deduplicateDiscoverCatalog(
+            publicDiscoveryCatalog.filter {
+                it.title.contains(clean, ignoreCase = true) ||
+                    it.category.contains(clean, ignoreCase = true) ||
+                    it.author.contains(clean, ignoreCase = true) ||
+                    clean.equals("podcast", ignoreCase = true)
+            }.ifEmpty { publicDiscoveryCatalog }
+        )
     }
 
     suspend fun browseDiscoverCategory(category: String): List<DiscoverCatalogItem> {
         val clean = category.trim()
         if (clean.equals("All", ignoreCase = true)) {
-            val live = parser.fetchTrendingOrCategoryPodcasts("Trending").getOrNull().orEmpty()
+            val live = parser.deduplicateDiscoverCatalog(
+                parser.fetchTrendingOrCategoryPodcasts("Trending").getOrNull().orEmpty()
+            )
             return if (live.isNotEmpty()) live else publicDiscoveryCatalog
         }
-        val live = parser.fetchTrendingOrCategoryPodcasts(clean).getOrNull().orEmpty()
+        val live = parser.deduplicateDiscoverCatalog(
+            parser.fetchTrendingOrCategoryPodcasts(clean).getOrNull().orEmpty()
+        )
         if (live.isNotEmpty()) return live
-        return publicDiscoveryCatalog.filter {
-            clean.equals("Trending", ignoreCase = true) ||
-                it.category.contains(clean, ignoreCase = true) ||
-                it.description.contains(clean, ignoreCase = true)
-        }.ifEmpty { publicDiscoveryCatalog }
+        return parser.deduplicateDiscoverCatalog(
+            publicDiscoveryCatalog.filter {
+                clean.equals("Trending", ignoreCase = true) ||
+                    it.category.contains(clean, ignoreCase = true) ||
+                    it.description.contains(clean, ignoreCase = true)
+            }.ifEmpty { publicDiscoveryCatalog }
+        )
     }
 
     suspend fun previewDiscoverShow(item: DiscoverCatalogItem): Pair<PodcastEntity, List<EpisodeEntity>> {
+        val resolvedFeedUrl = if (item.feedUrl.contains("podcasts.apple.com", ignoreCase = true) || item.feedUrl.isBlank()) {
+            parser.searchItunesPodcasts(item.title).getOrNull()
+                ?.firstOrNull { it.feedUrl.isNotBlank() && !it.feedUrl.contains("podcasts.apple.com", ignoreCase = true) }
+                ?.feedUrl
+                ?: item.feedUrl
+        } else {
+            item.feedUrl
+        }
         val live = parser.fetchPodcastFeed(
-            feedUrl = item.feedUrl,
+            feedUrl = resolvedFeedUrl,
             fallbackTitle = item.title,
             category = item.category,
             fallbackArtUrl = item.artworkUrl
@@ -239,7 +275,7 @@ class LoheRepository(
                     title = initialShows[0].sampleEpisodeTitle,
                     descriptionHtml = initialShows[0].sampleEpisodeHtml,
                     audioUrl = initialShows[0].sampleAudioUrl,
-                    artworkUrl = "",
+                    artworkUrl = initialShows[0].artworkUrl,
                     publishedAt = now - 3_600_000L * 4,
                     durationMs = 1_800_000L, // 30m
                     resumePositionMs = 420_000L, // 7m in progress
@@ -271,7 +307,7 @@ class LoheRepository(
                     title = initialShows[1].sampleEpisodeTitle,
                     descriptionHtml = initialShows[1].sampleEpisodeHtml,
                     audioUrl = initialShows[1].sampleAudioUrl,
-                    artworkUrl = "",
+                    artworkUrl = initialShows[1].artworkUrl,
                     publishedAt = now - 3_600_000L * 14,
                     durationMs = 2_640_000L, // 44m
                     resumePositionMs = 960_000L, // 16m in progress
@@ -292,7 +328,7 @@ class LoheRepository(
                     title = initialShows[2].sampleEpisodeTitle,
                     descriptionHtml = initialShows[2].sampleEpisodeHtml,
                     audioUrl = initialShows[2].sampleAudioUrl,
-                    artworkUrl = "",
+                    artworkUrl = initialShows[2].artworkUrl,
                     publishedAt = now - 3_600_000L * 28,
                     durationMs = 1_080_000L, // 18m
                     resumePositionMs = 0L,
@@ -310,7 +346,7 @@ class LoheRepository(
                     title = "Ep. 41 — Hydrophone Array Calibration at Makapuʻu",
                     descriptionHtml = "<p>Deep water acoustic baseline measurements and low-noise preamplifier notes.</p>",
                     audioUrl = initialShows[1].sampleAudioUrl,
-                    artworkUrl = "",
+                    artworkUrl = initialShows[0].artworkUrl,
                     publishedAt = now - 3_600_000L * 72,
                     durationMs = 1_320_000L, // 22m
                     resumePositionMs = 0L,
@@ -328,7 +364,7 @@ class LoheRepository(
                     title = "Ep. 18 — Spatial Mix & Headphone Psychoacoustics",
                     descriptionHtml = "<p>How binaural filtering shapes clarity in spoken-word podcasts.</p>",
                     audioUrl = initialShows[0].sampleAudioUrl,
-                    artworkUrl = "",
+                    artworkUrl = initialShows[1].artworkUrl,
                     publishedAt = now - 3_600_000L * 96,
                     durationMs = 2_100_000L, // 35m
                     resumePositionMs = 0L,
@@ -439,13 +475,133 @@ class LoheRepository(
                 )
             )
             dao.insertPlaylists(starterPlaylists)
+        } else {
+            val existingAll = dao.getPlaylistById(SmartPlaylistType.EVERYTHING.id)
+            if (existingAll != null && existingAll.name == "All Signal") {
+                dao.updatePlaylist(existingAll.copy(name = SmartPlaylistType.EVERYTHING.title))
+            }
         }
+    }
+
+    private fun normalizeEpisodeTitleKey(podcastId: String, title: String): String {
+        val normalized = title.trim().lowercase().replace(Regex("\\s+"), " ")
+        return "$podcastId|$normalized"
+    }
+
+    private suspend fun upsertPodcastPreservingUserState(incoming: PodcastEntity): PodcastEntity {
+        val allExisting = dao.getAllPodcasts().first()
+        val normalizedFeed = incoming.feedUrl.trim().lowercase()
+        val existing = allExisting.firstOrNull { it.id == incoming.id }
+            ?: normalizedFeed.takeIf { it.isNotBlank() }?.let { feed ->
+                allExisting.firstOrNull { it.feedUrl.trim().lowercase() == feed }
+            }
+        return if (existing == null) {
+            dao.insertPodcast(incoming)
+            incoming
+        } else {
+            val merged = existing.copy(
+                title = existing.title.ifBlank { incoming.title },
+                author = existing.author.ifBlank { incoming.author },
+                description = existing.description.ifBlank { incoming.description },
+                artworkUrl = if (existing.artworkUrl.startsWith("http", ignoreCase = true)) {
+                    existing.artworkUrl
+                } else {
+                    incoming.artworkUrl.ifBlank { existing.artworkUrl }
+                },
+                category = existing.category.ifBlank { incoming.category },
+                isSubscribed = true,
+                lastSyncedAt = System.currentTimeMillis()
+            )
+            dao.updatePodcast(merged)
+            merged
+        }
+    }
+
+    /**
+     * Inserts genuinely new episodes while strictly preserving listening stats (isPlayed, playedAt,
+     * resumePositionMs), bookmarks/stars, archive state, Up Next queue membership, and downloads
+     * for any episode that already exists in Room.
+     */
+    internal suspend fun upsertEpisodesPreservingUserState(
+        podcastId: String,
+        podcastTitle: String,
+        incoming: List<EpisodeEntity>
+    ): Int {
+        if (incoming.isEmpty()) return 0
+        val existingEpisodes = dao.getAllEpisodes().first()
+        val existingById = existingEpisodes.associateBy { it.id }.toMutableMap()
+        val existingByGuid = existingEpisodes
+            .filter { it.guid.isNotBlank() }
+            .associateBy { "${it.podcastId}|${it.guid.trim()}" }
+            .toMutableMap()
+        val existingByAudio = existingEpisodes
+            .filter { it.audioUrl.isNotBlank() }
+            .associateBy { "${it.podcastId}|${it.audioUrl.trim()}" }
+            .toMutableMap()
+        val existingByTitle = existingEpisodes
+            .filter { it.title.isNotBlank() }
+            .associateBy { normalizeEpisodeTitleKey(it.podcastId, it.title) }
+            .toMutableMap()
+
+        val toInsert = mutableListOf<EpisodeEntity>()
+        for (raw in incoming) {
+            val normalizedRaw = raw.copy(podcastId = podcastId, podcastTitle = podcastTitle)
+            val guidKey = normalizedRaw.guid.trim().takeIf { it.isNotBlank() }?.let { "$podcastId|$it" }
+            val audioKey = normalizedRaw.audioUrl.trim().takeIf { it.isNotBlank() }?.let { "$podcastId|$it" }
+            val titleKey = normalizedRaw.title.trim().takeIf { it.isNotBlank() }
+                ?.let { normalizeEpisodeTitleKey(podcastId, it) }
+            val matched = existingById[normalizedRaw.id]
+                ?: guidKey?.let { existingByGuid[it] }
+                ?: audioKey?.let { existingByAudio[it] }
+                ?: titleKey?.let { existingByTitle[it] }
+
+            if (matched == null) {
+                toInsert.add(normalizedRaw)
+                existingById[normalizedRaw.id] = normalizedRaw
+                guidKey?.let { existingByGuid[it] = normalizedRaw }
+                audioKey?.let { existingByAudio[it] = normalizedRaw }
+                titleKey?.let { existingByTitle[it] = normalizedRaw }
+            } else {
+                // Heal only missing metadata — NEVER overwrite listening stats or user flags
+                val needsDuration = matched.durationMs <= 5_000L && normalizedRaw.durationMs > matched.durationMs
+                val needsPublishedAt = matched.publishedAt <= 0L && normalizedRaw.publishedAt > 0L
+                val needsArt = (matched.artworkUrl.isBlank() || matched.artworkUrl.startsWith("drawable://")) &&
+                    normalizedRaw.artworkUrl.startsWith("http", ignoreCase = true)
+                val needsNotes = matched.descriptionHtml.isBlank() && normalizedRaw.descriptionHtml.isNotBlank()
+                if (needsDuration || needsPublishedAt || needsArt || needsNotes) {
+                    val newDuration = if (needsDuration) normalizedRaw.durationMs else matched.durationMs
+                    val newPublishedAt = if (needsPublishedAt) normalizedRaw.publishedAt else matched.publishedAt
+                    val newArtwork = if (needsArt) normalizedRaw.artworkUrl else matched.artworkUrl
+                    val newNotes = if (needsNotes) normalizedRaw.descriptionHtml else matched.descriptionHtml
+                    dao.healEpisodeMetadata(
+                        episodeId = matched.id,
+                        durationMs = newDuration,
+                        publishedAt = newPublishedAt,
+                        artworkUrl = newArtwork,
+                        descriptionHtml = newNotes
+                    )
+                    existingById[matched.id] = matched.copy(
+                        durationMs = newDuration,
+                        publishedAt = newPublishedAt,
+                        artworkUrl = newArtwork,
+                        descriptionHtml = newNotes
+                    )
+                }
+            }
+        }
+        if (toInsert.isNotEmpty()) {
+            dao.insertEpisodes(toInsert)
+        }
+        return toInsert.size
     }
 
     suspend fun subscribeToCatalogItem(item: DiscoverCatalogItem) {
         val (pod, eps) = previewDiscoverShow(item)
-        dao.insertPodcast(pod.copy(autoQueueMode = AutoQueueMode.END.name, isSubscribed = true))
-        dao.insertEpisodes(eps)
+        val savedPod = upsertPodcastPreservingUserState(
+            pod.copy(autoQueueMode = AutoQueueMode.END.name, isSubscribed = true)
+        )
+        upsertEpisodesPreservingUserState(savedPod.id, savedPod.title, eps)
+        recordPodcastMutation(savedPod)
     }
 
     suspend fun addPodcastByRssUrl(rssUrl: String): Result<PodcastEntity> {
@@ -457,9 +613,10 @@ class LoheRepository(
             fallbackTitle = cleanUrl.substringAfterLast("/").ifBlank { "Custom RSS Feed" }
         )
         return if (fetched != null) {
-            dao.insertPodcast(fetched.first)
-            dao.insertEpisodes(fetched.second)
-            Result.success(fetched.first)
+            val savedPod = upsertPodcastPreservingUserState(fetched.first)
+            upsertEpisodesPreservingUserState(savedPod.id, savedPod.title, fetched.second)
+            recordPodcastMutation(savedPod)
+            Result.success(savedPod)
         } else {
             val podId = "pod_${cleanUrl.hashCode()}"
             val fallbackPodcast = PodcastEntity(
@@ -472,20 +629,21 @@ class LoheRepository(
                 category = "RSS Feeds",
                 autoQueueMode = AutoQueueMode.OFF.name
             )
+            val savedPod = upsertPodcastPreservingUserState(fallbackPodcast)
             val fallbackEp = EpisodeEntity(
-                id = "ep_${podId}_1",
-                podcastId = podId,
-                podcastTitle = fallbackPodcast.title,
-                title = "${fallbackPodcast.title} — Feed Verification Stream",
+                id = "ep_${savedPod.id}_1",
+                podcastId = savedPod.id,
+                podcastTitle = savedPod.title,
+                title = "${savedPod.title} — Feed Verification Stream",
                 descriptionHtml = "<p>Added via RSS URL: <code>$cleanUrl</code></p>",
                 audioUrl = "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3",
                 artworkUrl = "",
                 publishedAt = System.currentTimeMillis(),
                 durationMs = 59_000L
             )
-            dao.insertPodcast(fallbackPodcast)
-            dao.insertEpisode(fallbackEp)
-            Result.success(fallbackPodcast)
+            upsertEpisodesPreservingUserState(savedPod.id, savedPod.title, listOf(fallbackEp))
+            recordPodcastMutation(savedPod)
+            Result.success(savedPod)
         }
     }
 
@@ -493,13 +651,12 @@ class LoheRepository(
         val trimmed = rawContent.trim()
         return try {
             if (trimmed.startsWith("{") || fileName.endsWith(".json", ignoreCase = true)) {
-                val backup = parser.parseJsonBackup(trimmed)
-                if (backup.podcasts.isNotEmpty()) dao.insertPodcasts(backup.podcasts)
-                if (backup.episodes.isNotEmpty()) dao.insertEpisodes(backup.episodes)
-                if (backup.playlists.isNotEmpty()) dao.insertPlaylists(backup.playlists)
-                if (backup.bookmarks.isNotEmpty()) dao.insertBookmarks(backup.bookmarks)
+                val mergeResult = syncWithDriveRemotePayload(trimmed, pullOnly = false)
                 Result.success(
-                    "Imported JSON backup: ${backup.podcasts.size} shows, ${backup.episodes.size} episodes, ${backup.playlists.size} playlists, ${backup.bookmarks.size} bookmarks."
+                    "Merged JSON backup: ${mergeResult.summary.podcastsSynced} shows, " +
+                        "${mergeResult.summary.playlistsSynced} playlists, " +
+                        "${mergeResult.summary.upNextCount} Up Next, " +
+                        "${mergeResult.summary.episodeStatusesUpdated} episode updates."
                 )
             } else {
                 val outlines = parser.parseOpml(trimmed)
@@ -507,12 +664,11 @@ class LoheRepository(
                     return Result.failure(IllegalArgumentException("No valid <outline xmlUrl=\"...\"> entries found in file."))
                 }
                 val now = System.currentTimeMillis()
-                val podcasts = mutableListOf<PodcastEntity>()
-                val episodes = mutableListOf<EpisodeEntity>()
+                var importedCount = 0
 
                 outlines.forEachIndexed { index, outline ->
                     val podId = "opml_${outline.xmlUrl.hashCode()}"
-                    podcasts.add(
+                    val savedPod = upsertPodcastPreservingUserState(
                         PodcastEntity(
                             id = podId,
                             title = outline.title,
@@ -526,41 +682,111 @@ class LoheRepository(
                             lastSyncedAt = now
                         )
                     )
-                    episodes.add(
-                        EpisodeEntity(
-                            id = "opml_ep_${outline.xmlUrl.hashCode()}",
-                            podcastId = podId,
-                            podcastTitle = outline.title,
-                            title = "${outline.title} — Latest Episode",
-                            descriptionHtml = "<p>Imported via OPML from <code>${outline.xmlUrl}</code>.</p><p>Tap Play to test audio streaming or Refresh on the show page.</p>",
-                            audioUrl = if (index % 2 == 0) {
-                                "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3"
-                            } else {
-                                "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3"
-                            },
-                            artworkUrl = "",
-                            publishedAt = now - index * 3_600_000L,
-                            durationMs = if (index % 2 == 0) 59_000L else 103_000L
+                    recordPodcastMutation(savedPod)
+                    importedCount++
+                    val existingForShow = dao.getEpisodesByPodcastId(savedPod.id).first()
+                    if (existingForShow.isEmpty()) {
+                        upsertEpisodesPreservingUserState(
+                            savedPod.id,
+                            savedPod.title,
+                            listOf(
+                                EpisodeEntity(
+                                    id = "opml_ep_${outline.xmlUrl.hashCode()}",
+                                    podcastId = savedPod.id,
+                                    podcastTitle = savedPod.title,
+                                    title = "${savedPod.title} — Latest Episode",
+                                    descriptionHtml = "<p>Imported via OPML from <code>${outline.xmlUrl}</code>.</p><p>Tap Play to test audio streaming or Refresh on the show page.</p>",
+                                    audioUrl = if (index % 2 == 0) {
+                                        "https://storage.googleapis.com/exoplayer-test-media-0/play.mp3"
+                                    } else {
+                                        "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3"
+                                    },
+                                    artworkUrl = "",
+                                    publishedAt = now - index * 3_600_000L,
+                                    durationMs = if (index % 2 == 0) 59_000L else 103_000L
+                                )
+                            )
                         )
-                    )
+                    }
                 }
-                dao.insertPodcasts(podcasts)
-                dao.insertEpisodes(episodes)
-                Result.success("Imported ${podcasts.size} podcast subscriptions from OPML.")
+                Result.success("Imported $importedCount podcast subscriptions from OPML.")
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun buildExportPayload(asJson: Boolean): String {
+    suspend fun buildDriveSyncPayload(): String {
         val podcasts = dao.getAllPodcasts().first()
         val episodes = dao.getAllEpisodes().first()
         val playlists = dao.getCustomPlaylists().first()
         val bookmarks = dao.getAllBookmarks().first()
+        val journal = preferencesRepository?.getDriveSyncJournal() ?: DriveSyncLocalJournal()
+        return DriveSyncEngine.buildSyncPayload(
+            podcasts = podcasts,
+            episodes = episodes,
+            playlists = playlists,
+            bookmarks = bookmarks,
+            journal = journal
+        )
+    }
+
+    suspend fun syncWithDriveRemotePayload(
+        remoteRawJson: String?,
+        pullOnly: Boolean = false
+    ): DriveMergeResult {
+        val localPodcasts = dao.getAllPodcasts().first()
+        val localEpisodes = dao.getAllEpisodes().first()
+        val localPlaylists = dao.getCustomPlaylists().first()
+        val localBookmarks = dao.getAllBookmarks().first()
+        val localJournal = preferencesRepository?.getDriveSyncJournal() ?: DriveSyncLocalJournal()
+
+        val result = DriveSyncEngine.mergeSnapshots(
+            localPodcasts = localPodcasts,
+            localEpisodes = localEpisodes,
+            localPlaylists = localPlaylists,
+            localBookmarks = localBookmarks,
+            localJournal = localJournal,
+            remoteRawJson = remoteRawJson,
+            pullOnly = pullOnly
+        )
+
+        result.deletedPodcastIds.forEach { podId ->
+            if (downloadManager != null) {
+                localEpisodes.filter { it.podcastId == podId && it.isDownloaded }
+                    .forEach { downloadManager.deleteEpisodeFile(it) }
+            }
+            dao.deleteEpisodesByPodcastId(podId)
+            dao.deletePodcastById(podId)
+        }
+        result.deletedPlaylistIds.forEach { playlistId ->
+            dao.deletePlaylist(playlistId)
+        }
+        if (result.mergedPodcasts.isNotEmpty()) {
+            dao.insertPodcasts(result.mergedPodcasts)
+        }
+        if (result.mergedEpisodes.isNotEmpty()) {
+            dao.insertEpisodes(result.mergedEpisodes)
+        }
+        if (result.mergedPlaylists.isNotEmpty()) {
+            dao.insertPlaylists(result.mergedPlaylists)
+        }
+        if (result.mergedBookmarks.isNotEmpty()) {
+            dao.insertBookmarks(result.mergedBookmarks)
+        }
+
+        preferencesRepository?.setDriveSyncJournal(result.updatedJournal)
+        result.resolvedLastPlayingEpisodeId?.takeIf { it.isNotBlank() }?.let { epId ->
+            preferencesRepository?.setLastPlayingEpisodeId(epId)
+        }
+        return result
+    }
+
+    suspend fun buildExportPayload(asJson: Boolean): String {
         return if (asJson) {
-            parser.exportJsonBackup(podcasts, episodes, playlists, bookmarks)
+            buildDriveSyncPayload()
         } else {
+            val podcasts = dao.getAllPodcasts().first()
             parser.exportOpml(podcasts)
         }
     }
@@ -568,6 +794,7 @@ class LoheRepository(
     suspend fun updatePodcastAutoQueue(podcast: PodcastEntity, mode: AutoQueueMode) {
         val updated = podcast.copy(autoQueueMode = mode.name)
         dao.updatePodcast(updated)
+        recordPodcastMutation(updated)
 
         if (mode != AutoQueueMode.OFF) {
             val currentQueue = dao.getUpNextEpisodes().first()
@@ -579,7 +806,10 @@ class LoheRepository(
                 } else {
                     (currentQueue.maxOfOrNull { it.upNextOrder } ?: 0) + 1 + idx
                 }
-                dao.updateEpisode(ep.copy(inUpNext = true, upNextOrder = order))
+                dao.updateEpisodeUpNext(ep.id, inUpNext = true, upNextOrder = order)
+            }
+            if (unplayedShowEps.isNotEmpty()) {
+                recordUpNextAdded(unplayedShowEps)
             }
         }
     }
@@ -591,18 +821,20 @@ class LoheRepository(
         customSkipSilence: Boolean,
         customVolumeBoostDb: Int
     ) {
-        dao.updatePodcast(
-            podcast.copy(
-                useCustomAudio = useCustomAudio,
-                customSpeed = customSpeed.coerceIn(0.5f, 3.0f),
-                customSkipSilence = customSkipSilence,
-                customVolumeBoostDb = customVolumeBoostDb.coerceIn(0, 10)
-            )
+        val updated = podcast.copy(
+            useCustomAudio = useCustomAudio,
+            customSpeed = customSpeed.coerceIn(0.5f, 3.0f),
+            customSkipSilence = customSkipSilence,
+            customVolumeBoostDb = customVolumeBoostDb.coerceIn(0, 10)
         )
+        dao.updatePodcast(updated)
+        recordPodcastMutation(updated)
     }
 
     suspend fun updatePodcastNotifications(podcast: PodcastEntity, notify: Boolean) {
-        dao.updatePodcast(podcast.copy(notifyNewEpisodes = notify))
+        val updated = podcast.copy(notifyNewEpisodes = notify)
+        dao.updatePodcast(updated)
+        recordPodcastMutation(updated)
     }
 
     fun getBookmarksForEpisode(episodeId: String): Flow<List<EpisodeBookmarkEntity>> =
@@ -630,8 +862,7 @@ class LoheRepository(
             val downloaded = parser.fetchChaptersJson(workingEp.chaptersUrl)
             if (!downloaded.isNullOrBlank()) {
                 chaptersRaw = downloaded
-                workingEp = workingEp.copy(chaptersJson = downloaded)
-                dao.updateEpisode(workingEp)
+                dao.updateEpisodeChapters(workingEp.id, downloaded)
             }
         }
         val chapters = PodcastingChaptersAndTranscripts.parsePodcastChaptersJson(chaptersRaw)
@@ -642,8 +873,7 @@ class LoheRepository(
             val downloaded = parser.fetchTranscriptRaw(workingEp.transcriptUrl)
             if (!downloaded.isNullOrBlank()) {
                 transcriptRaw = downloaded
-                workingEp = workingEp.copy(transcriptText = downloaded)
-                dao.updateEpisode(workingEp)
+                dao.updateEpisodeTranscript(workingEp.id, downloaded)
             }
         }
         val cues = PodcastingChaptersAndTranscripts.parseTranscriptContent(transcriptRaw, workingEp.transcriptMimeType)
@@ -651,31 +881,62 @@ class LoheRepository(
     }
 
     suspend fun setEpisodeUpNextPosition(episode: EpisodeEntity, toBeginning: Boolean) {
-        val currentQueue = dao.getUpNextEpisodes().first().filter { it.id != episode.id }.toMutableList()
+        val freshEp = dao.getEpisodeById(episode.id) ?: episode
+        val currentQueue = dao.getUpNextEpisodes().first().filter { it.id != freshEp.id }.toMutableList()
         if (toBeginning) {
-            currentQueue.add(0, episode.copy(inUpNext = true))
+            currentQueue.add(0, freshEp)
         } else {
-            currentQueue.add(episode.copy(inUpNext = true))
+            currentQueue.add(freshEp)
         }
         currentQueue.forEachIndexed { idx, ep ->
-            dao.updateEpisode(ep.copy(inUpNext = true, upNextOrder = idx))
+            dao.updateEpisodeUpNext(ep.id, inUpNext = true, upNextOrder = idx)
         }
+        recordUpNextAdded(listOf(freshEp))
     }
 
     suspend fun queueEpisodes(episodes: List<EpisodeEntity>, toBeginning: Boolean = false) {
         if (episodes.isEmpty()) return
+        val unplayed = episodes.filter { ep ->
+            val fresh = dao.getEpisodeById(ep.id) ?: ep
+            !fresh.isPlayed
+        }
+        if (unplayed.isEmpty()) return
         val currentQueue = dao.getUpNextEpisodes().first().toMutableList()
         val existingIds = currentQueue.map { it.id }.toSet()
-        val newEps = episodes.filter { it.id !in existingIds }.map { it.copy(inUpNext = true) }
+        val newEps = unplayed.filter { it.id !in existingIds }
         val combined = if (toBeginning) newEps + currentQueue else currentQueue + newEps
         combined.forEachIndexed { idx, ep ->
-            dao.updateEpisode(ep.copy(inUpNext = true, upNextOrder = idx))
+            dao.updateEpisodeUpNext(ep.id, inUpNext = true, upNextOrder = idx)
         }
+        recordUpNextAdded(unplayed)
+    }
+
+    suspend fun moveEpisodesToQueueEdge(episodes: List<EpisodeEntity>, toBeginning: Boolean) {
+        if (episodes.isEmpty()) return
+        val targetIds = episodes.map { it.id }.toSet()
+        val currentQueue = dao.getUpNextEpisodes().first()
+        val selectedInQueue = currentQueue.filter { it.id in targetIds }
+        val remaining = currentQueue.filter { it.id !in targetIds }
+        val reordered = if (toBeginning) selectedInQueue + remaining else remaining + selectedInQueue
+        reordered.forEachIndexed { idx, ep ->
+            dao.updateEpisodeUpNext(ep.id, inUpNext = true, upNextOrder = idx)
+        }
+        recordUpNextOrderMutation()
+    }
+
+    suspend fun removeEpisodesFromUpNext(episodes: List<EpisodeEntity>) {
+        if (episodes.isEmpty()) return
+        episodes.forEach { ep ->
+            dao.updateEpisodeUpNext(ep.id, inUpNext = false, upNextOrder = 0)
+        }
+        recordUpNextRemoved(episodes)
     }
 
     suspend fun toggleEpisodeUpNext(episode: EpisodeEntity, addAtBeginning: Boolean = false) {
-        if (episode.inUpNext) {
-            dao.updateEpisode(episode.copy(inUpNext = false, upNextOrder = 0))
+        val fresh = dao.getEpisodeById(episode.id) ?: episode
+        if (fresh.inUpNext) {
+            dao.updateEpisodeUpNext(fresh.id, inUpNext = false, upNextOrder = 0)
+            recordUpNextRemoved(listOf(fresh))
         } else {
             val currentQueue = dao.getUpNextEpisodes().first()
             val nextOrder = if (addAtBeginning) {
@@ -683,7 +944,8 @@ class LoheRepository(
             } else {
                 (currentQueue.maxOfOrNull { it.upNextOrder } ?: 0) + 1
             }
-            dao.updateEpisode(episode.copy(inUpNext = true, upNextOrder = nextOrder))
+            dao.updateEpisodeUpNext(fresh.id, inUpNext = true, upNextOrder = nextOrder)
+            recordUpNextAdded(listOf(fresh))
         }
     }
 
@@ -695,35 +957,45 @@ class LoheRepository(
         if (targetIdx !in queue.indices) return
 
         val swapped = queue[targetIdx]
-        queue[targetIdx] = episode
+        queue[targetIdx] = queue[idx]
         queue[idx] = swapped
 
         queue.forEachIndexed { newOrder, item ->
-            dao.updateEpisode(item.copy(upNextOrder = newOrder))
+            dao.updateEpisodeUpNext(item.id, inUpNext = true, upNextOrder = newOrder)
         }
+        recordUpNextOrderMutation()
     }
 
     suspend fun clearQueue() {
+        val currentQueue = dao.getUpNextEpisodes().first()
         dao.clearUpNextQueue()
+        if (currentQueue.isNotEmpty()) {
+            recordUpNextRemoved(currentQueue)
+        } else {
+            recordUpNextOrderMutation()
+        }
     }
 
     suspend fun toggleEpisodeStarred(episode: EpisodeEntity) {
-        dao.updateEpisode(episode.copy(isStarred = !episode.isStarred))
+        val fresh = dao.getEpisodeById(episode.id) ?: episode
+        dao.updateEpisodeStarred(fresh.id, !fresh.isStarred)
+        recordEpisodeStatusMutation(fresh.id)
     }
 
     suspend fun toggleEpisodeDownloaded(episode: EpisodeEntity): Result<Boolean> {
-        if (episode.isDownloaded) {
-            downloadManager?.deleteEpisodeFile(episode)
-            dao.updateEpisode(episode.copy(isDownloaded = false, localFilePath = ""))
+        val fresh = dao.getEpisodeById(episode.id) ?: episode
+        if (fresh.isDownloaded) {
+            downloadManager?.deleteEpisodeFile(fresh)
+            dao.updateEpisodeDownloaded(fresh.id, downloaded = false, localFilePath = "")
             return Result.success(false)
         }
         val manager = downloadManager
         if (manager == null) {
-            dao.updateEpisode(episode.copy(isDownloaded = true))
+            dao.updateEpisodeDownloaded(fresh.id, downloaded = true, localFilePath = fresh.localFilePath)
             return Result.success(true)
         }
-        return manager.downloadEpisodeAudio(episode).map { file ->
-            dao.updateEpisode(episode.copy(isDownloaded = true, localFilePath = file.absolutePath))
+        return manager.downloadEpisodeAudio(fresh).map { file ->
+            dao.updateEpisodeDownloaded(fresh.id, downloaded = true, localFilePath = file.absolutePath)
             true
         }
     }
@@ -734,7 +1006,20 @@ class LoheRepository(
 
     suspend fun refreshAllSubscribedFeedsWithAlerts(): Pair<Int, List<NewEpisodeAlert>> {
         val podcasts = dao.getSubscribedPodcasts().first()
-        val existingIds = dao.getAllEpisodes().first().map { it.id }.toHashSet()
+        val existingEpisodes = dao.getAllEpisodes().first()
+        val existingById = existingEpisodes.associateBy { it.id }.toMutableMap()
+        val existingByGuid = existingEpisodes
+            .filter { it.guid.isNotBlank() }
+            .associateBy { "${it.podcastId}|${it.guid.trim()}" }
+            .toMutableMap()
+        val existingByAudio = existingEpisodes
+            .filter { it.audioUrl.isNotBlank() }
+            .associateBy { "${it.podcastId}|${it.audioUrl.trim()}" }
+            .toMutableMap()
+        val existingByTitle = existingEpisodes
+            .filter { it.title.isNotBlank() }
+            .associateBy { normalizeEpisodeTitleKey(it.podcastId, it.title) }
+            .toMutableMap()
         val existingQueue = dao.getUpNextEpisodes().first()
         var minOrder = existingQueue.minOfOrNull { it.upNextOrder } ?: 0
         var maxOrder = existingQueue.maxOfOrNull { it.upNextOrder } ?: 0
@@ -747,18 +1032,61 @@ class LoheRepository(
                 feedUrl = pod.feedUrl,
                 fallbackTitle = pod.title,
                 category = pod.category,
-                fallbackArtUrl = pod.artworkUrl
+                fallbackArtUrl = pod.artworkUrl,
+                maxEpisodes = 0
             ) ?: continue
-            val newEps = parsed.second.filter { it.id !in existingIds }
+            val newEps = mutableListOf<EpisodeEntity>()
+            for (raw in parsed.second) {
+                val guidKey = raw.guid.trim().takeIf { it.isNotBlank() }?.let { "${pod.id}|$it" }
+                val audioKey = raw.audioUrl.trim().takeIf { it.isNotBlank() }?.let { "${pod.id}|$it" }
+                val titleKey = raw.title.trim().takeIf { it.isNotBlank() }
+                    ?.let { normalizeEpisodeTitleKey(pod.id, it) }
+                val matchedExisting = existingById[raw.id]
+                    ?: guidKey?.let { existingByGuid[it] }
+                    ?: audioKey?.let { existingByAudio[it] }
+                    ?: titleKey?.let { existingByTitle[it] }
+                if (matchedExisting == null) {
+                    newEps.add(raw)
+                } else {
+                    // Heal missing/corrupted duration or publish date from live RSS feed without altering played status
+                    val needsDuration = matchedExisting.durationMs <= 5_000L && raw.durationMs > matchedExisting.durationMs
+                    val needsPublishedAt = matchedExisting.publishedAt <= 0L && raw.publishedAt > 0L
+                    val needsArt = (matchedExisting.artworkUrl.isBlank() || matchedExisting.artworkUrl.startsWith("drawable://")) &&
+                        raw.artworkUrl.startsWith("http")
+                    if (needsDuration || needsPublishedAt || needsArt) {
+                        val newDuration = if (needsDuration) raw.durationMs else matchedExisting.durationMs
+                        val newPublishedAt = if (needsPublishedAt) raw.publishedAt else matchedExisting.publishedAt
+                        val newArtwork = if (needsArt) raw.artworkUrl else matchedExisting.artworkUrl
+                        dao.healEpisodeMetadata(
+                            episodeId = matchedExisting.id,
+                            durationMs = newDuration,
+                            publishedAt = newPublishedAt,
+                            artworkUrl = newArtwork,
+                            descriptionHtml = matchedExisting.descriptionHtml
+                        )
+                        existingById[matchedExisting.id] = matchedExisting.copy(
+                            durationMs = newDuration,
+                            publishedAt = newPublishedAt,
+                            artworkUrl = newArtwork
+                        )
+                    }
+                }
+            }
             if (newEps.isNotEmpty()) {
                 val mode = AutoQueueMode.entries.find { it.name == pod.autoQueueMode } ?: AutoQueueMode.OFF
                 val prepared = newEps.map { raw ->
-                    existingIds.add(raw.id)
-                    when (mode) {
+                    val ready = when (mode) {
                         AutoQueueMode.BEGINNING -> raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = --minOrder)
                         AutoQueueMode.END -> raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = ++maxOrder)
                         AutoQueueMode.OFF -> raw.copy(podcastId = pod.id, podcastTitle = pod.title)
                     }
+                    existingById[ready.id] = ready
+                    ready.guid.trim().takeIf { it.isNotBlank() }?.let { existingByGuid["${pod.id}|$it"] = ready }
+                    ready.audioUrl.trim().takeIf { it.isNotBlank() }?.let { existingByAudio["${pod.id}|$it"] = ready }
+                    ready.title.trim().takeIf { it.isNotBlank() }?.let {
+                        existingByTitle[normalizeEpisodeTitleKey(pod.id, it)] = ready
+                    }
+                    ready
                 }
                 dao.insertEpisodes(prepared)
                 addedCount += prepared.size
@@ -808,21 +1136,144 @@ class LoheRepository(
 
         targets.values.forEach { ep ->
             manager.downloadEpisodeAudio(ep).onSuccess { file ->
-                dao.updateEpisode(ep.copy(isDownloaded = true, localFilePath = file.absolutePath))
+                dao.updateEpisodeDownloaded(ep.id, downloaded = true, localFilePath = file.absolutePath)
             }
         }
     }
 
     suspend fun markEpisodePlayed(episodeId: String, played: Boolean) {
-        dao.markEpisodePlayed(episodeId, played)
+        dao.markEpisodePlayed(episodeId, played, if (played) System.currentTimeMillis() else 0L)
+        recordEpisodeStatusMutation(episodeId)
+    }
+
+    suspend fun markEpisodesPlayed(episodes: List<EpisodeEntity>, played: Boolean) {
+        val ts = if (played) System.currentTimeMillis() else 0L
+        episodes.forEach { ep ->
+            dao.markEpisodePlayed(ep.id, played, ts)
+        }
+        recordEpisodesStatusMutation(episodes)
+    }
+
+    suspend fun setEpisodesStarred(episodes: List<EpisodeEntity>, starred: Boolean) {
+        episodes.forEach { ep ->
+            dao.updateEpisodeStarred(ep.id, starred)
+        }
+        recordEpisodesStatusMutation(episodes)
+    }
+
+    suspend fun archiveEpisodes(episodes: List<EpisodeEntity>) {
+        episodes.forEach { ep ->
+            dao.updateEpisodeArchived(ep.id)
+        }
+        recordEpisodesStatusMutation(episodes)
+        val queued = episodes.filter { it.inUpNext }
+        if (queued.isNotEmpty()) {
+            recordUpNextRemoved(queued)
+        }
+    }
+
+    suspend fun downloadEpisodes(episodes: List<EpisodeEntity>): Pair<Int, Int> {
+        var success = 0
+        var failed = 0
+        val manager = downloadManager
+        episodes.filter { !it.isDownloaded }.forEach { ep ->
+            if (manager == null) {
+                dao.updateEpisodeDownloaded(ep.id, downloaded = true, localFilePath = ep.localFilePath)
+                success++
+            } else {
+                val res = manager.downloadEpisodeAudio(ep)
+                res.onSuccess { file ->
+                    dao.updateEpisodeDownloaded(ep.id, downloaded = true, localFilePath = file.absolutePath)
+                    success++
+                }.onFailure {
+                    failed++
+                }
+            }
+        }
+        return success to failed
+    }
+
+    suspend fun removeDownloadsForEpisodes(episodes: List<EpisodeEntity>): Int {
+        var removed = 0
+        episodes.filter { it.isDownloaded }.forEach { ep ->
+            downloadManager?.deleteEpisodeFile(ep)
+            dao.updateEpisodeDownloaded(ep.id, downloaded = false, localFilePath = "")
+            removed++
+        }
+        return removed
     }
 
     suspend fun resetEpisodeProgress(episode: EpisodeEntity) {
-        dao.updateEpisode(episode.copy(isPlayed = false, resumePositionMs = 0L))
+        dao.resetEpisodeProgress(episode.id)
+        recordEpisodeStatusMutation(episode.id)
     }
 
-    suspend fun updatePlaybackPosition(episodeId: String, positionMs: Long, durationMs: Long) {
+    /**
+     * Persists playback progress and automatically marks the episode as played once it reaches
+     * at least 98% completion. Returns true if this update newly marked the episode as played.
+     */
+    suspend fun updatePlaybackPosition(episodeId: String, positionMs: Long, durationMs: Long): Boolean {
+        if (positionMs <= 0L) return false
+        val existing = dao.getEpisodeById(episodeId)
+        val effectiveDurationMs = if (durationMs > 0L) durationMs else (existing?.durationMs ?: 0L)
+        if (existing != null && !existing.isPlayed && isEpisodeNearCompletion(positionMs, effectiveDurationMs)) {
+            dao.markEpisodePlayed(episodeId, true, System.currentTimeMillis())
+            recordEpisodeStatusMutation(episodeId)
+            return true
+        }
+        if (existing?.isPlayed == true) return false
         dao.updatePlaybackPosition(episodeId, positionMs, durationMs)
+        return false
+    }
+
+    suspend fun markAllEpisodesPlayedForPodcasts(podcasts: List<PodcastEntity>) {
+        if (podcasts.isEmpty()) return
+        val targetPodcastIds = podcasts.map { it.id }.toSet()
+        val now = System.currentTimeMillis()
+        val affected = dao.getAllEpisodes().first()
+            .filter { it.podcastId in targetPodcastIds && !it.isPlayed }
+        affected.forEach { ep -> dao.markEpisodePlayed(ep.id, true, now) }
+        recordEpisodesStatusMutation(affected)
+    }
+
+    suspend fun updatePodcastsAutoQueue(podcasts: List<PodcastEntity>, mode: AutoQueueMode) {
+        podcasts.forEach { pod ->
+            val updated = pod.copy(autoQueueMode = mode.name)
+            dao.updatePodcast(updated)
+            recordPodcastMutation(updated)
+        }
+    }
+
+    suspend fun unsubscribePodcasts(podcasts: List<PodcastEntity>) {
+        podcasts.forEach { pod -> unsubscribePodcast(pod.id) }
+    }
+
+    suspend fun setPlaylistsPinned(playlists: List<PlaylistEntity>, pinned: Boolean) {
+        playlists.forEach { pl ->
+            if (pl.isPinned != pinned) {
+                dao.updatePlaylist(pl.copy(isPinned = pinned))
+                recordPlaylistMutation(pl.id)
+            }
+        }
+    }
+
+    suspend fun setPlaylistsAutoDownload(playlists: List<PlaylistEntity>, enabled: Boolean) {
+        playlists.forEach { pl ->
+            if (pl.autoDownload != enabled) {
+                dao.updatePlaylist(pl.copy(autoDownload = enabled))
+                recordPlaylistMutation(pl.id)
+            }
+        }
+    }
+
+    suspend fun deleteCustomPlaylists(playlists: List<PlaylistEntity>): Int {
+        var deleted = 0
+        playlists.filter { it.smartRuleType.isEmpty() }.forEach { pl ->
+            dao.deletePlaylist(pl.id)
+            recordPlaylistDeleted(pl.id)
+            deleted++
+        }
+        return deleted
     }
 
     suspend fun createCustomPlaylist(name: String, folderName: String, initialEpisodeIds: List<String>) {
@@ -834,10 +1285,12 @@ class LoheRepository(
             episodeIdsCsv = initialEpisodeIds.joinToString(",")
         )
         dao.insertPlaylist(playlist)
+        recordPlaylistMutation(playlist.id)
     }
 
     suspend fun updatePlaylist(playlist: PlaylistEntity) {
         dao.updatePlaylist(playlist)
+        recordPlaylistMutation(playlist.id)
     }
 
     suspend fun toggleEpisodeInPlaylist(playlist: PlaylistEntity, episodeId: String) {
@@ -848,14 +1301,20 @@ class LoheRepository(
             current.add(episodeId)
         }
         dao.insertPlaylist(playlist.copy(episodeIdsCsv = current.joinToString(",")))
+        recordPlaylistMutation(playlist.id)
     }
 
     suspend fun deleteCustomPlaylist(playlistId: String) {
         dao.deletePlaylist(playlistId)
+        recordPlaylistDeleted(playlistId)
     }
 
     suspend fun archiveAllPlayed() {
+        val candidates = dao.getActiveEpisodes().first().filter { it.isPlayed && !it.isStarred }
         dao.archiveAllPlayedNonStarred()
+        if (candidates.isNotEmpty()) {
+            recordEpisodesStatusMutation(candidates)
+        }
     }
 
     suspend fun clearAllDownloads() {
@@ -868,7 +1327,7 @@ class LoheRepository(
         val showEps = dao.getAllEpisodes().first().filter { it.podcastId == podcastId && it.isDownloaded }
         showEps.forEach { ep ->
             manager?.deleteEpisodeFile(ep)
-            dao.updateEpisode(ep.copy(isDownloaded = false, localFilePath = ""))
+            dao.updateEpisodeDownloaded(ep.id, downloaded = false, localFilePath = "")
         }
     }
 
@@ -892,7 +1351,7 @@ class LoheRepository(
             }
             playedCandidates.forEach { ep ->
                 manager.deleteEpisodeFile(ep)
-                dao.updateEpisode(ep.copy(isDownloaded = false, localFilePath = ""))
+                dao.updateEpisodeDownloaded(ep.id, downloaded = false, localFilePath = "")
                 downloaded.remove(ep)
             }
         }
@@ -909,7 +1368,7 @@ class LoheRepository(
                     if (currentBytes <= limitBytes) break
                     val sz = manager.getEpisodeFileSizeBytes(ep)
                     manager.deleteEpisodeFile(ep)
-                    dao.updateEpisode(ep.copy(isDownloaded = false, localFilePath = ""))
+                    dao.updateEpisodeDownloaded(ep.id, downloaded = false, localFilePath = "")
                     currentBytes -= sz
                 }
             }
@@ -917,6 +1376,7 @@ class LoheRepository(
     }
 
     suspend fun unsubscribePodcast(podcastId: String) {
+        val existingPod = dao.getPodcastById(podcastId)
         val manager = downloadManager
         if (manager != null) {
             dao.getAllEpisodes().first()
@@ -925,5 +1385,121 @@ class LoheRepository(
         }
         dao.deleteEpisodesByPodcastId(podcastId)
         dao.deletePodcastById(podcastId)
+        if (existingPod != null) {
+            recordPodcastMutation(existingPod, unsubscribed = true)
+        }
+    }
+
+    private suspend fun recordPodcastMutation(podcast: PodcastEntity, unsubscribed: Boolean = false) {
+        val prefs = preferencesRepository ?: return
+        val now = System.currentTimeMillis()
+        val key = DriveSyncEngine.normalizeFeedKey(podcast.feedUrl, podcast.id, podcast.title)
+        prefs.updateDriveSyncJournal { journal ->
+            if (unsubscribed) {
+                journal.copy(
+                    unsubscribedPodcasts = DriveSyncLocalJournal.trimMap(journal.unsubscribedPodcasts + (key to now))
+                )
+            } else {
+                val updatedUnsub = journal.unsubscribedPodcasts - key
+                journal.copy(
+                    unsubscribedPodcasts = updatedUnsub,
+                    podcastUpdatedAt = DriveSyncLocalJournal.trimMap(journal.podcastUpdatedAt + (key to now))
+                )
+            }
+        }
+    }
+
+    private suspend fun recordEpisodeStatusMutation(episodeId: String) {
+        val prefs = preferencesRepository ?: return
+        val ep = dao.getEpisodeById(episodeId) ?: return
+        val pod = dao.getPodcastById(ep.podcastId)
+        val key = DriveSyncEngine.episodeCanonicalKey(ep, pod?.feedUrl.orEmpty())
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            journal.copy(
+                episodeStatusUpdatedAt = DriveSyncLocalJournal.trimMap(journal.episodeStatusUpdatedAt + (key to now))
+            )
+        }
+    }
+
+    private suspend fun recordEpisodesStatusMutation(episodes: List<EpisodeEntity>) {
+        val prefs = preferencesRepository ?: return
+        if (episodes.isEmpty()) return
+        val podsById = dao.getAllPodcasts().first().associateBy { it.id }
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            val updated = journal.episodeStatusUpdatedAt.toMutableMap()
+            episodes.forEach { ep ->
+                val key = DriveSyncEngine.episodeCanonicalKey(ep, podsById[ep.podcastId]?.feedUrl.orEmpty())
+                updated[key] = now
+            }
+            journal.copy(episodeStatusUpdatedAt = DriveSyncLocalJournal.trimMap(updated))
+        }
+    }
+
+    private suspend fun recordUpNextAdded(episodes: List<EpisodeEntity>) {
+        val prefs = preferencesRepository ?: return
+        val podsById = dao.getAllPodcasts().first().associateBy { it.id }
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            val added = journal.addedToUpNext.toMutableMap()
+            val removed = journal.removedFromUpNext.toMutableMap()
+            episodes.forEach { ep ->
+                val key = DriveSyncEngine.episodeCanonicalKey(ep, podsById[ep.podcastId]?.feedUrl.orEmpty())
+                added[key] = now
+                removed.remove(key)
+            }
+            journal.copy(
+                upNextUpdatedAt = now,
+                addedToUpNext = DriveSyncLocalJournal.trimMap(added),
+                removedFromUpNext = removed
+            )
+        }
+    }
+
+    private suspend fun recordUpNextRemoved(episodes: List<EpisodeEntity>) {
+        val prefs = preferencesRepository ?: return
+        val podsById = dao.getAllPodcasts().first().associateBy { it.id }
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            val removed = journal.removedFromUpNext.toMutableMap()
+            episodes.forEach { ep ->
+                val key = DriveSyncEngine.episodeCanonicalKey(ep, podsById[ep.podcastId]?.feedUrl.orEmpty())
+                removed[key] = now
+            }
+            journal.copy(
+                upNextUpdatedAt = now,
+                removedFromUpNext = DriveSyncLocalJournal.trimMap(removed)
+            )
+        }
+    }
+
+    private suspend fun recordUpNextOrderMutation() {
+        val prefs = preferencesRepository ?: return
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            journal.copy(upNextUpdatedAt = now)
+        }
+    }
+
+    private suspend fun recordPlaylistMutation(playlistId: String) {
+        val prefs = preferencesRepository ?: return
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            journal.copy(
+                deletedPlaylists = journal.deletedPlaylists - playlistId,
+                playlistUpdatedAt = DriveSyncLocalJournal.trimMap(journal.playlistUpdatedAt + (playlistId to now))
+            )
+        }
+    }
+
+    private suspend fun recordPlaylistDeleted(playlistId: String) {
+        val prefs = preferencesRepository ?: return
+        val now = System.currentTimeMillis()
+        prefs.updateDriveSyncJournal { journal ->
+            journal.copy(
+                deletedPlaylists = DriveSyncLocalJournal.trimMap(journal.deletedPlaylists + (playlistId to now))
+            )
+        }
     }
 }

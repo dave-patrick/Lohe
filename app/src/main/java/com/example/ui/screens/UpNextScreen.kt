@@ -1,9 +1,12 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -33,6 +38,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -43,6 +50,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -65,11 +75,14 @@ import com.example.R
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.LoheUserSettings
 import com.example.playback.PlaybackUiState
+import com.example.ui.components.EpisodeBatchAction
+import com.example.ui.components.EpisodeMultiSelectTopBar
 import com.example.ui.components.PodcastArtworkThumbnail
 import com.example.ui.components.PrimaryTabTopBar
 import com.example.ui.components.QueueIndicatorBadge
+import com.example.ui.components.SwipeableUpNextRow
+import com.example.ui.components.UpNextMultiSelectActionBar
 import com.example.ui.components.formatDurationCompactHuman
-import com.example.ui.components.formatDurationMmSs
 import com.example.ui.theme.LoheBackgroundDark
 import com.example.ui.theme.LoheBorderDark
 import com.example.ui.theme.LoheBrightBlueText
@@ -77,6 +90,7 @@ import com.example.ui.theme.LoheCyanAccent
 import com.example.ui.theme.LoheElectricBlue
 import com.example.ui.theme.LoheSurfaceCardDark
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UpNextTabScreen(
     settings: LoheUserSettings,
@@ -89,13 +103,34 @@ fun UpNextTabScreen(
     onMoveEpisodeEdge: (EpisodeEntity, Boolean) -> Unit,
     onMarkPlayed: (EpisodeEntity, Boolean) -> Unit,
     onRemoveFromQueue: (EpisodeEntity) -> Unit,
-    onClearQueue: () -> Unit
+    onClearQueue: () -> Unit,
+    onBatchUpNextAction: (List<EpisodeEntity>, EpisodeBatchAction) -> Unit = { _, _ -> }
 ) {
-    val remainingMs = remember(upNextEpisodes) {
-        upNextEpisodes.sumOf { (it.durationMs - it.resumePositionMs).coerceAtLeast(0L) }
+    val visibleUpNext = remember(upNextEpisodes) {
+        upNextEpisodes.filter { !it.isPlayed }
+    }
+    val remainingMs = remember(visibleUpNext) {
+        visibleUpNext.sumOf { (it.durationMs - it.resumePositionMs).coerceAtLeast(0L) }
     }
     var actionTargetId by remember { mutableStateOf<String?>(null) }
     var showQueueMenu by remember { mutableStateOf(false) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var isMultiSelectMode by remember { mutableStateOf(false) }
+    var selectedEpisodeIds by remember { mutableStateOf(setOf<String>()) }
+    val haptic = LocalHapticFeedback.current
+
+    val activeSelectedIds = remember(selectedEpisodeIds, visibleUpNext) {
+        val valid = visibleUpNext.map { it.id }.toSet()
+        selectedEpisodeIds.filterTo(LinkedHashSet()) { it in valid }
+    }
+    val selectedEpisodes = remember(activeSelectedIds, visibleUpNext) {
+        visibleUpNext.filter { it.id in activeSelectedIds }
+    }
+
+    BackHandler(enabled = isMultiSelectMode) {
+        isMultiSelectMode = false
+        selectedEpisodeIds = emptySet()
+    }
 
     val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
     val cardBg = if (isDark) LoheSurfaceCardDark else MaterialTheme.colorScheme.surface
@@ -107,67 +142,109 @@ fun UpNextTabScreen(
             .padding(horizontal = 16.dp)
             .testTag("up_next_tab_screen")
     ) {
-        PrimaryTabTopBar(
-            title = stringResource(id = R.string.tab_up_next),
-            subtitle = "${upNextEpisodes.size} episodes next • ${formatDurationCompactHuman(remainingMs)} remaining",
-            trailingActions = {
-                if (upNextEpisodes.isNotEmpty()) {
-                    IconButton(
-                        onClick = onClearQueue,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .testTag("clear_queue_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteSweep,
-                            contentDescription = "Clear Up Next Queue",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+        if (isMultiSelectMode) {
+            EpisodeMultiSelectTopBar(
+                selectedCount = activeSelectedIds.size,
+                totalCount = visibleUpNext.size,
+                onClose = {
+                    isMultiSelectMode = false
+                    selectedEpisodeIds = emptySet()
+                },
+                onToggleSelectAll = {
+                    selectedEpisodeIds = if (activeSelectedIds.size >= visibleUpNext.size) {
+                        emptySet()
+                    } else {
+                        visibleUpNext.map { it.id }.toSet()
                     }
-                    Box {
+                }
+            )
+        } else {
+            PrimaryTabTopBar(
+                title = stringResource(id = R.string.tab_up_next),
+                subtitle = "${visibleUpNext.size} episodes next • ${formatDurationCompactHuman(remainingMs)} remaining",
+                trailingActions = {
+                    if (visibleUpNext.isNotEmpty()) {
                         IconButton(
-                            onClick = { showQueueMenu = true },
-                            modifier = Modifier.size(44.dp)
+                            onClick = {
+                                actionTargetId = null
+                                isMultiSelectMode = true
+                                selectedEpisodeIds = emptySet()
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("up_next_multiselect_toggle")
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Queue Options",
+                                imageVector = Icons.Filled.Checklist,
+                                contentDescription = "Select Multiple Episodes",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        DropdownMenu(
-                            expanded = showQueueMenu,
-                            onDismissRequest = { showQueueMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Play First Episode") },
-                                onClick = {
-                                    showQueueMenu = false
-                                    upNextEpisodes.firstOrNull()?.let(onPlayEpisode)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Clear Played Episodes") },
-                                onClick = {
-                                    showQueueMenu = false
-                                    upNextEpisodes.filter { it.isPlayed }.forEach(onRemoveFromQueue)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Clear Queue", color = Color(0xFFEF4444)) },
-                                onClick = {
-                                    showQueueMenu = false
-                                    onClearQueue()
-                                }
-                            )
+                        Box {
+                            IconButton(
+                                onClick = { showQueueMenu = true },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .testTag("up_next_more_menu")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "Queue Options",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showQueueMenu,
+                                onDismissRequest = { showQueueMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Play First Episode") },
+                                    onClick = {
+                                        showQueueMenu = false
+                                        visibleUpNext.firstOrNull()?.let(onPlayEpisode)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select Episodes") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.Checklist,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        showQueueMenu = false
+                                        actionTargetId = null
+                                        isMultiSelectMode = true
+                                        selectedEpisodeIds = emptySet()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Clear Queue", color = Color(0xFFEF4444)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.DeleteSweep,
+                                            contentDescription = null,
+                                            tint = Color(0xFFEF4444),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        showQueueMenu = false
+                                        showClearConfirmDialog = true
+                                    },
+                                    modifier = Modifier.testTag("clear_queue_menu_item")
+                                )
+                            }
                         }
                     }
-                }
-            },
-            onOpenSettings = onOpenSettings
-        )
+                },
+                onOpenSettings = onOpenSettings
+            )
+        }
 
-        if (upNextEpisodes.isEmpty()) {
+        if (visibleUpNext.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -206,44 +283,102 @@ fun UpNextTabScreen(
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(bottom = 172.dp, top = 4.dp),
+                contentPadding = PaddingValues(bottom = if (isMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
             ) {
-                itemsIndexed(upNextEpisodes, key = { _, ep -> ep.id }) { idx, ep ->
+                itemsIndexed(visibleUpNext, key = { _, ep -> ep.id }) { idx, ep ->
                     val isPlayingEp = playbackState.currentEpisode?.id == ep.id && playbackState.isPlaying
-                    val isExpanded = actionTargetId == ep.id
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = cardBg,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                1.dp,
-                                if (isPlayingEp) LoheElectricBlue else borderColor,
-                                RoundedCornerShape(16.dp)
-                            )
-                            .testTag("up_next_item_${ep.id}")
+                    val isExpanded = !isMultiSelectMode && actionTargetId == ep.id
+                    val isSelected = ep.id in activeSelectedIds
+                    SwipeableUpNextRow(
+                        episode = ep,
+                        onMoveToTop = {
+                            actionTargetId = null
+                            onMoveEpisodeEdge(ep, true)
+                        },
+                        onMoveToBottom = {
+                            actionTargetId = null
+                            onMoveEpisodeEdge(ep, false)
+                        },
+                        onMarkPlayed = {
+                            actionTargetId = null
+                            onMarkPlayed(ep, true)
+                        },
+                        onRemoveFromQueue = {
+                            actionTargetId = null
+                            onRemoveFromQueue(ep)
+                        },
+                        cornerRadius = 16.dp,
+                        enabled = !isMultiSelectMode
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    if (isSelected) 1.5.dp else 1.dp,
+                                    if (isSelected || isPlayingEp) LoheElectricBlue else borderColor,
+                                    RoundedCornerShape(16.dp)
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        if (isMultiSelectMode) {
+                                            selectedEpisodeIds = if (isSelected) {
+                                                selectedEpisodeIds - ep.id
+                                            } else {
+                                                selectedEpisodeIds + ep.id
+                                            }
+                                        } else {
+                                            actionTargetId = if (isExpanded) null else ep.id
+                                        }
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        actionTargetId = null
+                                        isMultiSelectMode = true
+                                        selectedEpisodeIds = selectedEpisodeIds + ep.id
+                                    }
+                                )
+                                .testTag("up_next_item_${ep.id}")
+                        ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { actionTargetId = if (isExpanded) null else ep.id }
                                     .padding(horizontal = 8.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(
-                                    onClick = { actionTargetId = if (isExpanded) null else ep.id },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .testTag("up_next_handle_${ep.id}")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.DragHandle,
-                                        contentDescription = "Reorder or Actions",
-                                        tint = if (isExpanded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                if (isMultiSelectMode) {
+                                    Box(
+                                        modifier = Modifier.size(36.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                                            tint = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .testTag("up_next_select_icon_${ep.id}")
+                                        )
+                                    }
+                                } else {
+                                    IconButton(
+                                        onClick = { actionTargetId = if (isExpanded) null else ep.id },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .testTag("up_next_handle_${ep.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DragHandle,
+                                            contentDescription = "Reorder or Actions",
+                                            tint = if (isExpanded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
 
                                 PodcastArtworkThumbnail(
@@ -295,27 +430,29 @@ fun UpNextTabScreen(
                                     }
                                 }
 
-                                IconButton(
-                                    onClick = { onMarkPlayed(ep, true) },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Check,
-                                        contentDescription = "Mark Played",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                                if (!isMultiSelectMode) {
+                                    IconButton(
+                                        onClick = { onMarkPlayed(ep, true) },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = "Mark Played",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
 
-                                IconButton(
-                                    onClick = { onPlayEpisode(ep) },
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isPlayingEp) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = "Play",
-                                        tint = LoheElectricBlue
-                                    )
+                                    IconButton(
+                                        onClick = { onPlayEpisode(ep) },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlayingEp) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = "Play",
+                                            tint = LoheElectricBlue
+                                        )
+                                    }
                                 }
                             }
 
@@ -343,7 +480,7 @@ fun UpNextTabScreen(
                                     QueueStripAction("Up", Icons.Filled.ArrowUpward, LoheCyanAccent, enabled = idx > 0) {
                                         onMoveEpisode(ep, true)
                                     }
-                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = idx < upNextEpisodes.lastIndex) {
+                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = idx < visibleUpNext.lastIndex) {
                                         onMoveEpisode(ep, false)
                                     }
                                     QueueStripAction("Played", Icons.Filled.Check, LoheBrightBlueText) {
@@ -358,9 +495,53 @@ fun UpNextTabScreen(
                             }
                         }
                     }
+                    }
                 }
             }
+
+            if (isMultiSelectMode) {
+                UpNextMultiSelectActionBar(
+                    selectedEpisodes = selectedEpisodes,
+                    onBatchAction = { action ->
+                        if (selectedEpisodes.isNotEmpty()) {
+                            onBatchUpNextAction(selectedEpisodes, action)
+                            isMultiSelectMode = false
+                            selectedEpisodeIds = emptySet()
+                        }
+                    }
+                )
+            }
         }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = { Text("Clear Up Next Queue?") },
+            text = {
+                Text(
+                    "Remove all ${visibleUpNext.size} episodes from your Up Next queue? Your podcasts and progress will not be deleted."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearConfirmDialog = false
+                        onClearQueue()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    modifier = Modifier.testTag("clear_queue_confirm_button")
+                ) {
+                    Text("Clear Queue", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            modifier = Modifier.testTag("clear_queue_confirm_dialog")
+        )
     }
 }
 

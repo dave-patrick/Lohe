@@ -164,19 +164,25 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("settings_back_button").performClick()
         composeTestRule.waitForIdle()
 
-        // Settings -> Cloud Sync (Pro-only)
+        // Settings -> Cloud Sync
+        composeTestRule.onNodeWithTag("settings_overview_list")
+            .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
+        composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("cloud_sync_settings_list")
+            .performScrollToNode(hasTestTag("cloud_sync_auto_switch"))
+        composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
         if (Edition.HAS_PRO) {
-            composeTestRule.onNodeWithTag("settings_overview_list")
-                .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
-            composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
-            composeTestRule.waitForIdle()
-            composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("cloud_sync_settings_list")
+                .performScrollToNode(hasTestTag("cloud_sync_unlock_pro_button"))
             composeTestRule.onNodeWithTag("cloud_sync_unlock_pro_button").assertIsDisplayed()
-            composeTestRule.onNodeWithTag("settings_back_button").performClick()
-            composeTestRule.waitForIdle()
         } else {
-            composeTestRule.onNodeWithTag("settings_item_cloud_sync").assertDoesNotExist()
+            composeTestRule.onNodeWithTag("cloud_sync_settings_list")
+                .performScrollToNode(hasTestTag("cloud_sync_upload_button"))
+            composeTestRule.onNodeWithTag("cloud_sync_upload_button").assertIsDisplayed()
         }
+        composeTestRule.onNodeWithTag("settings_back_button").performClick()
+        composeTestRule.waitForIdle()
 
         // Settings -> About
         composeTestRule.onNodeWithTag("settings_overview_list")
@@ -195,13 +201,7 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("about_sub_screen")
             .performScrollToNode(hasTestTag("about_atomic22_logo"))
         composeTestRule.onNodeWithTag("about_atomic22_logo").assertIsDisplayed()
-        if (Edition.HAS_PRO) {
-            composeTestRule.onNodeWithTag("about_sub_screen")
-                .performScrollToNode(hasTestTag("about_pro_card"))
-            composeTestRule.onNodeWithTag("about_pro_card").assertIsDisplayed()
-        } else {
-            composeTestRule.onNodeWithTag("about_pro_card").assertDoesNotExist()
-        }
+        composeTestRule.onNodeWithTag("about_pro_card").assertDoesNotExist()
         assertTrue(true)
     }
 

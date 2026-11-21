@@ -91,7 +91,15 @@ class TabletAdaptiveRobolectricTest {
             composeTestRule.onNodeWithTag("indicator_style_glow").assertDoesNotExist()
             composeTestRule.onNodeWithTag("custom_hex_input").assertDoesNotExist()
             composeTestRule.onNodeWithTag("settings_item_floating_player").assertDoesNotExist()
-            composeTestRule.onNodeWithTag("settings_item_cloud_sync").assertDoesNotExist()
+
+            composeTestRule.onNodeWithTag("settings_overview_list")
+                .performScrollToNode(hasTestTag("settings_item_cloud_sync"))
+            composeTestRule.onNodeWithTag("settings_item_cloud_sync").performClick()
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("cloud_sync_auto_switch").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("cloud_sync_settings_list")
+                .performScrollToNode(hasTestTag("cloud_sync_upload_button"))
+            composeTestRule.onNodeWithTag("cloud_sync_upload_button").assertIsDisplayed()
         }
     }
 }

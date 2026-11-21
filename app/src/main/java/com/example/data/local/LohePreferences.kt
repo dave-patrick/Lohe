@@ -10,12 +10,229 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.data.sync.DriveSyncLocalJournal
 import com.example.ui.theme.QueuePresetColor
 import com.example.ui.theme.ThemePreference
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.loheDataStore: DataStore<Preferences> by preferencesDataStore(name = "lohe_settings")
+
+enum class ListeningHistoryRange(
+    val days: Int,
+    val label: String,
+    val shortLabel: String
+) {
+    DAYS_7(7, "7 days", "7D"),
+    DAYS_14(14, "14 days", "14D"),
+    DAYS_30(30, "30 days", "30D"),
+    DAYS_90(90, "90 days", "90D"),
+    ALL_TIME(0, "All time", "ALL");
+
+    companion object {
+        fun fromDays(days: Int): ListeningHistoryRange =
+            entries.firstOrNull { it.days == days } ?: DAYS_14
+    }
+}
+
+enum class CloudSyncProvider(
+    val title: String,
+    val subtitle: String,
+    val fileTag: String
+) {
+    GOOGLE_DRIVE(
+        title = "Google Drive",
+        subtitle = "Sync playlists, Up Next, podcasts & episode status via Drive AppData",
+        fileTag = "gdrive"
+    ),
+    ONEDRIVE(
+        title = "Microsoft OneDrive",
+        subtitle = "Link a OneDrive sync file for playlists, Up Next, podcasts & episode status",
+        fileTag = "onedrive"
+    ),
+    DROPBOX(
+        title = "Dropbox",
+        subtitle = "Link a Dropbox sync file for playlists, Up Next, podcasts & episode status",
+        fileTag = "dropbox"
+    ),
+    WEBDAV(
+        title = "Nextcloud / WebDAV",
+        subtitle = "Direct HTTPS sync to Nextcloud, ownCloud, Box WebDAV, Koofr & NAS",
+        fileTag = "webdav"
+    ),
+    OTHER_CLOUD(
+        title = "Box / pCloud / Other",
+        subtitle = "Link a sync file in Box, pCloud, Syncthing or any Android drive app",
+        fileTag = "cloud"
+    );
+
+    companion object {
+        fun defaultProvider(): CloudSyncProvider =
+            if (com.example.edition.Edition.HAS_PRO) GOOGLE_DRIVE else WEBDAV
+
+        fun availableProviders(): List<CloudSyncProvider> =
+            if (com.example.edition.Edition.HAS_PRO) entries else entries.filter { it != GOOGLE_DRIVE }
+
+        fun fromName(name: String?): CloudSyncProvider {
+            val resolved = entries.firstOrNull { it.name == name } ?: defaultProvider()
+            return if (!com.example.edition.Edition.HAS_PRO && resolved == GOOGLE_DRIVE) WEBDAV else resolved
+        }
+    }
+}
+
+enum class HomeCardType(
+    val title: String,
+    val description: String,
+    val isPro: Boolean = false,
+    val defaultEnabled: Boolean = false
+) {
+    YOUR_SIGNAL(
+        title = "Your Signal",
+        description = "Played ratio gauge, time played, time saved & remaining backlog",
+        isPro = false,
+        defaultEnabled = true
+    ),
+    LISTENING_ACTIVITY(
+        title = "Listening History",
+        description = "Listening timeline with daily average, peak period & streak",
+        isPro = false,
+        defaultEnabled = true
+    ),
+    LIBRARY_DETAILS(
+        title = "Library Details",
+        description = "Unplayed spotlight, total episodes, played, in progress, subscriptions & playlists",
+        isPro = false,
+        defaultEnabled = true
+    ),
+    MOST_EPISODES(
+        title = "Most Episodes",
+        description = "Top shows in your library ranked by total episode count",
+        isPro = true,
+        defaultEnabled = true
+    ),
+    MOST_LISTENED(
+        title = "Most Listened Podcasts",
+        description = "Top shows ranked by total listening time & completed episodes",
+        isPro = true,
+        defaultEnabled = true
+    ),
+    UP_NEXT_SPOTLIGHT(
+        title = "Up Next Spotlight",
+        description = "Quick preview of your upcoming queue with total remaining time",
+        isPro = true,
+        defaultEnabled = false
+    ),
+    CONTINUE_LISTENING(
+        title = "Continue Listening",
+        description = "Resume list of episodes currently in progress",
+        isPro = false,
+        defaultEnabled = false
+    ),
+    RECENT_EPISODES(
+        title = "Recent Dispatches",
+        description = "Latest episodes published across your subscribed shows",
+        isPro = false,
+        defaultEnabled = false
+    );
+
+    companion object {
+        fun defaultEnabledFor(isProUnlocked: Boolean): Set<HomeCardType> =
+            entries.filter { it.defaultEnabled && (!it.isPro || isProUnlocked) }.toSet()
+
+        fun fromCsv(csv: String?, isProUnlocked: Boolean): Set<HomeCardType> {
+            if (csv == null) return defaultEnabledFor(isProUnlocked)
+            if (csv.isBlank()) return emptySet()
+            return csv.split(",")
+                .mapNotNull { token -> entries.firstOrNull { it.name == token.trim() } }
+                .filter { !it.isPro || isProUnlocked }
+                .toSet()
+        }
+    }
+}
+
+enum class EpisodeSwipeAction(val label: String, val shortLabel: String) {
+    UP_NEXT_CHOOSE("Up Next (Choose Top or Bottom)", "Up Next"),
+    PLAY_NEXT("Play Next (Top of Queue)", "Play Next"),
+    PLAY_LAST("Play Last (Bottom of Queue)", "Play Last"),
+    MARK_PLAYED("Mark Played / Unplayed", "Played"),
+    DOWNLOAD("Download / Remove Cache", "Download"),
+    BOOKMARK("Bookmark / Star", "Bookmark"),
+    NONE("Disabled", "Off");
+
+    companion object {
+        fun fromName(name: String?, fallback: EpisodeSwipeAction): EpisodeSwipeAction =
+            entries.firstOrNull { it.name == name } ?: fallback
+    }
+}
+
+enum class PodcastSortOption(val label: String, val shortLabel: String) {
+    TITLE_ASC("Name (A–Z)", "A–Z"),
+    TITLE_DESC("Name (Z–A)", "Z–A"),
+    LATEST_EPISODE("Latest Episode", "Newest"),
+    MOST_UNPLAYED("Most Unplayed", "Most Unplayed"),
+    LEAST_UNPLAYED("Least Unplayed", "Least Unplayed"),
+    MOST_EPISODES("Most Episodes", "Episodes"),
+    MOST_LISTENED("Most Listened", "Listened"),
+    RECENTLY_UPDATED("Recently Updated", "Updated"),
+    CATEGORY_ASC("Category (A–Z)", "Category");
+
+    companion object {
+        fun fromName(name: String?): PodcastSortOption =
+            entries.firstOrNull { it.name == name } ?: TITLE_ASC
+    }
+}
+
+enum class PodcastFilterOption(val label: String) {
+    ALL("All"),
+    UNPLAYED("Unplayed"),
+    IN_PROGRESS("In Progress"),
+    DOWNLOADED("Downloaded"),
+    STARRED("Starred"),
+    AUTO_QUEUE("Auto-Queue"),
+    CUSTOM_AUDIO("Custom Audio"),
+    CAUGHT_UP("Caught Up");
+
+    companion object {
+        fun fromName(name: String?): PodcastFilterOption =
+            entries.firstOrNull { it.name == name } ?: ALL
+    }
+}
+
+enum class ToastDurationOption(val label: String, val shortLabel: String, val durationMs: Long) {
+    SHORT("Short (2s)", "2s", 2_000L),
+    MEDIUM("Medium (3.5s)", "3.5s", 3_500L),
+    LONG("Long (6s)", "6s", 6_000L),
+    PERSISTENT("Until Dismissed", "Manual", 0L);
+
+    companion object {
+        fun fromName(name: String?): ToastDurationOption =
+            entries.firstOrNull { it.name == name } ?: MEDIUM
+    }
+}
+
+enum class ToastVisualStyle(val label: String, val description: String) {
+    PILL("Floating Pill", "Compact capsule with clean subtle border"),
+    CARD("Elevated Card", "Full-width tonal card with Dismiss action"),
+    MINIMAL("Minimal Bar", "Sleek dark strip with a blue left accent"),
+    ACCENT("Electric Blue", "High-contrast electric blue notification banner");
+
+    companion object {
+        fun fromName(name: String?): ToastVisualStyle =
+            entries.firstOrNull { it.name == name } ?: PILL
+    }
+}
+
+enum class ToastPlacement(val label: String) {
+    TOP("Top"),
+    CENTER("Center"),
+    BOTTOM("Bottom");
+
+    companion object {
+        fun fromName(name: String?): ToastPlacement =
+            entries.firstOrNull { it.name == name } ?: BOTTOM
+    }
+}
 
 data class LoheUserSettings(
     val themePreference: ThemePreference = ThemePreference.DARK,
@@ -25,7 +242,7 @@ data class LoheUserSettings(
     val queueIndicatorSize: QueueIndicatorSize = QueueIndicatorSize.SMALL,
     val queuePresetColor: QueuePresetColor = QueuePresetColor.BLUE,
     val useCustomHexColor: Boolean = false,
-    val customHexColor: String = "#00D2FF",
+    val customHexColor: String = "#008EFF",
     val playbackSpeed: Float = 1.0f,
     val skipBackSeconds: Int = 15,
     val skipForwardSeconds: Int = 30,
@@ -40,23 +257,41 @@ data class LoheUserSettings(
     val floatingTransparencyPct: Int = 25,
     val autoArchivePolicy: String = "AFTER_24H", // IMMEDIATELY, AFTER_24H, AFTER_7D, NEVER
     val keepStarredExcluded: Boolean = true,
-    val episodeLimitPerShow: Int = 25,
+    val episodeLimitPerShow: Int = 0, // 0 = All episodes
     val autoDownloadWifi: Boolean = true,
     val autoDownloadUpNext: Boolean = true,
     val autoDownloadQueueDepth: Int = 5,
     val isProUnlocked: Boolean = false, // Simulated $9.99/year local test upgrade (android.test.purchased)
     val cloudSyncAutoBackup: Boolean = false,
-    val lastCloudSyncSummary: String = "Not connected • Local SAF Drive import/export active",
+    val cloudSyncProvider: CloudSyncProvider = CloudSyncProvider.defaultProvider(),
+    val webDavServerUrl: String = "",
+    val webDavUsername: String = "",
+    val webDavPassword: String = "",
+    val safSyncUri: String = "",
+    val safSyncProviderName: String = "",
+    val safSyncDisplayName: String = "",
+    val driveSyncStateJson: String = "",
+    val lastCloudSyncSummary: String = "Not connected • Select a cloud drive below",
     val lastPlayingEpisodeId: String = "",
     val playlistsGridView: Boolean = true,
-    val dailyListeningMinutes: List<Int> = listOf(12, 18, 8, 24, 15, 32, 22, 14, 19, 28, 11, 16, 25, 20),
-    val totalTimeSavedMs: Long = 14 * 60_000L,
+    val dailyListeningMinutes: List<Int> = List(90) { 0 },
+    val totalTimeSavedMs: Long = 0L,
     val sleepShakeToExtendEnabled: Boolean = true,
     val newEpisodeNotificationsEnabled: Boolean = true,
     val backgroundSyncEnabled: Boolean = true,
     val backgroundSyncIntervalHours: Int = 6,
     val autoDeletePlayedPolicy: String = "AFTER_24H", // NEVER, IMMEDIATELY, AFTER_24H, AFTER_7D
-    val maxCacheSizeMb: Int = 1024 // 0 = Unlimited, 500, 1024, 2048
+    val maxCacheSizeMb: Int = 1024, // 0 = Unlimited, 500, 1024, 2048
+    val enabledHomeCards: Set<HomeCardType> = HomeCardType.defaultEnabledFor(isProUnlocked = false),
+    val listeningHistoryRange: ListeningHistoryRange = ListeningHistoryRange.DAYS_14,
+    val swipeRightAction: EpisodeSwipeAction = EpisodeSwipeAction.UP_NEXT_CHOOSE,
+    val swipeLeftAction: EpisodeSwipeAction = EpisodeSwipeAction.MARK_PLAYED,
+    val podcastSortOption: PodcastSortOption = PodcastSortOption.TITLE_ASC,
+    val podcastFilterOption: PodcastFilterOption = PodcastFilterOption.ALL,
+    val toastNotificationsEnabled: Boolean = true,
+    val toastDuration: ToastDurationOption = ToastDurationOption.MEDIUM,
+    val toastStyle: ToastVisualStyle = ToastVisualStyle.PILL,
+    val toastPlacement: ToastPlacement = ToastPlacement.BOTTOM
 )
 
 class LohePreferencesRepository(private val context: Context) {
@@ -90,10 +325,19 @@ class LohePreferencesRepository(private val context: Context) {
         val AUTO_DOWNLOAD_DEPTH = intPreferencesKey("auto_download_queue_depth")
         val IS_PRO_UNLOCKED = booleanPreferencesKey("is_pro_unlocked")
         val CLOUD_SYNC_AUTO = booleanPreferencesKey("cloud_sync_auto_backup")
+        val CLOUD_SYNC_PROVIDER = stringPreferencesKey("cloud_sync_provider")
+        val WEBDAV_SERVER_URL = stringPreferencesKey("webdav_server_url")
+        val WEBDAV_USERNAME = stringPreferencesKey("webdav_username")
+        val WEBDAV_PASSWORD = stringPreferencesKey("webdav_password")
+        val SAF_SYNC_URI = stringPreferencesKey("saf_sync_uri")
+        val SAF_SYNC_PROVIDER = stringPreferencesKey("saf_sync_provider")
+        val SAF_SYNC_NAME = stringPreferencesKey("saf_sync_display_name")
+        val DRIVE_SYNC_STATE_JSON = stringPreferencesKey("drive_sync_state_json")
         val LAST_CLOUD_SYNC = stringPreferencesKey("last_cloud_sync_summary")
         val LAST_PLAYING_EPISODE_ID = stringPreferencesKey("last_playing_episode_id")
         val PLAYLISTS_GRID_VIEW = booleanPreferencesKey("playlists_grid_view")
         val DAILY_LISTENING_CSV = stringPreferencesKey("daily_listening_csv")
+        val LAST_LISTENING_EPOCH_DAY = longPreferencesKey("last_listening_epoch_day")
         val TOTAL_TIME_SAVED_MS = longPreferencesKey("total_time_saved_ms")
         val SLEEP_SHAKE_EXTEND = booleanPreferencesKey("sleep_shake_to_extend")
         val NEW_EP_NOTIFICATIONS = booleanPreferencesKey("new_episode_notifications")
@@ -101,17 +345,41 @@ class LohePreferencesRepository(private val context: Context) {
         val BG_SYNC_INTERVAL_H = intPreferencesKey("background_sync_interval_hours")
         val AUTO_DELETE_PLAYED = stringPreferencesKey("auto_delete_played_policy")
         val MAX_CACHE_MB = intPreferencesKey("max_cache_size_mb")
+        val HOME_CARDS_CSV = stringPreferencesKey("enabled_home_cards_csv")
+        val LISTENING_HISTORY_DAYS = intPreferencesKey("listening_history_days")
+        val SWIPE_RIGHT_ACTION = stringPreferencesKey("swipe_right_action")
+        val SWIPE_LEFT_ACTION = stringPreferencesKey("swipe_left_action")
+        val PODCAST_SORT_OPTION = stringPreferencesKey("podcast_sort_option")
+        val PODCAST_FILTER_OPTION = stringPreferencesKey("podcast_filter_option")
+        val TOAST_ENABLED = booleanPreferencesKey("toast_notifications_enabled")
+        val TOAST_DURATION = stringPreferencesKey("toast_duration_option")
+        val TOAST_STYLE = stringPreferencesKey("toast_visual_style")
+        val TOAST_PLACEMENT = stringPreferencesKey("toast_placement")
     }
 
     val settingsFlow: Flow<LoheUserSettings> = context.loheDataStore.data.map { prefs ->
         val isPro = prefs[Keys.IS_PRO_UNLOCKED] ?: false
         val rawStyle = QueueIndicatorStyle.fromName(prefs[Keys.INDICATOR_STYLE] ?: QueueIndicatorStyle.DOT.name)
         val effectiveStyle = if (rawStyle.isPro && !isPro) QueueIndicatorStyle.DOT else rawStyle
-        val defaultDays = listOf(12, 18, 8, 24, 15, 32, 22, 14, 19, 28, 11, 16, 25, 20)
-        val parsedDays = (prefs[Keys.DAILY_LISTENING_CSV] ?: "")
+        val legacyFakeSeed = listOf(12, 18, 8, 24, 15, 32, 22, 14, 19, 28, 11, 16, 25, 20)
+        val rawDays = (prefs[Keys.DAILY_LISTENING_CSV] ?: "")
             .split(",")
             .mapNotNull { it.trim().toIntOrNull() }
-            .let { if (it.size == 14) it else defaultDays }
+            .let { list ->
+                when {
+                    list.isEmpty() || list == legacyFakeSeed -> List(90) { 0 }
+                    list.size < 90 -> List(90 - list.size) { 0 } + list
+                    else -> list.takeLast(90)
+                }
+            }
+        val todayEpochDay = System.currentTimeMillis() / 86_400_000L
+        val lastEpochDay = prefs[Keys.LAST_LISTENING_EPOCH_DAY] ?: todayEpochDay
+        val dayDelta = (todayEpochDay - lastEpochDay).toInt().coerceAtLeast(0)
+        val parsedDays = when {
+            dayDelta == 0 -> rawDays
+            dayDelta >= 90 -> List(90) { 0 }
+            else -> rawDays.drop(dayDelta) + List(dayDelta) { 0 }
+        }
 
         LoheUserSettings(
             themePreference = runCatching {
@@ -123,7 +391,7 @@ class LohePreferencesRepository(private val context: Context) {
             queueIndicatorSize = QueueIndicatorSize.fromName(prefs[Keys.INDICATOR_SIZE] ?: QueueIndicatorSize.SMALL.name),
             queuePresetColor = QueuePresetColor.fromName(prefs[Keys.PRESET_COLOR] ?: QueuePresetColor.BLUE.name),
             useCustomHexColor = (prefs[Keys.USE_CUSTOM_HEX] ?: false) && isPro,
-            customHexColor = prefs[Keys.CUSTOM_HEX] ?: "#00D2FF",
+            customHexColor = prefs[Keys.CUSTOM_HEX] ?: "#008EFF",
             playbackSpeed = prefs[Keys.PLAYBACK_SPEED] ?: 1.0f,
             skipBackSeconds = prefs[Keys.SKIP_BACK] ?: 15,
             skipForwardSeconds = prefs[Keys.SKIP_FORWARD] ?: 30,
@@ -138,24 +406,42 @@ class LohePreferencesRepository(private val context: Context) {
             floatingTransparencyPct = prefs[Keys.FLOATING_TRANSPARENCY] ?: 25,
             autoArchivePolicy = prefs[Keys.AUTO_ARCHIVE_POLICY] ?: "AFTER_24H",
             keepStarredExcluded = prefs[Keys.KEEP_STARRED] ?: true,
-            episodeLimitPerShow = prefs[Keys.EPISODE_LIMIT] ?: 25,
+            episodeLimitPerShow = prefs[Keys.EPISODE_LIMIT] ?: 0,
             autoDownloadWifi = prefs[Keys.AUTO_DOWNLOAD_WIFI] ?: true,
             autoDownloadUpNext = prefs[Keys.AUTO_DOWNLOAD_UP_NEXT] ?: true,
             autoDownloadQueueDepth = prefs[Keys.AUTO_DOWNLOAD_DEPTH] ?: 5,
             isProUnlocked = isPro,
-            cloudSyncAutoBackup = (prefs[Keys.CLOUD_SYNC_AUTO] ?: false) && isPro,
+            cloudSyncAutoBackup = (prefs[Keys.CLOUD_SYNC_AUTO] ?: false) && (isPro || !com.example.edition.Edition.HAS_PRO),
+            cloudSyncProvider = CloudSyncProvider.fromName(prefs[Keys.CLOUD_SYNC_PROVIDER]),
+            webDavServerUrl = prefs[Keys.WEBDAV_SERVER_URL] ?: "",
+            webDavUsername = prefs[Keys.WEBDAV_USERNAME] ?: "",
+            webDavPassword = prefs[Keys.WEBDAV_PASSWORD] ?: "",
+            safSyncUri = prefs[Keys.SAF_SYNC_URI] ?: "",
+            safSyncProviderName = prefs[Keys.SAF_SYNC_PROVIDER] ?: "",
+            safSyncDisplayName = prefs[Keys.SAF_SYNC_NAME] ?: "",
+            driveSyncStateJson = prefs[Keys.DRIVE_SYNC_STATE_JSON] ?: "",
             lastCloudSyncSummary = prefs[Keys.LAST_CLOUD_SYNC]
-                ?: "Not connected • Local SAF Drive import/export active",
+                ?: "Not connected • Select a cloud drive below",
             lastPlayingEpisodeId = prefs[Keys.LAST_PLAYING_EPISODE_ID] ?: "",
             playlistsGridView = prefs[Keys.PLAYLISTS_GRID_VIEW] ?: true,
             dailyListeningMinutes = parsedDays,
-            totalTimeSavedMs = prefs[Keys.TOTAL_TIME_SAVED_MS] ?: (14 * 60_000L),
+            totalTimeSavedMs = prefs[Keys.TOTAL_TIME_SAVED_MS] ?: 0L,
             sleepShakeToExtendEnabled = prefs[Keys.SLEEP_SHAKE_EXTEND] ?: true,
             newEpisodeNotificationsEnabled = prefs[Keys.NEW_EP_NOTIFICATIONS] ?: true,
             backgroundSyncEnabled = prefs[Keys.BG_SYNC_ENABLED] ?: true,
             backgroundSyncIntervalHours = prefs[Keys.BG_SYNC_INTERVAL_H] ?: 6,
             autoDeletePlayedPolicy = prefs[Keys.AUTO_DELETE_PLAYED] ?: "AFTER_24H",
-            maxCacheSizeMb = prefs[Keys.MAX_CACHE_MB] ?: 1024
+            maxCacheSizeMb = prefs[Keys.MAX_CACHE_MB] ?: 1024,
+            enabledHomeCards = HomeCardType.fromCsv(prefs[Keys.HOME_CARDS_CSV], isPro),
+            listeningHistoryRange = ListeningHistoryRange.fromDays(prefs[Keys.LISTENING_HISTORY_DAYS] ?: 14),
+            swipeRightAction = EpisodeSwipeAction.fromName(prefs[Keys.SWIPE_RIGHT_ACTION], EpisodeSwipeAction.UP_NEXT_CHOOSE),
+            swipeLeftAction = EpisodeSwipeAction.fromName(prefs[Keys.SWIPE_LEFT_ACTION], EpisodeSwipeAction.MARK_PLAYED),
+            podcastSortOption = PodcastSortOption.fromName(prefs[Keys.PODCAST_SORT_OPTION]),
+            podcastFilterOption = PodcastFilterOption.fromName(prefs[Keys.PODCAST_FILTER_OPTION]),
+            toastNotificationsEnabled = prefs[Keys.TOAST_ENABLED] ?: true,
+            toastDuration = ToastDurationOption.fromName(prefs[Keys.TOAST_DURATION]),
+            toastStyle = ToastVisualStyle.fromName(prefs[Keys.TOAST_STYLE]),
+            toastPlacement = ToastPlacement.fromName(prefs[Keys.TOAST_PLACEMENT])
         )
     }
 
@@ -277,6 +563,54 @@ class LohePreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setCloudSyncProvider(provider: CloudSyncProvider) {
+        context.loheDataStore.edit {
+            it[Keys.CLOUD_SYNC_PROVIDER] = provider.name
+        }
+    }
+
+    suspend fun setWebDavConfig(serverUrl: String, username: String, password: String) {
+        context.loheDataStore.edit {
+            it[Keys.WEBDAV_SERVER_URL] = serverUrl.trim()
+            it[Keys.WEBDAV_USERNAME] = username.trim()
+            it[Keys.WEBDAV_PASSWORD] = password
+        }
+    }
+
+    suspend fun setSafSyncFile(uri: String, providerName: String, displayName: String) {
+        context.loheDataStore.edit {
+            it[Keys.SAF_SYNC_URI] = uri.trim()
+            it[Keys.SAF_SYNC_PROVIDER] = providerName
+            it[Keys.SAF_SYNC_NAME] = displayName.trim().ifBlank { "lohe_cloud_sync.json" }
+        }
+    }
+
+    suspend fun clearSafSyncFile() {
+        context.loheDataStore.edit {
+            it.remove(Keys.SAF_SYNC_URI)
+            it.remove(Keys.SAF_SYNC_PROVIDER)
+            it.remove(Keys.SAF_SYNC_NAME)
+        }
+    }
+
+    suspend fun getDriveSyncJournal(): DriveSyncLocalJournal {
+        val raw = context.loheDataStore.data.first()[Keys.DRIVE_SYNC_STATE_JSON]
+        return DriveSyncLocalJournal.fromJsonString(raw)
+    }
+
+    suspend fun setDriveSyncJournal(journal: DriveSyncLocalJournal) {
+        context.loheDataStore.edit {
+            it[Keys.DRIVE_SYNC_STATE_JSON] = journal.toJsonString()
+        }
+    }
+
+    suspend fun updateDriveSyncJournal(transform: (DriveSyncLocalJournal) -> DriveSyncLocalJournal) {
+        context.loheDataStore.edit { prefs ->
+            val current = DriveSyncLocalJournal.fromJsonString(prefs[Keys.DRIVE_SYNC_STATE_JSON])
+            prefs[Keys.DRIVE_SYNC_STATE_JSON] = transform(current).toJsonString()
+        }
+    }
+
     suspend fun setLastPlayingEpisodeId(episodeId: String) {
         context.loheDataStore.edit { it[Keys.LAST_PLAYING_EPISODE_ID] = episodeId }
     }
@@ -287,17 +621,30 @@ class LohePreferencesRepository(private val context: Context) {
 
     suspend fun recordListeningTick(savedDeltaMs: Long, addMinuteToday: Boolean) {
         context.loheDataStore.edit { prefs ->
-            val currentSaved = prefs[Keys.TOTAL_TIME_SAVED_MS] ?: (14 * 60_000L)
+            val currentSaved = prefs[Keys.TOTAL_TIME_SAVED_MS] ?: 0L
             if (savedDeltaMs > 0L) {
                 prefs[Keys.TOTAL_TIME_SAVED_MS] = currentSaved + savedDeltaMs
             }
             if (addMinuteToday) {
-                val defaultDays = mutableListOf(12, 18, 8, 24, 15, 32, 22, 14, 19, 28, 11, 16, 25, 20)
+                val legacyFakeSeed = listOf(12, 18, 8, 24, 15, 32, 22, 14, 19, 28, 11, 16, 25, 20)
                 val parsed = (prefs[Keys.DAILY_LISTENING_CSV] ?: "")
-                    .split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
-                val days = if (parsed.size == 14) parsed else defaultDays
+                    .split(",").mapNotNull { it.trim().toIntOrNull() }
+                val baseDays = when {
+                    parsed.isEmpty() || parsed == legacyFakeSeed -> List(90) { 0 }
+                    parsed.size < 90 -> List(90 - parsed.size) { 0 } + parsed
+                    else -> parsed.takeLast(90)
+                }
+                val todayEpochDay = System.currentTimeMillis() / 86_400_000L
+                val lastEpochDay = prefs[Keys.LAST_LISTENING_EPOCH_DAY] ?: todayEpochDay
+                val delta = (todayEpochDay - lastEpochDay).toInt().coerceAtLeast(0)
+                val days = when {
+                    delta == 0 -> baseDays.toMutableList()
+                    delta >= 90 -> MutableList(90) { 0 }
+                    else -> (baseDays.drop(delta) + List(delta) { 0 }).toMutableList()
+                }
                 days[days.lastIndex] = days.last() + 1
                 prefs[Keys.DAILY_LISTENING_CSV] = days.joinToString(",")
+                prefs[Keys.LAST_LISTENING_EPOCH_DAY] = todayEpochDay
             }
         }
     }
@@ -321,6 +668,59 @@ class LohePreferencesRepository(private val context: Context) {
         context.loheDataStore.edit {
             it[Keys.AUTO_DELETE_PLAYED] = autoDeletePlayedPolicy
             it[Keys.MAX_CACHE_MB] = maxCacheSizeMb
+        }
+    }
+
+    suspend fun setHomeCardEnabled(card: HomeCardType, enabled: Boolean, isProUnlocked: Boolean) {
+        context.loheDataStore.edit { prefs ->
+            val current = HomeCardType.fromCsv(prefs[Keys.HOME_CARDS_CSV], isProUnlocked).toMutableSet()
+            if (enabled) current.add(card) else current.remove(card)
+            prefs[Keys.HOME_CARDS_CSV] = current.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun resetHomeCardsToDefault() {
+        context.loheDataStore.edit { prefs ->
+            prefs.remove(Keys.HOME_CARDS_CSV)
+        }
+    }
+
+    suspend fun setListeningHistoryRange(range: ListeningHistoryRange) {
+        context.loheDataStore.edit { prefs ->
+            prefs[Keys.LISTENING_HISTORY_DAYS] = range.days
+        }
+    }
+
+    suspend fun setSwipeActions(rightAction: EpisodeSwipeAction, leftAction: EpisodeSwipeAction) {
+        context.loheDataStore.edit { prefs ->
+            prefs[Keys.SWIPE_RIGHT_ACTION] = rightAction.name
+            prefs[Keys.SWIPE_LEFT_ACTION] = leftAction.name
+        }
+    }
+
+    suspend fun setPodcastSortOption(sort: PodcastSortOption) {
+        context.loheDataStore.edit { prefs ->
+            prefs[Keys.PODCAST_SORT_OPTION] = sort.name
+        }
+    }
+
+    suspend fun setPodcastFilterOption(filter: PodcastFilterOption) {
+        context.loheDataStore.edit { prefs ->
+            prefs[Keys.PODCAST_FILTER_OPTION] = filter.name
+        }
+    }
+
+    suspend fun setToastSettings(
+        enabled: Boolean,
+        duration: ToastDurationOption,
+        style: ToastVisualStyle,
+        placement: ToastPlacement
+    ) {
+        context.loheDataStore.edit { prefs ->
+            prefs[Keys.TOAST_ENABLED] = enabled
+            prefs[Keys.TOAST_DURATION] = duration.name
+            prefs[Keys.TOAST_STYLE] = style.name
+            prefs[Keys.TOAST_PLACEMENT] = placement.name
         }
     }
 }

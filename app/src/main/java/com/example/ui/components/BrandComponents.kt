@@ -14,6 +14,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import java.text.NumberFormat
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -80,6 +84,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -99,6 +105,7 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import com.example.R
+import com.example.data.local.ListeningHistoryRange
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.QueueIndicatorStyle
 import com.example.edition.Edition
@@ -141,9 +148,39 @@ fun formatDurationCompactHuman(ms: Long): String {
     val hours = (totalMinutes % (60 * 24)) / 60
     val mins = totalMinutes % 60
     return when {
+        days >= 10 -> "${NumberFormat.getIntegerInstance().format(days)}d ${hours}h"
         days > 0 -> "${days}d ${hours}h ${mins}m"
         hours > 0 -> "${hours}h ${mins}m"
         else -> "${mins}m"
+    }
+}
+
+fun formatCompactMinutes(totalMinutes: Long): String {
+    val safeMins = totalMinutes.coerceAtLeast(0L)
+    if (safeMins < 60L) return "${safeMins}m"
+    val hours = safeMins / 60L
+    val rem = safeMins % 60L
+    return when {
+        hours >= 100L -> "${NumberFormat.getIntegerInstance().format(hours)}h"
+        rem == 0L -> "${hours}h"
+        else -> "${hours}h ${rem}m"
+    }
+}
+
+fun formatCompactCount(count: Int): String {
+    val safe = count.coerceAtLeast(0)
+    return when {
+        safe >= 1_000_000 -> {
+            val millions = safe / 1_000_000.0
+            val formatted = String.format(java.util.Locale.US, "%.1f", millions).removeSuffix(".0")
+            "${formatted}M"
+        }
+        safe >= 10_000 -> {
+            val thousands = safe / 1_000.0
+            val formatted = String.format(java.util.Locale.US, "%.1f", thousands).removeSuffix(".0")
+            "${formatted}K"
+        }
+        else -> NumberFormat.getIntegerInstance().format(safe)
     }
 }
 
@@ -161,7 +198,7 @@ fun PodcastArtworkThumbnail(
         val hash = kotlin.math.abs(title.hashCode())
         when (hash % 4) {
             0 -> listOf(Color(0xFF0A4DA2), Color(0xFF008EFF))
-            1 -> listOf(Color(0xFF0B525B), Color(0xFF00B4D8))
+            1 -> listOf(Color(0xFF2A3444), Color(0xFF6B778C))
             2 -> listOf(Color(0xFF1D3557), Color(0xFF457B9D))
             else -> listOf(Color(0xFF283618), Color(0xFF0077B6))
         }
@@ -173,9 +210,17 @@ fun PodcastArtworkThumbnail(
             .background(Brush.linearGradient(palette)),
         contentAlignment = Alignment.Center
     ) {
-        if (artworkUrl.isNotBlank()) {
+        val safeArtUrl = remember(artworkUrl) {
+            val trimmed = artworkUrl.trim()
+            if (trimmed.startsWith("https://", ignoreCase = true) ||
+                trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("content://", ignoreCase = true) ||
+                trimmed.startsWith("file://", ignoreCase = true)
+            ) trimmed else ""
+        }
+        if (safeArtUrl.isNotEmpty()) {
             AsyncImage(
-                model = artworkUrl,
+                model = safeArtUrl,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -509,9 +554,11 @@ private fun HomeFlyingKaniStage(
             .drawBehind {
                 @Suppress("UNUSED_VARIABLE")
                 val redrawTrigger = frameTick
-                drawIntoCanvas { canvas ->
-                    activeDrawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())
-                    activeDrawable.draw(canvas.nativeCanvas)
+                if (size.width >= 1f && size.height >= 1f) {
+                    drawIntoCanvas { canvas ->
+                        activeDrawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())
+                        activeDrawable.draw(canvas.nativeCanvas)
+                    }
                 }
             }
             .testTag("home_kani_flight_overlay")
@@ -525,6 +572,34 @@ private fun HomeFlyingKaniStage(
  * - TIME PLAYED, TIME SAVED, STILL TO HEAR
  * - Multi-bar equalizer progress strip at bottom
  */
+internal val DEFAULT_AUDIOGRAM_BAR_HEIGHTS = listOf(
+    8f, 12f, 16f, 11f, 14f, 9f, 17f, 13f, 10f, 15f,
+    19f, 12f, 14f, 9f, 16f, 11f, 14f, 18f, 12f, 10f, 15f, 11f
+)
+
+/**
+ * Computes the height (in dp) for a single bar in the homepage audiogram strip.
+ * When actively playing (and reduced motion is off), dual staggered harmonic waves
+ * drive dynamic per-bar motion across the entire strip.
+ */
+fun computeAudiogramBarHeightDp(
+    barIndex: Int,
+    baseHeightDp: Float,
+    isPlaying: Boolean,
+    reducedMotion: Boolean,
+    phaseA: Float,
+    phaseB: Float,
+    maxHeightDp: Float = 22f
+): Float {
+    if (!isPlaying || reducedMotion) return baseHeightDp.coerceIn(4f, maxHeightDp)
+    val primaryWave = sin(phaseA + barIndex * 0.68f)
+    val secondaryWave = cos(phaseB - barIndex * 0.43f)
+    val combinedNorm = ((primaryWave * 0.62f + secondaryWave * 0.38f) + 1f) * 0.5f // 0..1
+    val amplitude = 0.42f + 0.68f * combinedNorm
+    val dynamicBounce = 4.0f * ((primaryWave + 1f) * 0.5f)
+    return (baseHeightDp * amplitude + dynamicBounce).coerceIn(5f, maxHeightDp)
+}
+
 @Composable
 fun YourSignalCard(
     playedPercent: Int,
@@ -536,6 +611,8 @@ fun YourSignalCard(
     timeSavedMs: Long,
     stillToHearMs: Long,
     waitingEpisodesCount: Int,
+    isPlaying: Boolean = false,
+    reducedMotion: Boolean = false,
     onInProgressClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -559,7 +636,7 @@ fun YourSignalCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -575,16 +652,22 @@ fun YourSignalCard(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             ),
-                            color = LoheBrightBlueText
+                            color = LoheBrightBlueText,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     Text(
-                        text = "$playedCount of $totalEpisodesCount episodes",
+                        text = "${formatCompactCount(playedCount)} of ${formatCompactCount(totalEpisodesCount)} episodes",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(start = 16.dp, top = 2.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -606,12 +689,9 @@ fun YourSignalCard(
                     Text(
                         text = buildAnnotatedString {
                             withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)) {
-                                append("$inProgressCount")
+                                append(formatCompactCount(inProgressCount))
                             }
-                            append(
-                                if (inProgressCount == 1) " episode in progress"
-                                else " episodes in progress"
-                            )
+                            append(" in progress")
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -741,36 +821,119 @@ fun YourSignalCard(
                     SignalStatRow(
                         label = "STILL TO HEAR",
                         value = formatDurationCompactHuman(stillToHearMs),
-                        subtext = "$waitingEpisodesCount episodes waiting"
+                        subtext = "${formatCompactCount(waitingEpisodesCount)} episodes waiting"
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Multi-bar equalizer progress strip
-            val heights = listOf(
-                8, 12, 16, 11, 14, 9, 17, 13, 10, 15,
-                19, 12, 14, 9, 16, 11, 14, 18, 12, 10, 15, 11
+            // Multi-bar equalizer / audiogram strip — dynamically moves while playing
+            HomeAudiogramStrip(
+                playedPercent = playedPercent,
+                isPlaying = isPlaying,
+                reducedMotion = reducedMotion,
+                trackColor = trackColor
             )
-            val filledBars = ((playedPercent / 100f) * heights.size).toInt().coerceIn(1, heights.size)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                heights.forEachIndexed { idx, h ->
-                    val active = idx < filledBars
-                    Box(
-                        modifier = Modifier
-                            .width(7.dp)
-                            .height(h.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(if (active) LoheElectricBlue else trackColor)
+        }
+    }
+}
+
+@Composable
+fun HomeAudiogramStrip(
+    playedPercent: Int,
+    isPlaying: Boolean,
+    reducedMotion: Boolean,
+    trackColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val animateWave = isPlaying && !reducedMotion
+    var phaseA by remember { mutableFloatStateOf(0f) }
+    var phaseB by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(animateWave) {
+        if (!animateWave) {
+            phaseA = 0f
+            phaseB = 0f
+            return@LaunchedEffect
+        }
+        val twoPi = (2.0 * PI).toFloat()
+        var startNanos = -1L
+        while (true) {
+            withInfiniteAnimationFrameNanos { frameNanos ->
+                if (startNanos < 0L) startNanos = frameNanos
+                val elapsedMs = ((frameNanos - startNanos) / 1_000_000.0).toFloat()
+                phaseA = ((elapsedMs / 1200f) * twoPi) % twoPi
+                phaseB = ((elapsedMs / 1850f) * twoPi) % twoPi
+            }
+        }
+    }
+
+    val heights = DEFAULT_AUDIOGRAM_BAR_HEIGHTS
+    val filledBars = ((playedPercent / 100f) * heights.size).toInt().coerceIn(1, heights.size)
+    val activeBrush = Brush.verticalGradient(
+        colors = listOf(LoheCyanAccent, LoheElectricBlue)
+    )
+    val inactivePlayingColor = LoheElectricBlue.copy(alpha = 0.34f)
+    val statusDesc = if (animateWave) "Playing audiogram" else "Paused audiogram"
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .semantics { stateDescription = statusDesc }
+            .testTag("your_signal_audiogram")
+    ) {
+        val barCount = heights.size
+        if (size.width <= 0f || size.height <= 0f || barCount == 0) return@Canvas
+        val maxSlotWidth = (size.width / (barCount * 1.5f)).coerceAtLeast(1f)
+        val barWidthPx = 7.dp.toPx().coerceIn(1f, maxSlotWidth)
+        val spacing = if (barCount > 1) {
+            ((size.width - barCount * barWidthPx) / (barCount - 1)).coerceAtLeast(0f)
+        } else {
+            0f
+        }
+        val maxHeightDp = 22f
+        val cornerRadiusPx = (barWidthPx / 2f).coerceAtLeast(0.5f)
+
+        heights.forEachIndexed { idx, baseDp ->
+            val barHeightDp = computeAudiogramBarHeightDp(
+                barIndex = idx,
+                baseHeightDp = baseDp,
+                isPlaying = isPlaying,
+                reducedMotion = reducedMotion,
+                phaseA = phaseA,
+                phaseB = phaseB,
+                maxHeightDp = maxHeightDp
+            )
+            val barHeightPx = barHeightDp.dp.toPx().coerceIn(1f, size.height)
+            val left = idx * (barWidthPx + spacing)
+            val top = ((size.height - barHeightPx) / 2f).coerceAtLeast(0f)
+            val isActiveBar = idx < filledBars
+
+            if (isActiveBar) {
+                if (animateWave) {
+                    drawRoundRect(
+                        brush = activeBrush,
+                        topLeft = Offset(left, top),
+                        size = Size(barWidthPx, barHeightPx),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadiusPx, cornerRadiusPx)
+                    )
+                } else {
+                    drawRoundRect(
+                        color = LoheElectricBlue,
+                        topLeft = Offset(left, top),
+                        size = Size(barWidthPx, barHeightPx),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadiusPx, cornerRadiusPx)
                     )
                 }
+            } else {
+                drawRoundRect(
+                    color = if (animateWave) inactivePlayingColor else trackColor,
+                    topLeft = Offset(left, top),
+                    size = Size(barWidthPx, barHeightPx),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadiusPx, cornerRadiusPx)
+                )
             }
         }
     }
@@ -803,7 +966,10 @@ private fun SignalStatRow(
             text = value,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
         Text(
             text = subtext,
@@ -815,29 +981,273 @@ private fun SignalStatRow(
     }
 }
 
+data class HistoryBarBucket(
+    val label: String,
+    val minutes: Int
+)
+
+data class ListeningHistorySummary(
+    val buckets: List<HistoryBarBucket>,
+    val totalMinutes: Long,
+    val dailyAverageMinutes: Long,
+    val streakDays: Int,
+    val leftAxisLabel: String,
+    val midAxisLabel: String,
+    val rightAxisLabel: String = "Today",
+    val playedEpisodesCount: Int = 0
+)
+
+private const val MIN_VALID_HISTORY_EPOCH_MS = 1_104_537_600_000L // 2005-01-01T00:00:00Z
+
+private fun normalizeHistoryEpochMs(raw: Long): Long {
+    if (raw <= 0L) return 0L
+    val ms = if (raw < 100_000_000_000L) raw * 1000L else raw
+    return if (ms >= MIN_VALID_HISTORY_EPOCH_MS) ms else 0L
+}
+
 /**
- * LISTENING ACTIVITY 14-day bar chart matching compact-nav81-ready_5458b234.png
+ * Computes accurate listening history by combining live daily playback logs
+ * with real episode completion timestamps (`playedAt`, falling back to `publishedAt`
+ * for historical played episodes without a completion date) across all active and
+ * archived episodes, strictly scoped to the selected window (7D, 14D, 30D, 90D, or All time).
+ */
+fun computeListeningHistorySummary(
+    episodes: List<com.example.data.local.EpisodeEntity>,
+    dailyMinutes: List<Int>,
+    historyRange: ListeningHistoryRange,
+    nowMs: Long = System.currentTimeMillis()
+): ListeningHistorySummary {
+    val msPerDay = 86_400_000L
+    val todayEpochDay = nowMs / msPerDay
+
+    // Map played & in-progress episodes onto calendar epoch days
+    val episodeMinsByDay = mutableMapOf<Long, Int>()
+    val playedCountByDay = mutableMapOf<Long, Int>()
+    var undatedPlayedMins = 0L
+    var undatedPlayedCount = 0
+
+    episodes.forEach { ep ->
+        val listenedMs = when {
+            ep.isPlayed -> ep.durationMs.coerceAtLeast(ep.resumePositionMs)
+            ep.resumePositionMs > 0L -> ep.resumePositionMs
+            else -> 0L
+        }
+        val mins = (listenedMs / 60_000L).toInt()
+        val normalizedPlayedAt = normalizeHistoryEpochMs(ep.playedAt)
+        val normalizedPubAt = normalizeHistoryEpochMs(ep.publishedAt)
+        val effectiveTs = when {
+            normalizedPlayedAt > 0L -> normalizedPlayedAt
+            ep.isPlayed && normalizedPubAt > 0L -> normalizedPubAt
+            else -> 0L
+        }
+
+        if (effectiveTs > 0L) {
+            val day = (effectiveTs / msPerDay).coerceAtMost(todayEpochDay)
+            if (mins > 0) {
+                episodeMinsByDay[day] = (episodeMinsByDay[day] ?: 0) + mins
+            }
+            if (ep.isPlayed) {
+                playedCountByDay[day] = (playedCountByDay[day] ?: 0) + 1
+            }
+        } else if (ep.isPlayed) {
+            undatedPlayedCount++
+            if (mins > 0) {
+                undatedPlayedMins += mins
+            }
+        }
+    }
+
+    // Map the 90-day rolling logged dailyMinutes array onto calendar epoch days
+    val loggedMinsByDay = mutableMapOf<Long, Int>()
+    dailyMinutes.forEachIndexed { idx, mins ->
+        if (mins > 0) {
+            val daysAgo = (dailyMinutes.lastIndex - idx).toLong()
+            val day = todayEpochDay - daysAgo
+            loggedMinsByDay[day] = mins
+        }
+    }
+
+    fun combinedMinutesForDay(day: Long): Int =
+        maxOf(loggedMinsByDay[day] ?: 0, episodeMinsByDay[day] ?: 0)
+
+    if (historyRange == ListeningHistoryRange.ALL_TIME) {
+        val allActiveDays = (episodeMinsByDay.keys + loggedMinsByDay.keys + playedCountByDay.keys)
+            .filter { combinedMinutesForDay(it) > 0 || (playedCountByDay[it] ?: 0) > 0 }
+        val earliestDay = allActiveDays.minOrNull() ?: (todayEpochDay - 89L)
+        val totalSpanDays = ((todayEpochDay - earliestDay) + 1L).toInt().coerceAtLeast(14)
+        val bucketCount = 15
+        val daysPerBucket = ((totalSpanDays + bucketCount - 1) / bucketCount).coerceAtLeast(1)
+        val dateFmt = java.text.SimpleDateFormat("MMM ''yy", java.util.Locale.getDefault())
+        val shortDateFmt = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
+        val useYearFormat = totalSpanDays > 180
+
+        val buckets = (0 until bucketCount).map { bIdx ->
+            val startOffset = (bucketCount - 1 - bIdx) * daysPerBucket
+            val endDay = todayEpochDay - startOffset
+            val startDay = (endDay - daysPerBucket + 1).coerceAtLeast(earliestDay)
+            var sum = 0
+            for (d in startDay..endDay) {
+                sum += combinedMinutesForDay(d)
+            }
+            if (bIdx == 0 && undatedPlayedMins > 0L) {
+                sum += undatedPlayedMins.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+            val label = when {
+                bIdx == bucketCount - 1 -> if (daysPerBucket <= 1) "Today" else "Recent"
+                else -> {
+                    val sampleMs = startDay * msPerDay
+                    if (useYearFormat) dateFmt.format(java.util.Date(sampleMs))
+                    else shortDateFmt.format(java.util.Date(sampleMs))
+                }
+            }
+            HistoryBarBucket(label = label, minutes = sum)
+        }
+
+        val grandTotal = buckets.sumOf { it.minutes.toLong() }
+        val totalPlayedCount = playedCountByDay.values.sum() + undatedPlayedCount
+        var streak = 0
+        var cursor = todayEpochDay
+        while (streak < 3650 && combinedMinutesForDay(cursor) > 0) {
+            streak++
+            cursor--
+        }
+        val leftLabel = if (useYearFormat) {
+            dateFmt.format(java.util.Date(earliestDay * msPerDay))
+        } else {
+            shortDateFmt.format(java.util.Date(earliestDay * msPerDay))
+        }
+        val midDay = earliestDay + (todayEpochDay - earliestDay) / 2L
+        val midLabel = if (useYearFormat) {
+            dateFmt.format(java.util.Date(midDay * msPerDay))
+        } else {
+            shortDateFmt.format(java.util.Date(midDay * msPerDay))
+        }
+        return ListeningHistorySummary(
+            buckets = buckets,
+            totalMinutes = grandTotal,
+            dailyAverageMinutes = if (totalSpanDays > 0) grandTotal / totalSpanDays else 0L,
+            streakDays = streak,
+            leftAxisLabel = leftLabel,
+            midAxisLabel = midLabel,
+            rightAxisLabel = "Today",
+            playedEpisodesCount = totalPlayedCount
+        )
+    }
+
+    val target = historyRange.days
+    var windowPlayedCount = 0
+    val windowDays = (0 until target).map { idx ->
+        val daysAgo = (target - 1 - idx).toLong()
+        val day = todayEpochDay - daysAgo
+        windowPlayedCount += (playedCountByDay[day] ?: 0)
+        combinedMinutesForDay(day)
+    }
+
+    val buckets = if (historyRange == ListeningHistoryRange.DAYS_90) {
+        val chunkSize = 6
+        val chunks = windowDays.chunked(chunkSize)
+        chunks.mapIndexed { idx, chunk ->
+            val periodsFromEnd = chunks.lastIndex - idx
+            val label = when (periodsFromEnd) {
+                0 -> "Last ${chunk.size} days"
+                else -> {
+                    val endDaysAgo = periodsFromEnd * chunkSize
+                    val startDaysAgo = endDaysAgo + chunk.size - 1
+                    "${startDaysAgo}–${endDaysAgo}d ago"
+                }
+            }
+            HistoryBarBucket(label = label, minutes = chunk.sum())
+        }
+    } else {
+        windowDays.mapIndexed { idx, mins ->
+            val daysAgo = windowDays.lastIndex - idx
+            val label = when (daysAgo) {
+                0 -> "Today"
+                1 -> "Yesterday"
+                else -> "${daysAgo}d ago"
+            }
+            HistoryBarBucket(label = label, minutes = mins)
+        }
+    }
+
+    val totalMins = windowDays.sumOf { it.toLong() }
+    val avgMins = if (windowDays.isNotEmpty()) totalMins / windowDays.size else 0L
+    var streak = 0
+    for (i in windowDays.lastIndex downTo 0) {
+        if (windowDays[i] > 0) streak++ else break
+    }
+    val leftAxis = "${target}d ago"
+    val midAxis = "${(target + 1) / 2}d ago"
+    return ListeningHistorySummary(
+        buckets = buckets,
+        totalMinutes = totalMins,
+        dailyAverageMinutes = avgMins,
+        streakDays = streak,
+        leftAxisLabel = leftAxis,
+        midAxisLabel = midAxis,
+        rightAxisLabel = "Today",
+        playedEpisodesCount = windowPlayedCount
+    )
+}
+
+/**
+ * LISTENING HISTORY chart redesigned to scale gracefully with large listening durations
+ * and configurable history windows (7, 14, 30, 90 days, or All time).
  */
 @Composable
 fun ListeningActivity14DayCard(
     dailyMinutes: List<Int>,
+    episodes: List<com.example.data.local.EpisodeEntity> = emptyList(),
     totalTimeSavedMs: Long = 0L,
+    historyRange: ListeningHistoryRange = ListeningHistoryRange.DAYS_14,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
     val cardColor = if (isDark) LoheSurfaceCardDark else MaterialTheme.colorScheme.surface
     val borderColor = if (isDark) LoheBorderDark else MaterialTheme.colorScheme.outline
-    val maxMins = (dailyMinutes.maxOrNull() ?: 30).coerceAtLeast(10)
-    val totalMins = dailyMinutes.sum()
-    val avgMins = if (dailyMinutes.isNotEmpty()) totalMins / dailyMinutes.size else 0
-    val streakDays = remember(dailyMinutes) {
-        var streak = 0
-        for (i in dailyMinutes.lastIndex downTo 0) {
-            if (dailyMinutes[i] > 0) streak++ else break
-        }
-        streak
+    val innerBg = if (isDark) Color(0xFF0A111C) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val guideLineColor = if (isDark) Color(0xFF1F2C3D) else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+
+    val summary = remember(episodes, dailyMinutes, historyRange) {
+        computeListeningHistorySummary(
+            episodes = episodes,
+            dailyMinutes = dailyMinutes,
+            historyRange = historyRange
+        )
     }
+    val buckets = summary.buckets
+
+    val rawMax = remember(buckets) { buckets.maxOfOrNull { it.minutes } ?: 0 }
+    val scaleMax = rawMax.coerceAtLeast(15)
+    val peakIndex = remember(buckets) {
+        buckets.indices.maxByOrNull { buckets[it].minutes } ?: (buckets.lastIndex.coerceAtLeast(0))
+    }
+    val totalMins = summary.totalMinutes
+    val avgMins = summary.dailyAverageMinutes
+    val streakDays = summary.streakDays
     val savedMins = (totalTimeSavedMs / 60_000L).coerceAtLeast(0L)
+    var selectedBucketIndex by remember(historyRange, buckets.size) { mutableIntStateOf(-1) }
+
+    val activeIdx = if (selectedBucketIndex in buckets.indices) selectedBucketIndex else peakIndex
+    val activeBucket = buckets.getOrNull(activeIdx)
+    val activeMinutes = (activeBucket?.minutes ?: 0).toLong()
+    val activeLabel = if (selectedBucketIndex in buckets.indices) {
+        activeBucket?.label ?: "Selected"
+    } else {
+        when (historyRange) {
+            ListeningHistoryRange.DAYS_90 -> "Peak 6-day period"
+            ListeningHistoryRange.ALL_TIME -> "Peak period"
+            else -> "Peak day"
+        }
+    }
+
+    val barSpacing = when (historyRange) {
+        ListeningHistoryRange.DAYS_7 -> 8.dp
+        ListeningHistoryRange.DAYS_14 -> 5.dp
+        ListeningHistoryRange.DAYS_30 -> 2.dp
+        ListeningHistoryRange.DAYS_90, ListeningHistoryRange.ALL_TIME -> 4.dp
+    }
+    val barTopRadius = if (historyRange == ListeningHistoryRange.DAYS_30) 3.dp else 5.dp
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -848,94 +1258,295 @@ fun ListeningActivity14DayCard(
             .testTag("listening_activity_card")
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Header row: Title + compact range/streak pill
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(LoheCyanAccent)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "LISTENING HISTORY",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            letterSpacing = 1.4.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        ),
+                        color = LoheBrightBlueText,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(LoheCyanAccent.copy(alpha = 0.12f))
+                        .border(1.dp, LoheCyanAccent.copy(alpha = 0.35f), RoundedCornerShape(50))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (historyRange == ListeningHistoryRange.ALL_TIME) "All time" else "Last ${historyRange.label}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDark) LoheCyanAccent else LoheBrightBlueText,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 3-column KPI strip that cleanly scales for huge durations (e.g. 142h, 1,240h)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(innerBg)
+                    .border(1.dp, borderColor.copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ActivityKpiColumn(
+                    label = "${historyRange.shortLabel} TOTAL",
+                    value = formatCompactMinutes(totalMins),
+                    valueColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(28.dp)
+                        .background(borderColor.copy(alpha = 0.7f))
+                )
+                ActivityKpiColumn(
+                    label = "DAILY AVG",
+                    value = formatCompactMinutes(avgMins),
+                    valueColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(28.dp)
+                        .background(borderColor.copy(alpha = 0.7f))
+                )
+                ActivityKpiColumn(
+                    label = "TIME SAVED",
+                    value = formatCompactMinutes(savedMins),
+                    valueColor = if (isDark) LoheCyanAccent else LoheElectricBlue,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Active / Peak readout bar above the chart (never collides with narrow columns)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "LISTENING ACTIVITY",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        letterSpacing = 1.4.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = when {
+                        totalMins == 0L && summary.playedEpisodesCount == 0 -> "No listening logged yet"
+                        totalMins == 0L && summary.playedEpisodesCount > 0 -> "${formatCompactCount(summary.playedEpisodesCount)} played"
+                        summary.playedEpisodesCount > 0 -> "$activeLabel: ${formatCompactMinutes(activeMinutes)} • ${formatCompactCount(summary.playedEpisodesCount)} played"
+                        else -> "$activeLabel: ${formatCompactMinutes(activeMinutes)}"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${totalMins}m total • $streakDays-day streak",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LoheCyanAccent
+                    text = when {
+                        selectedBucketIndex in buckets.indices -> "Tap bar to clear"
+                        streakDays > 0 -> "$streakDays-day streak"
+                        else -> "Tap any bar"
+                    },
+                    fontSize = 10.sp,
+                    fontWeight = if (streakDays > 0 && selectedBucketIndex !in buckets.indices) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (streakDays > 0 && selectedBucketIndex !in buckets.indices) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
+            // Clean interactive bar chart with subtle horizontal guidelines
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(92.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.Bottom
+                    .height(82.dp)
             ) {
-                dailyMinutes.forEach { mins ->
-                    val frac = (mins.toFloat() / maxMins.toFloat()).coerceIn(0.08f, 1f)
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom
-                    ) {
-                        Text(
-                            text = "$mins",
-                            fontSize = 8.sp,
-                            softWrap = false,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Box(
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val midY = size.height * 0.5f
+                    drawLine(
+                        color = guideLineColor,
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, 0f),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                    drawLine(
+                        color = guideLineColor.copy(alpha = 0.65f),
+                        start = Offset(0f, midY),
+                        end = Offset(size.width, midY),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                    drawLine(
+                        color = guideLineColor,
+                        start = Offset(0f, size.height),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(barSpacing),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    buckets.forEachIndexed { idx, bucket ->
+                        val mins = bucket.minutes
+                        val frac = if (mins <= 0) 0.06f else (mins.toFloat() / scaleMax.toFloat()).coerceIn(0.10f, 1f)
+                        val isHighlighted = idx == activeIdx
+                        val isDimmed = selectedBucketIndex in buckets.indices && idx != selectedBucketIndex
+
+                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height((58f * frac).dp)
-                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(LoheCyanAccent, LoheElectricBlue)
-                                    )
+                                .weight(1f)
+                                .fillMaxSize()
+                                .clickable {
+                                    selectedBucketIndex = if (selectedBucketIndex == idx) -1 else idx
+                                }
+                                .testTag("listening_activity_bar_$idx"),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom
+                        ) {
+                            if (isHighlighted && mins > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (historyRange == ListeningHistoryRange.DAYS_30) 4.dp else 5.dp)
+                                        .clip(CircleShape)
+                                        .background(if (selectedBucketIndex == idx) Color.White else LoheCyanAccent)
                                 )
-                        )
+                                Spacer(modifier = Modifier.height(3.dp))
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height((64f * frac).dp)
+                                    .clip(RoundedCornerShape(topStart = barTopRadius, topEnd = barTopRadius))
+                                    .background(
+                                        when {
+                                            mins <= 0 -> Brush.verticalGradient(
+                                                colors = listOf(guideLineColor, guideLineColor)
+                                            )
+                                            isHighlighted -> Brush.verticalGradient(
+                                                colors = listOf(Color.White.copy(alpha = 0.92f), LoheCyanAccent, LoheElectricBlue)
+                                            )
+                                            isDimmed -> Brush.verticalGradient(
+                                                colors = listOf(
+                                                    LoheElectricBlue.copy(alpha = 0.42f),
+                                                    LoheElectricBlue.copy(alpha = 0.22f)
+                                                )
+                                            )
+                                            else -> Brush.verticalGradient(
+                                                colors = listOf(LoheCyanAccent.copy(alpha = 0.9f), LoheElectricBlue)
+                                            )
+                                        }
+                                    )
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
+            // Clean X-axis labels tailored to selected history range
+            val leftAxisLabel = summary.leftAxisLabel
+            val midAxisLabel = summary.midAxisLabel
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Avg ${avgMins}m/day",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = leftAxisLabel,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
                 Text(
-                    text = "Best ${dailyMinutes.maxOrNull() ?: 0}m",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = midAxisLabel,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
                 Text(
-                    text = "${savedMins}m saved",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LoheElectricBlue
+                    text = if (historyRange == ListeningHistoryRange.DAYS_90) "Recent" else "Today",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isDark) LoheCyanAccent else LoheBrightBlueText,
+                    maxLines = 1
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ActivityKpiColumn(
+    label: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 9.sp,
+            letterSpacing = 0.7.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -971,22 +1582,30 @@ fun PrimaryTabTopBar(
                     style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 if (badgeCount != null) {
-                    Spacer(modifier = Modifier.width(10.dp))
+                    val formattedCount = remember(badgeCount) {
+                        NumberFormat.getIntegerInstance().format(badgeCount)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
+                            .defaultMinSize(minWidth = 28.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF153456))
-                            .padding(horizontal = 10.dp, vertical = 2.dp),
+                            .background(LoheElectricBlue.copy(alpha = 0.18f))
+                            .border(1.dp, LoheElectricBlue.copy(alpha = 0.42f), RoundedCornerShape(50))
+                            .padding(horizontal = 9.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$badgeCount",
-                            fontSize = 14.sp,
+                            text = formattedCount,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = LoheBrightBlueText
+                            color = LoheCyanAccent,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -1139,12 +1758,12 @@ fun AboutKaniHeroSection(
                 softWrap = false,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 0.dp)
+                    .offset(y = 5.dp)
                     .testTag("about_version_9sp")
             )
         }
 
-        Spacer(modifier = Modifier.height(26.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         val taglineAnnotated = remember {
             buildAnnotatedString {

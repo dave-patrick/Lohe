@@ -20,6 +20,7 @@ interface DevTools {
     val reportFoldersCount: StateFlow<Int>
     val lastReportSummary: StateFlow<String?>
     val debugApiPort: Int
+    val debugProPreviewEnabled: StateFlow<Boolean>
 
     fun attachRuntime(
         context: Context,
@@ -29,10 +30,12 @@ interface DevTools {
         preferencesRepository: LohePreferencesRepository,
         playerController: LohePlayerController,
         podcastAppImporter: PodcastAppImporter,
-        onStatusNotice: (String) -> Unit
+        onStatusNotice: (String) -> Unit,
+        onRefreshProEntitlement: () -> Unit = {}
     )
 
     fun setDiagnosticsEnabled(enabled: Boolean)
+    fun setDebugProPreviewEnabled(enabled: Boolean)
     fun recordEvent(category: String, message: String)
     fun captureBugReport(): File?
     fun listReportFolders(): List<File>
@@ -73,6 +76,9 @@ object NoOpDevTools : DevTools {
 
     override val debugApiPort: Int = -1
 
+    private val _debugProPreviewEnabled = MutableStateFlow(false)
+    override val debugProPreviewEnabled: StateFlow<Boolean> = _debugProPreviewEnabled.asStateFlow()
+
     override fun attachRuntime(
         context: Context,
         scope: CoroutineScope,
@@ -81,10 +87,12 @@ object NoOpDevTools : DevTools {
         preferencesRepository: LohePreferencesRepository,
         playerController: LohePlayerController,
         podcastAppImporter: PodcastAppImporter,
-        onStatusNotice: (String) -> Unit
+        onStatusNotice: (String) -> Unit,
+        onRefreshProEntitlement: () -> Unit
     ) = Unit
 
     override fun setDiagnosticsEnabled(enabled: Boolean) = Unit
+    override fun setDebugProPreviewEnabled(enabled: Boolean) = Unit
     override fun recordEvent(category: String, message: String) = Unit
     override fun captureBugReport(): File? = null
     override fun listReportFolders(): List<File> = emptyList()

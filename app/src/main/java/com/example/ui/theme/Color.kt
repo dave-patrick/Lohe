@@ -15,7 +15,7 @@ val LoheMiniPlayerEndDark = Color(0xFF1C2533)
 val LoheMiniPlayerBorderDark = Color(0xFF2A3E5C)
 
 val LoheElectricBlue = Color(0xFF008EFF)
-val LoheCyanAccent = Color(0xFF00D2FF)
+val LoheCyanAccent = Color(0xFF9AA3B2)
 val LoheBrightBlueText = Color(0xFF2997FF)
 val LoheTextPrimaryDark = Color(0xFFF4F4F5)
 val LoheTextMutedDark = Color(0xFF8E8E93)

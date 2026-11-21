@@ -48,7 +48,7 @@ interface LoheDao {
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC")
     fun getAllEpisodes(): Flow<List<EpisodeEntity>>
 
-    @Query("SELECT * FROM episodes WHERE inUpNext = 1 AND isArchived = 0 ORDER BY upNextOrder ASC, publishedAt DESC")
+    @Query("SELECT * FROM episodes WHERE inUpNext = 1 AND isPlayed = 0 AND isArchived = 0 ORDER BY upNextOrder ASC, publishedAt DESC")
     fun getUpNextEpisodes(): Flow<List<EpisodeEntity>>
 
     @Query("SELECT * FROM episodes WHERE resumePositionMs > 0 AND isPlayed = 0 AND isArchived = 0 ORDER BY publishedAt DESC")
@@ -72,11 +72,41 @@ interface LoheDao {
     @Update
     suspend fun updateEpisode(episode: EpisodeEntity)
 
-    @Query("UPDATE episodes SET resumePositionMs = :positionMs, durationMs = CASE WHEN :durationMs > 0 THEN :durationMs ELSE durationMs END WHERE id = :episodeId")
+    @Query("UPDATE episodes SET resumePositionMs = :positionMs, durationMs = CASE WHEN :durationMs > 0 THEN :durationMs ELSE durationMs END WHERE id = :episodeId AND isPlayed = 0")
     suspend fun updatePlaybackPosition(episodeId: String, positionMs: Long, durationMs: Long)
 
-    @Query("UPDATE episodes SET isPlayed = :played, resumePositionMs = CASE WHEN :played = 1 THEN 0 ELSE resumePositionMs END, inUpNext = CASE WHEN :played = 1 THEN 0 ELSE inUpNext END WHERE id = :episodeId")
-    suspend fun markEpisodePlayed(episodeId: String, played: Boolean)
+    @Query("UPDATE episodes SET isPlayed = :played, playedAt = CASE WHEN :played = 1 THEN :playedAtMs ELSE 0 END, resumePositionMs = CASE WHEN :played = 1 THEN 0 ELSE resumePositionMs END, inUpNext = CASE WHEN :played = 1 THEN 0 ELSE inUpNext END WHERE id = :episodeId")
+    suspend fun markEpisodePlayed(episodeId: String, played: Boolean, playedAtMs: Long = System.currentTimeMillis())
+
+    @Query("UPDATE episodes SET isPlayed = 0, playedAt = 0, resumePositionMs = 0 WHERE id = :episodeId")
+    suspend fun resetEpisodeProgress(episodeId: String)
+
+    @Query("UPDATE episodes SET inUpNext = :inUpNext, upNextOrder = :upNextOrder WHERE id = :episodeId")
+    suspend fun updateEpisodeUpNext(episodeId: String, inUpNext: Boolean, upNextOrder: Int)
+
+    @Query("UPDATE episodes SET isStarred = :isStarred WHERE id = :episodeId")
+    suspend fun updateEpisodeStarred(episodeId: String, isStarred: Boolean)
+
+    @Query("UPDATE episodes SET isArchived = 1, inUpNext = 0, upNextOrder = 0 WHERE id = :episodeId")
+    suspend fun updateEpisodeArchived(episodeId: String)
+
+    @Query("UPDATE episodes SET isDownloaded = :downloaded, localFilePath = :localFilePath WHERE id = :episodeId")
+    suspend fun updateEpisodeDownloaded(episodeId: String, downloaded: Boolean, localFilePath: String)
+
+    @Query("UPDATE episodes SET chaptersJson = :chaptersJson WHERE id = :episodeId")
+    suspend fun updateEpisodeChapters(episodeId: String, chaptersJson: String)
+
+    @Query("UPDATE episodes SET transcriptText = :transcriptText WHERE id = :episodeId")
+    suspend fun updateEpisodeTranscript(episodeId: String, transcriptText: String)
+
+    @Query("UPDATE episodes SET durationMs = :durationMs, publishedAt = :publishedAt, artworkUrl = :artworkUrl, descriptionHtml = :descriptionHtml WHERE id = :episodeId")
+    suspend fun healEpisodeMetadata(
+        episodeId: String,
+        durationMs: Long,
+        publishedAt: Long,
+        artworkUrl: String,
+        descriptionHtml: String
+    )
 
     @Query("UPDATE episodes SET inUpNext = 0, upNextOrder = 0")
     suspend fun clearUpNextQueue()
@@ -98,6 +128,9 @@ interface LoheDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlaylists(playlists: List<PlaylistEntity>)
+
+    @Query("SELECT * FROM custom_playlists WHERE id = :playlistId LIMIT 1")
+    suspend fun getPlaylistById(playlistId: String): PlaylistEntity?
 
     @Update
     suspend fun updatePlaylist(playlist: PlaylistEntity)

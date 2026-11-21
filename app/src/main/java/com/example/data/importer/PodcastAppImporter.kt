@@ -96,6 +96,32 @@ class PodcastAppImporter(
                 .lowercase(Locale.ROOT)
                 .replace(Regex("\\s+"), " ")
         }
+
+        /**
+         * Normalizes Unix epoch timestamps so seconds (10-digit) are promoted to milliseconds.
+         */
+        fun normalizeEpochMillis(raw: Long): Long {
+            if (raw <= 0L) return 0L
+            return if (raw < 100_000_000_000L) raw * 1000L else raw
+        }
+
+        /**
+         * Parses durations formatted as "HH:MM:SS", "MM:SS", or numeric milliseconds/seconds.
+         */
+        fun parseDurationTextToMs(raw: String): Long {
+            val clean = raw.trim()
+            if (clean.isEmpty()) return 0L
+            if (clean.contains(":")) {
+                val parts = clean.split(":").mapNotNull { it.trim().toLongOrNull() }
+                return when (parts.size) {
+                    3 -> ((parts[0] * 3600L) + (parts[1] * 60L) + parts[2]) * 1000L
+                    2 -> ((parts[0] * 60L) + parts[1]) * 1000L
+                    else -> 0L
+                }.coerceAtLeast(0L)
+            }
+            val numeric = clean.toLongOrNull() ?: return 0L
+            return numeric.coerceAtLeast(0L)
+        }
     }
 
     suspend fun importFromUri(
@@ -652,11 +678,11 @@ class PodcastAppImporter(
             db.rawQuery("SELECT * FROM $feedMediaTable", null).use { cursor ->
                 while (cursor.moveToNext()) {
                     val feedItemId = cursor.getLongOrNull("feeditem", "feed_item", "item_id", "id") ?: continue
-                    val durationMs = cursor.getLongOrDefault(0L, "duration", "duration_ms")
+                    val durationMs = cursor.getDurationMsOrDefault("duration_ms", "duration")
                     val positionMs = cursor.getLongOrDefault(0L, "position", "position_ms", "resume_position")
                     val downloadUrl = cursor.getStringOrBlank("download_url", "enclosure_url", "audio_url", "file_url")
-                    val completionDate = cursor.getLongOrDefault(0L, "playback_completion_date", "played_at", "played_date")
-                    val lastPlayedTime = cursor.getLongOrDefault(0L, "last_played_time")
+                    val completionDate = normalizeEpochMillis(cursor.getLongOrDefault(0L, "playback_completion_date", "played_at", "played_date"))
+                    val lastPlayedTime = normalizeEpochMillis(cursor.getLongOrDefault(0L, "last_played_time"))
                     val playedAtMs = maxOf(completionDate, lastPlayedTime)
                     mediaByFeedItemId[feedItemId] = AntennaPodMediaRow(
                         feedItemId = feedItemId,
@@ -681,7 +707,7 @@ class PodcastAppImporter(
 
                     val title = cursor.getStringOrBlank("title", "name")
                     val guid = cursor.getStringOrBlank("item_identifier", "guid", "uid")
-                    val pubDate = cursor.getLongOrDefault(0L, "PubDate", "pubDate", "pub_date", "published_at")
+                    val pubDate = normalizeEpochMillis(cursor.getLongOrDefault(0L, "PubDate", "pubDate", "pub_date", "published_at"))
                     val readState = cursor.getIntOrDefault(0, "read", "played", "is_played")
                     val description = cursor.getStringOrBlank("description", "content_encoded")
 
@@ -690,15 +716,17 @@ class PodcastAppImporter(
                         cursor.getStringOrBlank("download_url", "enclosure_url", "audio_url", "media_url")
                     }
                     val durationMs = (media?.durationMs ?: 0L).takeIf { it > 0L }
-                        ?: cursor.getLongOrDefault(0L, "duration", "duration_ms")
+                        ?: cursor.getDurationMsOrDefault("duration_ms", "duration")
                     val positionMs = (media?.positionMs ?: 0L).takeIf { it > 0L }
                         ?: cursor.getLongOrDefault(0L, "position", "position_ms", "resume_position")
-                    val itemPlayedAt = cursor.getLongOrDefault(
-                        0L,
-                        "playback_completion_date",
-                        "last_played_time",
-                        "played_at",
-                        "played_date"
+                    val itemPlayedAt = normalizeEpochMillis(
+                        cursor.getLongOrDefault(
+                            0L,
+                            "playback_completion_date",
+                            "last_played_time",
+                            "played_at",
+                            "played_date"
+                        )
                     )
                     val playedAtMs = maxOf(media?.playedAtMs ?: 0L, itemPlayedAt).coerceAtLeast(0L)
 
@@ -808,15 +836,17 @@ class PodcastAppImporter(
                         "media_url",
                         "url"
                     )
-                    val pubDate = cursor.getLongOrDefault(
-                        0L,
-                        "publication_date",
-                        "pub_date",
-                        "pubDate",
-                        "published_at",
-                        "date"
+                    val pubDate = normalizeEpochMillis(
+                        cursor.getLongOrDefault(
+                            0L,
+                            "publication_date",
+                            "pub_date",
+                            "pubDate",
+                            "published_at",
+                            "date"
+                        )
                     )
-                    val durationMs = cursor.getLongOrDefault(0L, "duration", "duration_ms")
+                    val durationMs = cursor.getDurationMsOrDefault("duration_ms", "duration")
                     val positionMs = cursor.getLongOrDefault(
                         0L,
                         "position_to_resume",
@@ -826,13 +856,15 @@ class PodcastAppImporter(
                         "played_duration"
                     )
                     val seenStatus = cursor.getIntOrDefault(0, "seen_status", "played", "read", "is_played")
-                    val playedAtMs = cursor.getLongOrDefault(
-                        0L,
-                        "playback_Date",
-                        "playback_date",
-                        "played_date",
-                        "played_at",
-                        "last_played_time"
+                    val playedAtMs = normalizeEpochMillis(
+                        cursor.getLongOrDefault(
+                            0L,
+                            "playback_Date",
+                            "playback_date",
+                            "played_date",
+                            "played_at",
+                            "last_played_time"
+                        )
                     )
                     val description = cursor.getStringOrBlank("description", "summary")
                     val isStarred = cursor.getIntOrDefault(0, "favorite", "is_starred", "starred") >= 1
@@ -1010,9 +1042,11 @@ class PodcastAppImporter(
                     val mergedInUpNext = matchedExisting.inUpNext || importedEp.inUpNext
                     val mergedArchived = matchedExisting.isArchived || (isNativeLoheMigration && importedEp.isArchived)
 
+                    val healedDuration = matchedExisting.durationMs <= 5_000L && effectiveDuration > matchedExisting.durationMs
                     val stateMovedForward = (!matchedExisting.isPlayed && mergedIsPlayed) ||
                         (mergedPositionMs > matchedExisting.resumePositionMs) ||
                         (mergedPlayedAt > matchedExisting.playedAt) ||
+                        healedDuration ||
                         (!matchedExisting.isStarred && mergedStarred) ||
                         (!matchedExisting.inUpNext && mergedInUpNext) ||
                         (!matchedExisting.isArchived && mergedArchived)
@@ -1020,7 +1054,7 @@ class PodcastAppImporter(
                     val updatedEntity = matchedExisting.copy(
                         guid = matchedExisting.guid.ifBlank { importedEp.guid.trim() },
                         audioUrl = matchedExisting.audioUrl.ifBlank { importedEp.audioUrl.trim() },
-                        durationMs = if (matchedExisting.durationMs > 0L) matchedExisting.durationMs else effectiveDuration,
+                        durationMs = if (matchedExisting.durationMs > 5_000L) matchedExisting.durationMs else effectiveDuration,
                         isPlayed = mergedIsPlayed,
                         resumePositionMs = mergedPositionMs,
                         playedAt = mergedPlayedAt,
@@ -1279,6 +1313,24 @@ class PodcastAppImporter(
         val idx = findColumnIndexIgnoreCase(*names)
         if (idx < 0 || isNull(idx)) return defaultValue
         return runCatching { getInt(idx) }.getOrDefault(defaultValue)
+    }
+
+    private fun Cursor.getDurationMsOrDefault(vararg names: String): Long {
+        for (target in names) {
+            val idx = findColumnIndexIgnoreCase(target)
+            if (idx < 0 || isNull(idx)) continue
+            val rawText = runCatching { getString(idx)?.trim().orEmpty() }.getOrDefault("")
+            if (rawText.contains(":")) {
+                val parsed = parseDurationTextToMs(rawText)
+                if (parsed > 0L) return parsed
+            } else {
+                val numeric = runCatching { getLong(idx) }.getOrNull()
+                    ?: rawText.toLongOrNull()
+                    ?: 0L
+                if (numeric > 0L) return numeric
+            }
+        }
+        return 0L
     }
 
     private fun Cursor.getDoubleOrDefault(defaultValue: Double, vararg names: String): Double {

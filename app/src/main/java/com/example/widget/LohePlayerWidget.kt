@@ -151,7 +151,7 @@ private fun LoheWidgetContent(
     val bgColor = ColorProvider(Color(0xFF0A0F1A))
     val borderTint = ColorProvider(Color(0xFF1E293B))
     val blueAccent = ColorProvider(Color(0xFF008EFF))
-    val cyanAccent = ColorProvider(Color(0xFF00D2FF))
+    val cyanAccent = ColorProvider(Color(0xFF9AA3B2))
     val white = ColorProvider(Color.White)
     val muted = ColorProvider(Color(0xFF94A3B8))
 

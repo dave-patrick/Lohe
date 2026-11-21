@@ -1,9 +1,11 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,13 +15,18 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import java.text.NumberFormat
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -31,21 +38,28 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueuePlayNext
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
@@ -54,6 +68,10 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -75,6 +93,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -84,12 +104,24 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.local.AutoQueueMode
 import com.example.data.local.EpisodeEntity
+import com.example.data.local.EpisodeSwipeAction
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.PodcastEntity
+import com.example.data.local.PodcastFilterOption
+import com.example.data.local.PodcastSortOption
+import com.example.edition.Edition
 import com.example.playback.PlaybackUiState
+import com.example.ui.components.EpisodeBatchAction
+import com.example.ui.components.EpisodeMultiSelectActionBar
+import com.example.ui.components.EpisodeMultiSelectTopBar
 import com.example.ui.components.PodcastArtworkThumbnail
+import com.example.ui.components.PodcastBatchAction
+import com.example.ui.components.PodcastMultiSelectActionBar
 import com.example.ui.components.PrimaryTabTopBar
 import com.example.ui.components.QueueIndicatorBadge
+import com.example.ui.components.SwipeableEpisodeRow
+import com.example.ui.components.UniformCountPillBadge
+import com.example.ui.components.UpNextQueueActionButton
 import com.example.ui.components.formatDurationCompactHuman
 import com.example.ui.theme.LoheBackgroundDark
 import com.example.ui.theme.LoheBorderDark
@@ -97,7 +129,91 @@ import com.example.ui.theme.LoheBrightBlueText
 import com.example.ui.theme.LoheCyanAccent
 import com.example.ui.theme.LoheElectricBlue
 import com.example.ui.theme.LoheSurfaceCardDark
+import com.example.ui.theme.LoheSurfaceDark
 
+fun filterAndSortPodcasts(
+    podcasts: List<PodcastEntity>,
+    episodes: List<EpisodeEntity>,
+    filter: PodcastFilterOption,
+    sort: PodcastSortOption,
+    searchQuery: String = ""
+): List<PodcastEntity> {
+    val episodesByPodcast = episodes.groupBy { it.podcastId }
+    val cleanQuery = searchQuery.trim()
+
+    val filtered = podcasts.filter { podcast ->
+        val matchesQuery = cleanQuery.isBlank() ||
+            podcast.title.contains(cleanQuery, ignoreCase = true) ||
+            podcast.author.contains(cleanQuery, ignoreCase = true) ||
+            podcast.category.contains(cleanQuery, ignoreCase = true)
+        if (!matchesQuery) return@filter false
+
+        val showEpisodes = episodesByPodcast[podcast.id].orEmpty()
+        when (filter) {
+            PodcastFilterOption.ALL -> true
+            PodcastFilterOption.UNPLAYED -> showEpisodes.any { !it.isPlayed }
+            PodcastFilterOption.IN_PROGRESS -> showEpisodes.any { !it.isPlayed && it.resumePositionMs > 0L }
+            PodcastFilterOption.DOWNLOADED -> showEpisodes.any { it.isDownloaded }
+            PodcastFilterOption.STARRED -> showEpisodes.any { it.isStarred }
+            PodcastFilterOption.AUTO_QUEUE -> podcast.autoQueueMode != AutoQueueMode.OFF.name
+            PodcastFilterOption.CUSTOM_AUDIO -> podcast.useCustomAudio
+            PodcastFilterOption.CAUGHT_UP -> showEpisodes.none { !it.isPlayed }
+        }
+    }
+
+    val comparator: Comparator<PodcastEntity> = when (sort) {
+        PodcastSortOption.TITLE_ASC -> compareBy { it.title.lowercase() }
+        PodcastSortOption.TITLE_DESC -> compareByDescending { it.title.lowercase() }
+        PodcastSortOption.LATEST_EPISODE -> compareByDescending<PodcastEntity> { podcast ->
+            episodesByPodcast[podcast.id]?.maxOfOrNull { it.publishedAt } ?: 0L
+        }.thenBy { it.title.lowercase() }
+        PodcastSortOption.MOST_UNPLAYED -> compareByDescending<PodcastEntity> { podcast ->
+            episodesByPodcast[podcast.id]?.count { !it.isPlayed } ?: 0
+        }.thenBy { it.title.lowercase() }
+        PodcastSortOption.LEAST_UNPLAYED -> compareBy<PodcastEntity> { podcast ->
+            episodesByPodcast[podcast.id]?.count { !it.isPlayed } ?: 0
+        }.thenBy { it.title.lowercase() }
+        PodcastSortOption.MOST_EPISODES -> compareByDescending<PodcastEntity> { podcast ->
+            episodesByPodcast[podcast.id]?.size ?: 0
+        }.thenBy { it.title.lowercase() }
+        PodcastSortOption.MOST_LISTENED -> compareByDescending<PodcastEntity> { podcast ->
+            episodesByPodcast[podcast.id]?.sumOf { ep ->
+                if (ep.isPlayed) ep.durationMs.coerceAtLeast(ep.resumePositionMs) else ep.resumePositionMs
+            } ?: 0L
+        }.thenBy { it.title.lowercase() }
+        PodcastSortOption.RECENTLY_UPDATED -> compareByDescending<PodcastEntity> { it.lastSyncedAt }
+            .thenBy { it.title.lowercase() }
+        PodcastSortOption.CATEGORY_ASC -> compareBy<PodcastEntity> {
+            it.category.ifBlank { "zzz" }.lowercase()
+        }.thenBy { it.title.lowercase() }
+    }
+
+    return filtered.sortedWith(comparator)
+}
+
+fun countPodcastsByFilter(
+    podcasts: List<PodcastEntity>,
+    episodes: List<EpisodeEntity>
+): Map<PodcastFilterOption, Int> {
+    val episodesByPodcast = episodes.groupBy { it.podcastId }
+    return PodcastFilterOption.entries.associateWith { filter ->
+        podcasts.count { podcast ->
+            val showEpisodes = episodesByPodcast[podcast.id].orEmpty()
+            when (filter) {
+                PodcastFilterOption.ALL -> true
+                PodcastFilterOption.UNPLAYED -> showEpisodes.any { !it.isPlayed }
+                PodcastFilterOption.IN_PROGRESS -> showEpisodes.any { !it.isPlayed && it.resumePositionMs > 0L }
+                PodcastFilterOption.DOWNLOADED -> showEpisodes.any { it.isDownloaded }
+                PodcastFilterOption.STARRED -> showEpisodes.any { it.isStarred }
+                PodcastFilterOption.AUTO_QUEUE -> podcast.autoQueueMode != AutoQueueMode.OFF.name
+                PodcastFilterOption.CUSTOM_AUDIO -> podcast.useCustomAudio
+                PodcastFilterOption.CAUGHT_UP -> showEpisodes.none { !it.isPlayed }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PodcastsTabScreen(
     settings: LoheUserSettings,
@@ -122,7 +238,14 @@ fun PodcastsTabScreen(
     onRefreshFeeds: () -> Unit = {},
     onUpdateAudioOverrides: (PodcastEntity, Boolean, Float, Boolean, Int) -> Unit = { _, _, _, _, _ -> },
     onPlayNext: (EpisodeEntity) -> Unit = { onToggleUpNext(it, true) },
-    onToggleNotifications: (PodcastEntity, Boolean) -> Unit = { _, _ -> }
+    onToggleNotifications: (PodcastEntity, Boolean) -> Unit = { _, _ -> },
+    onAddToUpNext: (EpisodeEntity, Boolean) -> Unit = { ep, beg -> onToggleUpNext(ep, beg) },
+    onSwipeEpisodeAction: (EpisodeEntity, EpisodeSwipeAction) -> Unit = { _, _ -> },
+    onOpenProUpgradeModal: () -> Unit = {},
+    onSortChange: (PodcastSortOption) -> Unit = {},
+    onFilterChange: (PodcastFilterOption) -> Unit = {},
+    onBatchEpisodeAction: (List<EpisodeEntity>, EpisodeBatchAction) -> Unit = { _, _ -> },
+    onBatchPodcastAction: (List<PodcastEntity>, PodcastBatchAction) -> Unit = { _, _ -> }
 ) {
     val activeShow = remember(podcasts, selectedPodcastId) {
         podcasts.find { it.id == selectedPodcastId }
@@ -144,6 +267,9 @@ fun PodcastsTabScreen(
                 onUnsubscribe = { onUnsubscribePodcast(activeShow.id) },
                 onPlayEpisode = onPlayEpisode,
                 onToggleUpNext = onToggleUpNext,
+                onAddToUpNext = onAddToUpNext,
+                onSwipeEpisodeAction = onSwipeEpisodeAction,
+                onBatchEpisodeAction = onBatchEpisodeAction,
                 onPlayNext = onPlayNext,
                 onToggleStarred = onToggleStarred,
                 onToggleDownloaded = onToggleDownloaded,
@@ -160,8 +286,42 @@ fun PodcastsTabScreen(
 
         var isGridView by remember { mutableStateOf(true) }
         var showAddRssDialog by remember { mutableStateOf(false) }
+        var showSortMenu by remember { mutableStateOf(false) }
+        var showSortPillMenu by remember { mutableStateOf(false) }
+        var showSearchBar by remember { mutableStateOf(false) }
+        var librarySearchQuery by remember { mutableStateOf("") }
         var rssInput by remember { mutableStateOf("") }
-        val paneDetailShow = if (isTwoPane) activeShow ?: podcasts.firstOrNull() else null
+        var isPodcastMultiSelectMode by remember { mutableStateOf(false) }
+        var selectedPodcastIds by remember { mutableStateOf(setOf<String>()) }
+        var pendingUnsubscribePodcasts by remember { mutableStateOf<List<PodcastEntity>?>(null) }
+        val haptic = LocalHapticFeedback.current
+
+        val displayedPodcasts = remember(podcasts, episodes, settings.podcastFilterOption, settings.podcastSortOption, librarySearchQuery) {
+            filterAndSortPodcasts(
+                podcasts = podcasts,
+                episodes = episodes,
+                filter = settings.podcastFilterOption,
+                sort = settings.podcastSortOption,
+                searchQuery = librarySearchQuery
+            )
+        }
+        val activeSelectedPodcastIds = remember(selectedPodcastIds, displayedPodcasts) {
+            val valid = displayedPodcasts.map { it.id }.toSet()
+            selectedPodcastIds.filterTo(LinkedHashSet()) { it in valid }
+        }
+        val selectedPodcasts = remember(activeSelectedPodcastIds, displayedPodcasts) {
+            displayedPodcasts.filter { it.id in activeSelectedPodcastIds }
+        }
+
+        BackHandler(enabled = isPodcastMultiSelectMode) {
+            isPodcastMultiSelectMode = false
+            selectedPodcastIds = emptySet()
+        }
+
+        val filterCounts = remember(podcasts, episodes) {
+            countPodcastsByFilter(podcasts, episodes)
+        }
+        val paneDetailShow = if (isTwoPane) activeShow ?: displayedPodcasts.firstOrNull() ?: podcasts.firstOrNull() else null
 
         Row(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -170,34 +330,444 @@ fun PodcastsTabScreen(
                     .padding(horizontal = 16.dp)
                     .testTag("podcasts_tab_screen")
             ) {
-                PrimaryTabTopBar(
-                    title = stringResource(id = R.string.tab_podcasts),
-                    badgeCount = podcasts.size,
-                    trailingActions = {
-                        IconButton(
-                            onClick = onRefreshFeeds,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .testTag("podcasts_refresh_feeds_button")
+                if (isPodcastMultiSelectMode) {
+                    EpisodeMultiSelectTopBar(
+                        selectedCount = activeSelectedPodcastIds.size,
+                        totalCount = displayedPodcasts.size,
+                        onClose = {
+                            isPodcastMultiSelectMode = false
+                            selectedPodcastIds = emptySet()
+                        },
+                        onToggleSelectAll = {
+                            selectedPodcastIds = if (activeSelectedPodcastIds.size >= displayedPodcasts.size) {
+                                emptySet()
+                            } else {
+                                displayedPodcasts.map { it.id }.toSet()
+                            }
+                        }
+                    )
+                } else {
+                    PrimaryTabTopBar(
+                        title = stringResource(id = R.string.tab_podcasts),
+                        trailingActions = {
+                            if (displayedPodcasts.isNotEmpty()) {
+                                IconButton(
+                                    onClick = {
+                                        isPodcastMultiSelectMode = true
+                                        selectedPodcastIds = emptySet()
+                                    },
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .testTag("podcasts_multiselect_toggle")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Checklist,
+                                        contentDescription = "Select Multiple Podcasts",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        onOpenSettings = onOpenSettings
+                    )
+                }
+
+                val isDarkTheme = MaterialTheme.colorScheme.background == LoheBackgroundDark
+                val formattedDisplayedCount = remember(displayedPodcasts.size) {
+                    NumberFormat.getIntegerInstance().format(displayedPodcasts.size)
+                }
+                val formattedTotalCount = remember(podcasts.size) {
+                    NumberFormat.getIntegerInstance().format(podcasts.size)
+                }
+                val isFiltered = settings.podcastFilterOption != PodcastFilterOption.ALL
+                val showLabel = if (isFiltered) {
+                    "of $formattedTotalCount"
+                } else {
+                    if (podcasts.size == 1) "Show" else "Shows"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Spacious, single-line count pill + active sort indicator
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = LoheElectricBlue.copy(alpha = if (isDarkTheme) 0.16f else 0.10f),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .border(
+                                1.dp,
+                                LoheElectricBlue.copy(alpha = if (isDarkTheme) 0.36f else 0.28f),
+                                RoundedCornerShape(50)
+                            )
+                            .testTag("podcasts_count_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh Feeds", tint = LoheCyanAccent)
+                            Text(
+                                text = formattedDisplayedCount,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = LoheElectricBlue,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = showLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            if (settings.podcastSortOption != PodcastSortOption.TITLE_ASC) {
+                                Text(
+                                    text = "• ${settings.podcastSortOption.shortLabel}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LoheCyanAccent,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                        IconButton(onClick = { showAddRssDialog = true }, modifier = Modifier.size(38.dp)) {
-                            Icon(Icons.Filled.RssFeed, contentDescription = "Add RSS", tint = LoheCyanAccent)
+                    }
+
+                    // Compact grouped library actions pill (Sort, Refresh, Add RSS, Grid/List)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (isDarkTheme) LoheSurfaceDark else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .border(
+                                1.dp,
+                                if (isDarkTheme) LoheBorderDark else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                RoundedCornerShape(18.dp)
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box {
+                                IconButton(
+                                    onClick = { showSortMenu = true },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("podcasts_sort_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.SwapVert,
+                                        contentDescription = "Sort Podcasts",
+                                        tint = if (settings.podcastSortOption != PodcastSortOption.TITLE_ASC) LoheElectricBlue else LoheCyanAccent,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showSortMenu,
+                                    onDismissRequest = { showSortMenu = false },
+                                    modifier = Modifier.testTag("podcasts_sort_menu")
+                                ) {
+                                    PodcastSortOption.entries.forEach { option ->
+                                        val selected = settings.podcastSortOption == option
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = option.label,
+                                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    color = if (selected) LoheElectricBlue else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            },
+                                            trailingIcon = if (selected) {
+                                                {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Check,
+                                                        contentDescription = "Selected",
+                                                        tint = LoheElectricBlue,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            } else null,
+                                            onClick = {
+                                                onSortChange(option)
+                                                showSortMenu = false
+                                            },
+                                            modifier = Modifier.testTag("podcast_sort_${option.name.lowercase()}")
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = onRefreshFeeds,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("podcasts_refresh_feeds_button")
+                            ) {
+                                Icon(
+                                    Icons.Filled.Refresh,
+                                    contentDescription = "Refresh Feeds",
+                                    tint = LoheCyanAccent,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            val rssLocked = Edition.HAS_PRO && !settings.isProUnlocked
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        if (rssLocked) onOpenProUpgradeModal() else showAddRssDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("podcasts_add_rss_button")
+                                ) {
+                                    Icon(
+                                        Icons.Filled.RssFeed,
+                                        contentDescription = if (rssLocked) "Add RSS (Pro)" else "Add RSS",
+                                        tint = if (rssLocked) MaterialTheme.colorScheme.onSurfaceVariant else LoheCyanAccent,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                if (rssLocked) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 4.dp, end = 4.dp)
+                                            .size(13.dp)
+                                            .clip(CircleShape)
+                                            .background(LoheElectricBlue),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Lock,
+                                            contentDescription = "Pro feature",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = { isGridView = !isGridView },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("podcasts_view_toggle_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+                                    contentDescription = "Toggle View",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
                         }
-                        IconButton(onClick = onImportOpml, modifier = Modifier.size(38.dp)) {
-                            Icon(Icons.Filled.FileOpen, contentDescription = "Import OPML", tint = LoheElectricBlue)
+                    }
+                }
+
+                // Dedicated Sort & Library Filter bar (labeled Sort dropdown + quick library search + filter chips)
+                if (podcasts.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isDarkTheme) LoheSurfaceDark else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .heightIn(min = 38.dp)
+                                    .border(
+                                        1.dp,
+                                        if (settings.podcastSortOption != PodcastSortOption.TITLE_ASC) LoheElectricBlue.copy(alpha = 0.65f)
+                                        else if (isDarkTheme) LoheBorderDark else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { showSortPillMenu = true }
+                                    .testTag("podcasts_sort_pill_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.SwapVert,
+                                        contentDescription = null,
+                                        tint = LoheElectricBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Sort: ${settings.podcastSortOption.shortLabel}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Choose sort order",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showSortPillMenu,
+                                onDismissRequest = { showSortPillMenu = false },
+                                modifier = Modifier.testTag("podcasts_sort_pill_menu")
+                            ) {
+                                PodcastSortOption.entries.forEach { option ->
+                                    val selected = settings.podcastSortOption == option
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = option.label,
+                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (selected) LoheElectricBlue else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        trailingIcon = if (selected) {
+                                            {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = LoheElectricBlue,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        } else null,
+                                        onClick = {
+                                            onSortChange(option)
+                                            showSortPillMenu = false
+                                        },
+                                        modifier = Modifier.testTag("podcast_sort_pill_${option.name.lowercase()}")
+                                    )
+                                }
+                            }
                         }
-                        IconButton(onClick = { isGridView = !isGridView }, modifier = Modifier.size(38.dp)) {
-                            Icon(
-                                imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
-                                contentDescription = "Toggle View",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (showSearchBar || librarySearchQuery.isNotBlank()) {
+                                LoheElectricBlue.copy(alpha = 0.16f)
+                            } else if (isDarkTheme) LoheSurfaceDark else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .border(
+                                    1.dp,
+                                    if (showSearchBar || librarySearchQuery.isNotBlank()) LoheElectricBlue.copy(alpha = 0.6f)
+                                    else if (isDarkTheme) LoheBorderDark else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { showSearchBar = !showSearchBar }
+                                .testTag("podcasts_search_toggle_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = "Filter Shows by Name",
+                                    tint = if (showSearchBar || librarySearchQuery.isNotBlank()) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = if (librarySearchQuery.isBlank()) "Find" else "\"$librarySearchQuery\"",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (showSearchBar || librarySearchQuery.isNotBlank()) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        if (isFiltered || librarySearchQuery.isNotBlank() || settings.podcastSortOption != PodcastSortOption.TITLE_ASC) {
+                            TextButton(
+                                onClick = {
+                                    librarySearchQuery = ""
+                                    showSearchBar = false
+                                    onFilterChange(PodcastFilterOption.ALL)
+                                    onSortChange(PodcastSortOption.TITLE_ASC)
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("podcasts_reset_filters_button")
+                            ) {
+                                Text(
+                                    text = "Reset",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = LoheBrightBlueText,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    if (showSearchBar) {
+                        OutlinedTextField(
+                            value = librarySearchQuery,
+                            onValueChange = { librarySearchQuery = it },
+                            placeholder = { Text("Filter shows by name, host, or category...", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = if (librarySearchQuery.isNotEmpty()) {
+                                {
+                                    IconButton(onClick = { librarySearchQuery = "" }) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Clear filter text", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            } else null,
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .testTag("podcasts_library_search_input")
+                        )
+                    }
+
+                    // Filter chip strip
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("podcasts_filter_row")
+                    ) {
+                        items(PodcastFilterOption.entries) { filterOption ->
+                            val selected = settings.podcastFilterOption == filterOption
+                            val count = filterCounts[filterOption] ?: 0
+                            FilterChip(
+                                selected = selected,
+                                onClick = { onFilterChange(filterOption) },
+                                label = {
+                                    Text(
+                                        text = "${filterOption.label} ($count)",
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = LoheElectricBlue.copy(alpha = 0.20f),
+                                    selectedLabelColor = LoheElectricBlue
+                                ),
+                                modifier = Modifier
+                                    .heightIn(min = 36.dp)
+                                    .testTag("podcast_filter_${filterOption.name.lowercase()}")
                             )
                         }
-                    },
-                    onOpenSettings = onOpenSettings
-                )
+                    }
+                }
 
                 if (podcasts.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -207,31 +777,82 @@ fun PodcastsTabScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                } else if (displayedPodcasts.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "No podcasts match \"${settings.podcastFilterOption.label}\".",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Try another filter or show your full library.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        OutlinedButton(
+                            onClick = { onFilterChange(PodcastFilterOption.ALL) },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("podcasts_clear_filter_button")
+                        ) {
+                            Text("Show All Podcasts")
+                        }
+                    }
                 } else if (isGridView) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(bottom = 172.dp, top = 4.dp),
+                        contentPadding = PaddingValues(bottom = if (isPodcastMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
                     ) {
-                        items(podcasts, key = { it.id }) { podcast ->
+                        items(displayedPodcasts, key = { it.id }) { podcast ->
                             val showEpisodes = episodes.filter { it.podcastId == podcast.id }
                             val unplayedCount = showEpisodes.count { !it.isPlayed }
                             val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
                             val isSelectedPane = isTwoPane && paneDetailShow?.id == podcast.id
-                            val borderClr = if (isSelectedPane) LoheElectricBlue else if (isDark) LoheBorderDark else MaterialTheme.colorScheme.outline
+                            val isSelected = podcast.id in activeSelectedPodcastIds
+                            val borderClr = if (isSelected || isSelectedPane) LoheElectricBlue else if (isDark) LoheBorderDark else MaterialTheme.colorScheme.outline
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
-                                color = if (isDark) LoheSurfaceCardDark else MaterialTheme.colorScheme.surface,
+                                color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f)
+                                else if (isDark) LoheSurfaceCardDark else MaterialTheme.colorScheme.surface,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .border(
-                                        if (isSelectedPane) 1.5.dp else 1.dp,
+                                        if (isSelected || isSelectedPane) 1.5.dp else 1.dp,
                                         borderClr,
                                         RoundedCornerShape(18.dp)
                                     )
-                                    .clickable { onSelectPodcast(podcast.id) }
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isPodcastMultiSelectMode) {
+                                                selectedPodcastIds = if (isSelected) {
+                                                    selectedPodcastIds - podcast.id
+                                                } else {
+                                                    selectedPodcastIds + podcast.id
+                                                }
+                                            } else {
+                                                onSelectPodcast(podcast.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            isPodcastMultiSelectMode = true
+                                            selectedPodcastIds = selectedPodcastIds + podcast.id
+                                        }
+                                    )
                                     .testTag("podcast_card_${podcast.id}")
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -244,20 +865,58 @@ fun PodcastsTabScreen(
                                                 .fillMaxWidth()
                                                 .height(136.dp)
                                         )
-                                        if (unplayedCount > 0) {
+                                        if (isPodcastMultiSelectMode) {
                                             Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopStart)
+                                                    .padding(6.dp)
+                                                    .size(26.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) LoheElectricBlue else Color(0xCC0A101D))
+                                                    .border(1.5.dp, Color.White, CircleShape)
+                                                    .testTag("podcast_select_icon_${podcast.id}"),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isSelected) Icons.Filled.Check else Icons.Filled.RadioButtonUnchecked,
+                                                    contentDescription = if (isSelected) "Selected" else "Not selected",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        if (unplayedCount > 0) {
+                                            UniformCountPillBadge(
+                                                count = unplayedCount,
+                                                borderColor = LoheBackgroundDark.copy(alpha = 0.65f),
+                                                borderWidth = 1.dp,
                                                 modifier = Modifier
                                                     .align(Alignment.TopEnd)
                                                     .padding(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(LoheElectricBlue)
-                                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    .testTag("podcast_grid_unplayed_badge_${podcast.id}")
+                                            )
+                                        }
+                                        if (podcast.autoQueueMode != AutoQueueMode.OFF.name) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .padding(6.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xD90A101D))
+                                                    .border(
+                                                        0.8.dp,
+                                                        LoheCyanAccent.copy(alpha = 0.55f),
+                                                        RoundedCornerShape(6.dp)
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
-                                                    text = "$unplayedCount",
-                                                    fontSize = 11.sp,
+                                                    text = "AUTO-Q",
+                                                    fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color.White
+                                                    color = LoheCyanAccent,
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }
@@ -267,56 +926,83 @@ fun PodcastsTabScreen(
                                         text = podcast.title,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold,
+                                        minLines = 2,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = podcast.author,
+                                        text = podcast.author.ifBlank { "Podcast" },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        minLines = 1,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    if (podcast.autoQueueMode != AutoQueueMode.OFF.name) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Auto-Queue: ${podcast.autoQueueMode}",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = LoheCyanAccent
-                                        )
-                                    }
                                 }
                             }
                         }
                     }
                 } else {
                     LazyColumn(
-                        contentPadding = PaddingValues(bottom = 172.dp, top = 4.dp),
+                        contentPadding = PaddingValues(bottom = if (isPodcastMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
                     ) {
-                        items(podcasts, key = { it.id }) { podcast ->
+                        items(displayedPodcasts, key = { it.id }) { podcast ->
                             val showEpisodes = episodes.filter { it.podcastId == podcast.id }
                             val unplayedCount = showEpisodes.count { !it.isPlayed }
                             val isSelectedPane = isTwoPane && paneDetailShow?.id == podcast.id
+                            val isSelected = podcast.id in activeSelectedPodcastIds
+                            val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surface,
+                                color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f)
+                                else MaterialTheme.colorScheme.surface,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .border(
-                                        if (isSelectedPane) 1.5.dp else 1.dp,
-                                        if (isSelectedPane) LoheElectricBlue else MaterialTheme.colorScheme.outline,
+                                        if (isSelected || isSelectedPane) 1.5.dp else 1.dp,
+                                        if (isSelected || isSelectedPane) LoheElectricBlue else MaterialTheme.colorScheme.outline,
                                         RoundedCornerShape(16.dp)
                                     )
-                                    .clickable { onSelectPodcast(podcast.id) }
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isPodcastMultiSelectMode) {
+                                                selectedPodcastIds = if (isSelected) {
+                                                    selectedPodcastIds - podcast.id
+                                                } else {
+                                                    selectedPodcastIds + podcast.id
+                                                }
+                                            } else {
+                                                onSelectPodcast(podcast.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            isPodcastMultiSelectMode = true
+                                            selectedPodcastIds = selectedPodcastIds + podcast.id
+                                        }
+                                    )
                                     .testTag("podcast_card_${podcast.id}")
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    if (isPodcastMultiSelectMode) {
+                                        Icon(
+                                            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                                            tint = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .testTag("podcast_select_icon_${podcast.id}")
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                    }
                                     PodcastArtworkThumbnail(
                                         artworkUrl = podcast.artworkUrl,
                                         title = podcast.title,
@@ -333,16 +1019,42 @@ fun PodcastsTabScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "${podcast.author} • $unplayedCount unplayed",
+                                            text = podcast.author.ifBlank { "Podcast" },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (unplayedCount > 0) {
+                                        Spacer(Modifier.width(10.dp))
+                                        UniformCountPillBadge(
+                                            count = unplayedCount,
+                                            borderColor = LoheBackgroundDark.copy(alpha = 0.65f),
+                                            borderWidth = 1.dp,
+                                            modifier = Modifier.testTag("podcast_list_unplayed_badge_${podcast.id}")
                                         )
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                if (isPodcastMultiSelectMode) {
+                    PodcastMultiSelectActionBar(
+                        selectedPodcasts = selectedPodcasts,
+                        onBatchAction = { action ->
+                            if (selectedPodcasts.isEmpty()) return@PodcastMultiSelectActionBar
+                            if (action == PodcastBatchAction.UNSUBSCRIBE) {
+                                pendingUnsubscribePodcasts = selectedPodcasts
+                            } else {
+                                onBatchPodcastAction(selectedPodcasts, action)
+                                isPodcastMultiSelectMode = false
+                                selectedPodcastIds = emptySet()
+                            }
+                        }
+                    )
                 }
             }
 
@@ -367,6 +1079,9 @@ fun PodcastsTabScreen(
                             onUnsubscribe = { onUnsubscribePodcast(paneDetailShow.id) },
                             onPlayEpisode = onPlayEpisode,
                             onToggleUpNext = onToggleUpNext,
+                            onAddToUpNext = onAddToUpNext,
+                            onSwipeEpisodeAction = onSwipeEpisodeAction,
+                            onBatchEpisodeAction = onBatchEpisodeAction,
                             onPlayNext = onPlayNext,
                             onToggleStarred = onToggleStarred,
                             onToggleDownloaded = onToggleDownloaded,
@@ -390,6 +1105,31 @@ fun PodcastsTabScreen(
                     }
                 }
             }
+        }
+
+        pendingUnsubscribePodcasts?.takeIf { it.isNotEmpty() }?.let { toRemove ->
+            AlertDialog(
+                onDismissRequest = { pendingUnsubscribePodcasts = null },
+                title = { Text("Unsubscribe from ${toRemove.size} Show${if (toRemove.size == 1) "" else "s"}?") },
+                text = { Text("This removes the selected podcasts and their cached downloads from your library.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onBatchPodcastAction(toRemove, PodcastBatchAction.UNSUBSCRIBE)
+                            pendingUnsubscribePodcasts = null
+                            isPodcastMultiSelectMode = false
+                            selectedPodcastIds = emptySet()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                        modifier = Modifier.testTag("podcast_multiselect_unsubscribe_confirm")
+                    ) {
+                        Text("Unsubscribe", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingUnsubscribePodcasts = null }) { Text("Cancel") }
+                }
+            )
         }
 
         if (showAddRssDialog) {
@@ -422,7 +1162,7 @@ fun PodcastsTabScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun PodcastDetailScreen(
     podcast: PodcastEntity,
@@ -436,6 +1176,9 @@ fun PodcastDetailScreen(
     onUnsubscribe: () -> Unit,
     onPlayEpisode: (EpisodeEntity) -> Unit,
     onToggleUpNext: (EpisodeEntity, Boolean) -> Unit,
+    onAddToUpNext: (EpisodeEntity, Boolean) -> Unit = { ep, beg -> onToggleUpNext(ep, beg) },
+    onSwipeEpisodeAction: (EpisodeEntity, EpisodeSwipeAction) -> Unit = { _, _ -> },
+    onBatchEpisodeAction: (List<EpisodeEntity>, EpisodeBatchAction) -> Unit = { _, _ -> },
     onPlayNext: (EpisodeEntity) -> Unit = { onToggleUpNext(it, true) },
     onToggleStarred: (EpisodeEntity) -> Unit,
     onToggleDownloaded: (EpisodeEntity) -> Unit,
@@ -446,11 +1189,12 @@ fun PodcastDetailScreen(
     onUpdateAudioOverrides: (Boolean, Float, Boolean, Int) -> Unit = { _, _, _, _ -> },
     onToggleNotifications: (Boolean) -> Unit = {}
 ) {
-    BackHandler(enabled = !isEmbeddedPane) { onBack() }
-
     var activeFilter by remember { mutableStateOf("All") }
     var sortNewestFirst by remember { mutableStateOf(true) }
     var showUnsubscribeConfirm by remember { mutableStateOf(false) }
+    var isMultiSelectMode by remember(podcast.id) { mutableStateOf(false) }
+    var selectedEpisodeIds by remember(podcast.id) { mutableStateOf(setOf<String>()) }
+    val haptic = LocalHapticFeedback.current
 
     val filteredEpisodes = remember(episodes, activeFilter, sortNewestFirst) {
         val base = when (activeFilter) {
@@ -460,6 +1204,22 @@ fun PodcastDetailScreen(
             else -> episodes
         }
         if (sortNewestFirst) base.sortedByDescending { it.publishedAt } else base.sortedBy { it.publishedAt }
+    }
+    val activeSelectedIds = remember(selectedEpisodeIds, filteredEpisodes) {
+        val valid = filteredEpisodes.map { it.id }.toSet()
+        selectedEpisodeIds.filterTo(LinkedHashSet()) { it in valid }
+    }
+    val selectedEpisodes = remember(activeSelectedIds, filteredEpisodes) {
+        filteredEpisodes.filter { it.id in activeSelectedIds }
+    }
+
+    BackHandler(enabled = isMultiSelectMode || !isEmbeddedPane) {
+        if (isMultiSelectMode) {
+            isMultiSelectMode = false
+            selectedEpisodeIds = emptySet()
+        } else {
+            onBack()
+        }
     }
 
     val isAutoQueueEnabled = podcast.autoQueueMode != AutoQueueMode.OFF.name
@@ -473,73 +1233,109 @@ fun PodcastDetailScreen(
             .padding(horizontal = 16.dp)
             .testTag("podcast_detail_screen")
     ) {
-        // Top Header with title, GraphicEq sync/waveform, Sort & single Settings gear
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                if (!isEmbeddedPane) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("podcast_detail_back")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        if (isMultiSelectMode) {
+            EpisodeMultiSelectTopBar(
+                selectedCount = activeSelectedIds.size,
+                totalCount = filteredEpisodes.size,
+                onClose = {
+                    isMultiSelectMode = false
+                    selectedEpisodeIds = emptySet()
+                },
+                onToggleSelectAll = {
+                    selectedEpisodeIds = if (activeSelectedIds.size >= filteredEpisodes.size && filteredEpisodes.isNotEmpty()) {
+                        emptySet()
+                    } else {
+                        filteredEpisodes.map { it.id }.toSet()
                     }
                 }
-                Text(
-                    text = podcast.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { activeFilter = if (activeFilter == "Listening") "All" else "Listening" },
-                    modifier = Modifier.size(42.dp)
+            )
+        } else {
+            // Top Header with title, Multi-Select, GraphicEq sync/waveform, Sort & single Settings gear
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        Icons.Filled.GraphicEq,
-                        contentDescription = "Listening Filter",
-                        tint = if (activeFilter == "Listening") LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant
+                    if (!isEmbeddedPane) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("podcast_detail_back")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                    Text(
+                        text = podcast.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = { sortNewestFirst = !sortNewestFirst }, modifier = Modifier.size(42.dp)) {
-                    Icon(Icons.Filled.SwapVert, contentDescription = "Sort Episodes", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (!isEmbeddedPane) {
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (filteredEpisodes.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                isMultiSelectMode = true
+                                selectedEpisodeIds = emptySet()
+                            },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .testTag("podcast_multiselect_toggle")
+                        ) {
+                            Icon(
+                                Icons.Filled.Checklist,
+                                contentDescription = "Select Episodes",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("top_settings_button")
+                        onClick = { activeFilter = if (activeFilter == "Listening") "All" else "Listening" },
+                        modifier = Modifier.size(42.dp)
                     ) {
                         Icon(
-                            Icons.Outlined.Settings,
-                            contentDescription = stringResource(id = R.string.settings_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            Icons.Filled.GraphicEq,
+                            contentDescription = "Listening Filter",
+                            tint = if (activeFilter == "Listening") LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    IconButton(onClick = { sortNewestFirst = !sortNewestFirst }, modifier = Modifier.size(42.dp)) {
+                        Icon(Icons.Filled.SwapVert, contentDescription = "Sort Episodes", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!isEmbeddedPane) {
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("top_settings_button")
+                        ) {
+                            Icon(
+                                Icons.Outlined.Settings,
+                                contentDescription = stringResource(id = R.string.settings_title),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         }
 
         LazyColumn(
-            contentPadding = PaddingValues(bottom = 172.dp),
+            contentPadding = PaddingValues(bottom = if (isMultiSelectMode) 12.dp else 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .testTag("podcast_detail_list")
         ) {
             // Show Summary Card
@@ -758,44 +1554,20 @@ fun PodcastDetailScreen(
 
                         if (podcast.useCustomAudio) {
                             Spacer(Modifier.height(10.dp))
-                            Text("Show Speed", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                            Spacer(Modifier.height(6.dp))
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { spd ->
-                                    val selected = kotlin.math.abs(podcast.customSpeed - spd) < 0.03f
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (selected) LoheElectricBlue else cardBg)
-                                            .border(
-                                                1.dp,
-                                                if (selected) LoheElectricBlue else borderColor,
-                                                RoundedCornerShape(10.dp)
-                                            )
-                                            .clickable {
-                                                onUpdateAudioOverrides(
-                                                    true,
-                                                    spd,
-                                                    podcast.customSkipSilence,
-                                                    podcast.customVolumeBoostDb
-                                                )
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                                            .testTag("podcast_speed_${spd}")
-                                    ) {
-                                        Text(
-                                            text = "${spd}x",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
+                            com.example.ui.components.VariableSpeedSliderBar(
+                                speed = podcast.customSpeed,
+                                onSpeedChange = { spd ->
+                                    onUpdateAudioOverrides(
+                                        true,
+                                        spd,
+                                        podcast.customSkipSilence,
+                                        podcast.customVolumeBoostDb
+                                    )
+                                },
+                                title = "Show Speed",
+                                keySpeedTagPrefix = "podcast_speed",
+                                onDarkSurface = isDark
+                            )
 
                             Spacer(Modifier.height(10.dp))
                             Row(
@@ -890,134 +1662,190 @@ fun PodcastDetailScreen(
                 }
             }
 
-            // Episode Rows with Queue Indicator & 6 Action Icons matching indicator-podcast-final
+            // Episode Rows with Configurable Swipe Gestures, Multi-Select, Queue Indicator & Up Next chooser
             items(filteredEpisodes, key = { it.id }) { ep ->
                 val isPlayingEp = playbackState.currentEpisode?.id == ep.id && playbackState.isPlaying
+                val isSelected = ep.id in activeSelectedIds
                 val qPos = upNextEpisodes.indexOfFirst { it.id == ep.id }.takeIf { it >= 0 }?.plus(1)
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = cardBg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            if (isPlayingEp) LoheElectricBlue else borderColor,
-                            RoundedCornerShape(18.dp)
-                        )
-                        .testTag("podcast_ep_row_${ep.id}")
+                SwipeableEpisodeRow(
+                    episode = ep,
+                    settings = settings,
+                    onSwipeAction = onSwipeEpisodeAction,
+                    cornerRadius = 18.dp,
+                    enabled = !isMultiSelectMode
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (ep.inUpNext) {
-                                QueueIndicatorBadge(settings = settings, queuePosition = qPos)
-                                Spacer(Modifier.width(10.dp))
-                            }
-                            Text(
-                                text = ep.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = if (ep.isPlayed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected || isPlayingEp) LoheElectricBlue else borderColor,
+                                RoundedCornerShape(18.dp)
                             )
-                            IconButton(
-                                onClick = { onPlayEpisode(ep) },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    if (isPlayingEp) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = "Play",
-                                    tint = LoheElectricBlue
+                            .combinedClickable(
+                                onClick = {
+                                    if (isMultiSelectMode) {
+                                        selectedEpisodeIds = if (isSelected) {
+                                            selectedEpisodeIds - ep.id
+                                        } else {
+                                            selectedEpisodeIds + ep.id
+                                        }
+                                    } else {
+                                        onOpenNotes(ep)
+                                    }
+                                },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    isMultiSelectMode = true
+                                    selectedEpisodeIds = selectedEpisodeIds + ep.id
+                                }
+                            )
+                            .testTag("podcast_ep_row_${ep.id}")
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isMultiSelectMode) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                        contentDescription = if (isSelected) "Selected" else "Not selected",
+                                        tint = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .testTag("podcast_ep_select_icon_${ep.id}")
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                } else if (ep.inUpNext) {
+                                    QueueIndicatorBadge(settings = settings, queuePosition = qPos)
+                                    Spacer(Modifier.width(10.dp))
+                                }
+                                Text(
+                                    text = ep.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (ep.isPlayed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!isMultiSelectMode) {
+                                    IconButton(
+                                        onClick = { onPlayEpisode(ep) },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(
+                                            if (isPlayingEp) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = "Play",
+                                            tint = LoheElectricBlue
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (ep.durationMs > 0L && ep.resumePositionMs > 0L) {
+                                Spacer(Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { (ep.resumePositionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = LoheElectricBlue
                                 )
                             }
-                        }
 
-                        if (ep.durationMs > 0L && ep.resumePositionMs > 0L) {
-                            Spacer(Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { (ep.resumePositionMs.toFloat() / ep.durationMs.toFloat()).coerceIn(0f, 1f) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
-                                color = LoheElectricBlue
-                            )
-                        }
+                            Spacer(Modifier.height(8.dp))
 
-                        Spacer(Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${formatEpisodeDate(ep.publishedAt)} • ${formatDurationCompactHuman(ep.durationMs)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            )
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(onClick = { onOpenNotes(ep) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(Icons.Outlined.Info, contentDescription = "Notes", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(onClick = { onToggleStarred(ep) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(
-                                        if (ep.isStarred) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                        contentDescription = "Star",
-                                        tint = if (ep.isStarred) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(onClick = { onToggleDownloaded(ep) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(
-                                        if (ep.isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
-                                        contentDescription = "Download",
-                                        tint = if (ep.isDownloaded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(onClick = { onResetEpisodeProgress(ep) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(Icons.Filled.RestartAlt, contentDescription = "Reset Progress", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(onClick = { onMarkEpisodePlayed(ep, !ep.isPlayed) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(
-                                        if (ep.isPlayed) Icons.Filled.CheckCircle else Icons.Filled.CheckCircleOutline,
-                                        contentDescription = "Mark Played",
-                                        tint = if (ep.isPlayed) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onPlayNext(ep) },
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .testTag("play_next_ep_${ep.id}")
-                                ) {
-                                    Icon(
-                                        Icons.Filled.QueuePlayNext,
-                                        contentDescription = "Play Next",
-                                        tint = LoheCyanAccent,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(onClick = { onToggleUpNext(ep, false) }, modifier = Modifier.size(34.dp)) {
-                                    Icon(
-                                        if (ep.inUpNext) Icons.AutoMirrored.Filled.PlaylistAddCheck else Icons.AutoMirrored.Filled.PlaylistAdd,
-                                        contentDescription = "Toggle Up Next",
-                                        tint = if (ep.inUpNext) LoheBrightBlueText else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(19.dp)
-                                    )
+                                Text(
+                                    text = "${formatEpisodeDate(ep.publishedAt)} • ${formatDurationCompactHuman(ep.durationMs)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!isMultiSelectMode) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(onClick = { onOpenNotes(ep) }, modifier = Modifier.size(34.dp)) {
+                                            Icon(Icons.Outlined.Info, contentDescription = "Notes", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(onClick = { onToggleStarred(ep) }, modifier = Modifier.size(34.dp)) {
+                                            Icon(
+                                                if (ep.isStarred) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                                contentDescription = "Star",
+                                                tint = if (ep.isStarred) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(onClick = { onToggleDownloaded(ep) }, modifier = Modifier.size(34.dp)) {
+                                            Icon(
+                                                if (ep.isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
+                                                contentDescription = "Download",
+                                                tint = if (ep.isDownloaded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(onClick = { onResetEpisodeProgress(ep) }, modifier = Modifier.size(34.dp)) {
+                                            Icon(Icons.Filled.RestartAlt, contentDescription = "Reset Progress", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(onClick = { onMarkEpisodePlayed(ep, !ep.isPlayed) }, modifier = Modifier.size(34.dp)) {
+                                            Icon(
+                                                if (ep.isPlayed) Icons.Filled.CheckCircle else Icons.Filled.CheckCircleOutline,
+                                                contentDescription = "Mark Played",
+                                                tint = if (ep.isPlayed) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onPlayNext(ep) },
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .testTag("play_next_ep_${ep.id}")
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.QueuePlayNext,
+                                                contentDescription = "Play Next",
+                                                tint = LoheCyanAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        UpNextQueueActionButton(
+                                            inUpNext = ep.inUpNext,
+                                            onAddToBeginning = { onAddToUpNext(ep, true) },
+                                            onAddToEnd = { onAddToUpNext(ep, false) },
+                                            onRemoveFromUpNext = if (ep.inUpNext) ({ onToggleUpNext(ep, false) }) else null,
+                                            buttonSize = 34.dp,
+                                            iconSize = 19.dp,
+                                            tint = if (ep.inUpNext) LoheBrightBlueText else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            testTagPrefix = "podcast_up_next_${ep.id}"
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if (isMultiSelectMode) {
+            EpisodeMultiSelectActionBar(
+                selectedEpisodes = selectedEpisodes,
+                onBatchAction = { action ->
+                    if (selectedEpisodes.isNotEmpty()) {
+                        onBatchEpisodeAction(selectedEpisodes, action)
+                        isMultiSelectMode = false
+                        selectedEpisodeIds = emptySet()
+                    }
+                }
+            )
         }
     }
 

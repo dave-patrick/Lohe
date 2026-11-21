@@ -195,68 +195,6 @@ fun AboutSettingsSubScreen(
                 )
             }
         }
-
-        if (Edition.HAS_PRO) {
-            item {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = LoheSurfaceCardDark,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                        .border(1.dp, LoheBorderDark, RoundedCornerShape(14.dp))
-                        .testTag("about_pro_card")
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (settings.isProUnlocked) "Lohe Pro Bundle Active"
-                            else "Lohe Pro Bundle (${billingState.formattedPrice})",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LoheTextPrimaryDark
-                        )
-                        Text(
-                            text = if (settings.isProUnlocked) {
-                                "Unlocked via Google Play Billing • Floating mini-player, extra queue styles & Google Drive AppData sync active."
-                            } else {
-                                "Optional Google Play subscription (${billingState.statusMessage})."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = LoheTextMutedDark
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (!settings.isProUnlocked) {
-                                Button(
-                                    onClick = onOpenProModal,
-                                    colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                ) {
-                                    Text("Upgrade", color = Color.White)
-                                }
-                            }
-                            OutlinedButton(
-                                onClick = onRestorePurchases,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                            ) {
-                                Text("Restore Purchases", color = LoheCyanAccent)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     if (showPrivacyPolicy) {

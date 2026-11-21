@@ -16,18 +16,28 @@ import com.example.data.importer.PodcastAppImporter
 import com.example.data.local.AutoQueueMode
 import com.example.data.local.EpisodeBookmarkEntity
 import com.example.data.local.EpisodeEntity
+import com.example.data.local.EpisodeSwipeAction
+import com.example.data.local.HomeCardType
+import com.example.data.local.ListeningHistoryRange
 import com.example.data.local.LoheDatabase
 import com.example.data.local.LohePreferencesRepository
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.PlaylistEntity
 import com.example.data.local.PodcastEntity
+import com.example.data.local.PodcastFilterOption
+import com.example.data.local.PodcastSortOption
 import com.example.data.local.QueueIndicatorSize
 import com.example.data.local.QueueIndicatorStyle
 import com.example.data.local.SmartPlaylistType
+import com.example.data.local.ToastDurationOption
+import com.example.data.local.ToastPlacement
+import com.example.data.local.ToastVisualStyle
 import com.example.data.network.EpisodeChapter
+import com.example.data.network.SafDriveSyncClient
 import com.example.data.network.TranscriptCue
 import com.example.data.repository.DiscoverCatalogItem
 import com.example.data.repository.LoheRepository
+import com.example.data.sync.DriveSyncEngine
 import com.example.edition.DevTools
 import com.example.edition.DriveAuthOutcome
 import com.example.edition.Edition
@@ -38,10 +48,14 @@ import com.example.notifications.LoheNotificationHelper
 import com.example.playback.LohePlaybackService
 import com.example.playback.LohePlayerController
 import com.example.playback.PlaybackUiState
+import com.example.ui.components.EpisodeBatchAction
+import com.example.ui.components.PlaylistBatchAction
+import com.example.ui.components.PodcastBatchAction
 import com.example.ui.theme.QueuePresetColor
 import com.example.ui.theme.ThemePreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +63,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -68,12 +83,14 @@ enum class PrimaryTab(val label: String, val testTag: String) {
 enum class SettingsSubScreen(val title: String, val subtitle: String, val isProFeatured: Boolean = false) {
     OVERVIEW("Settings", "Configure Lohe v0.12.0"),
     APPEARANCE("Appearance", "Dark or light theme, Up Next indicator style, color & size"),
+    TOAST_NOTIFICATIONS("Toast notifications", "Turn toasts on or off, duration, look & placement"),
+    HOME_CARDS("Home screen", "Choose Home dashboard cards, Pro insights & history length"),
     PLAYBACK("Playback", "Speed, skip buttons, Sleep Shake-to-Extend, Boost & Battery setup"),
     FLOATING_PLAYER("Floating player", "Cross-app controls, size, transparency & battery setup", isProFeatured = true),
     ARCHIVING("Archiving", "Archive delay, retention rules & starred episode protection"),
     DOWNLOADS("Downloads", "Offline cache limits, auto-cleanup, background sync & OPML"),
     IMPORT_FROM_APP("Import from another app", "OPML, AntennaPod (.db), Podcast Addict (.backup) & Lohe JSON"),
-    CLOUD_SYNC("Google Drive & Cloud Sync", "Cross-device library sync & Google Drive AppData backup", isProFeatured = true),
+    CLOUD_SYNC("Cloud Sync", "Google Drive, OneDrive, Dropbox, Nextcloud / WebDAV & cloud drives"),
     ABOUT("About", "Kani mascot, version 0.12.0 & Credits"),
     DIAGNOSTICS("Diagnostics", "Local bug reports, event logs & 127.0.0.1 debug API")
 }
@@ -82,9 +99,15 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = LoheDatabase.getInstance(application)
     val downloadManager = EpisodeDownloadManager(application)
-    val repository = LoheRepository(database.loheDao(), downloadManager = downloadManager)
     val preferencesRepository = LohePreferencesRepository(application)
+    val repository = LoheRepository(
+        dao = database.loheDao(),
+        downloadManager = downloadManager,
+        preferencesRepository = preferencesRepository
+    )
     val podcastAppImporter = PodcastAppImporter(application, database)
+    private val webDavSyncClient = com.example.data.network.WebDavCloudSyncClient()
+    private val safDriveSyncClient = SafDriveSyncClient(application)
 
     private val _importProgressState = MutableStateFlow(ImportProgressState())
     val importProgressState: StateFlow<ImportProgressState> = _importProgressState.asStateFlow()
@@ -100,7 +123,8 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         scope = viewModelScope,
         onEntitlementChanged = { unlocked ->
             viewModelScope.launch {
-                preferencesRepository.setProUnlocked(unlocked)
+                val effectiveUnlocked = unlocked || (devTools.isAvailable && devTools.debugProPreviewEnabled.value)
+                preferencesRepository.setProUnlocked(effectiveUnlocked)
             }
         },
         onStatusNotice = ::postStatusMessage
@@ -127,6 +151,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val activeEpisodes: StateFlow<List<EpisodeEntity>> = repository.activeEpisodes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allEpisodes: StateFlow<List<EpisodeEntity>> = repository.allEpisodes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val upNextEpisodes: StateFlow<List<EpisodeEntity>> = repository.upNextEpisodes
@@ -215,13 +242,29 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
 
     private var accumulatedPlayMsSinceMinute = 0L
     private var lastTrackedPosMs = 0L
+    private var lastTrackedEpisodeId: String? = null
 
     val playerController: LohePlayerController = LohePlayerController(
         context = application,
         scope = viewModelScope,
         onProgressPersist = { episodeId, posMs, durMs ->
             viewModelScope.launch {
-                repository.updatePlaybackPosition(episodeId, posMs, durMs)
+                if (posMs <= 0L) return@launch
+                val autoMarkedPlayed = repository.updatePlaybackPosition(episodeId, posMs, durMs)
+                if (autoMarkedPlayed) {
+                    if (settingsState.value.autoArchivePolicy == "IMMEDIATELY") {
+                        repository.archiveAllPlayed()
+                    }
+                    repository.cleanupPlayedAndOversizeDownloads(
+                        autoDeletePolicy = settingsState.value.autoDeletePlayedPolicy,
+                        maxCacheMb = settingsState.value.maxCacheSizeMb
+                    )
+                }
+                if (lastTrackedEpisodeId != episodeId) {
+                    lastTrackedEpisodeId = episodeId
+                    lastTrackedPosMs = posMs
+                    return@launch
+                }
                 val delta = (posMs - lastTrackedPosMs).coerceIn(0L, 5_000L)
                 lastTrackedPosMs = posMs
                 if (delta > 0L) {
@@ -280,12 +323,27 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
             preferencesRepository = preferencesRepository,
             playerController = playerController,
             podcastAppImporter = podcastAppImporter,
-            onStatusNotice = ::postStatusMessage
+            onStatusNotice = ::postStatusMessage,
+            onRefreshProEntitlement = {
+                if (Edition.HAS_PRO) {
+                    proFeatures.restorePurchases(silent = true)
+                }
+            }
         )
         devTools.recordEvent("lifecycle", "LoheViewModel initialized")
 
         viewModelScope.launch {
             repository.seedPublicSampleShowsIfEmpty()
+        }
+
+        // Quietly hydrate live Apple Top Charts for Discover on launch
+        viewModelScope.launch {
+            runCatching {
+                val live = repository.browseDiscoverCategory("Trending")
+                if (live.isNotEmpty() && _discoverQuery.value.isBlank()) {
+                    _discoverResults.value = live
+                }
+            }
         }
 
         // Observe active episode bookmarks
@@ -330,11 +388,20 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
 
-        // Pre-populate mini-player with top in-progress or Up Next episode on launch (paused)
+        // Pre-populate mini-player honoring persisted lastPlayingEpisodeId, then in-progress or Up Next on launch (paused)
         viewModelScope.launch {
+            val savedLastId = runCatching {
+                preferencesRepository.settingsFlow.first().lastPlayingEpisodeId
+            }.getOrDefault("")
+
             combine(inProgressEpisodes, upNextEpisodes) { inProg, queue ->
-                inProg.firstOrNull() ?: queue.firstOrNull()
-            }.collectLatest { initialEp ->
+                inProg to queue
+            }.collectLatest { (inProg, queue) ->
+                if (playbackState.value.currentEpisode != null) return@collectLatest
+                val lastEp = savedLastId.takeIf { it.isNotBlank() }
+                    ?.let { repository.getEpisodeById(it) }
+                    ?.takeIf { !it.isPlayed && !it.isArchived }
+                val initialEp = lastEp ?: inProg.firstOrNull() ?: queue.firstOrNull()
                 if (playbackState.value.currentEpisode == null && initialEp != null) {
                     lastTrackedPosMs = initialEp.resumePositionMs
                     applyEffectiveAudioForEpisode(initialEp)
@@ -372,6 +439,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openSettings(subScreen: SettingsSubScreen = SettingsSubScreen.OVERVIEW) {
+        if (_activeSettingsScreen.value == null) {
+            clearStatusBanner()
+        }
         _activeSettingsScreen.value = subScreen
         devTools.recordEvent("navigation", "Opened settings ${subScreen.name}")
     }
@@ -420,12 +490,66 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         _showProUpgradeSheet.value = show && Edition.HAS_PRO
     }
 
+    private var statusBannerJob: Job? = null
+
     fun clearStatusBanner() {
+        statusBannerJob?.cancel()
+        statusBannerJob = null
         _statusBannerMessage.value = null
     }
 
     fun postStatusMessage(msg: String) {
+        if (!settingsState.value.toastNotificationsEnabled) {
+            clearStatusBanner()
+            return
+        }
+        showToastMessage(msg)
+    }
+
+    fun previewToastNotification() {
+        val current = settingsState.value
+        val msg = "Preview toast • ${current.toastStyle.label} (${current.toastPlacement.label}, ${current.toastDuration.shortLabel})"
+        showToastMessage(msg)
+    }
+
+    private fun showToastMessage(msg: String) {
+        statusBannerJob?.cancel()
         _statusBannerMessage.value = msg
+        val durationMs = settingsState.value.toastDuration.durationMs
+        if (durationMs > 0L) {
+            statusBannerJob = viewModelScope.launch {
+                delay(durationMs)
+                if (_statusBannerMessage.value == msg) {
+                    _statusBannerMessage.value = null
+                }
+            }
+        }
+    }
+
+    fun setPodcastSortOption(sort: PodcastSortOption) {
+        viewModelScope.launch {
+            preferencesRepository.setPodcastSortOption(sort)
+        }
+    }
+
+    fun setPodcastFilterOption(filter: PodcastFilterOption) {
+        viewModelScope.launch {
+            preferencesRepository.setPodcastFilterOption(filter)
+        }
+    }
+
+    fun setToastSettings(
+        enabled: Boolean,
+        duration: ToastDurationOption,
+        style: ToastVisualStyle,
+        placement: ToastPlacement
+    ) {
+        if (!enabled) {
+            clearStatusBanner()
+        }
+        viewModelScope.launch {
+            preferencesRepository.setToastSettings(enabled, duration, style, placement)
+        }
     }
 
     fun selectFolderFilter(folder: String) {
@@ -480,10 +604,23 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun refreshChaptersForActiveEpisode(episode: EpisodeEntity) {
+        val inlineChapters = com.example.data.network.PodcastingChaptersAndTranscripts
+            .parsePodcastChaptersJson(episode.chaptersJson)
+            .ifEmpty {
+                com.example.data.network.PodcastingChaptersAndTranscripts
+                    .parseTimestampChaptersFromHtml(episode.descriptionHtml)
+            }
+        val inlineCues = com.example.data.network.PodcastingChaptersAndTranscripts
+            .parseTranscriptContent(episode.transcriptText, episode.transcriptMimeType)
+        _activeEpisodeChapters.value = inlineChapters
+        _activeEpisodeTranscriptCues.value = inlineCues
+
         viewModelScope.launch {
             val (chapters, cues) = repository.loadChaptersAndTranscript(episode)
-            _activeEpisodeChapters.value = chapters
-            _activeEpisodeTranscriptCues.value = cues
+            if (playbackState.value.currentEpisode?.id == episode.id) {
+                _activeEpisodeChapters.value = chapters
+                _activeEpisodeTranscriptCues.value = cues
+            }
         }
     }
 
@@ -496,6 +633,15 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         devTools.recordEvent("playback", "Play episode ${episode.id} (${episode.title}) stream=${episode.audioUrl}")
         viewModelScope.launch {
             preferencesRepository.setLastPlayingEpisodeId(episode.id)
+            val feedUrl = subscribedPodcasts.value.firstOrNull { it.id == episode.podcastId }?.feedUrl.orEmpty()
+            val epKey = DriveSyncEngine.episodeCanonicalKey(episode, feedUrl)
+            val now = System.currentTimeMillis()
+            preferencesRepository.updateDriveSyncJournal { journal ->
+                journal.copy(
+                    lastPlayingEpisodeKey = epKey,
+                    lastPlayingUpdatedAt = now
+                )
+            }
         }
     }
 
@@ -591,6 +737,41 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addEpisodeToUpNext(episode: EpisodeEntity, toBeginning: Boolean) {
+        viewModelScope.launch {
+            repository.setEpisodeUpNextPosition(episode, toBeginning)
+            postStatusMessage(
+                if (toBeginning) "Added \"${episode.title}\" to beginning of Up Next"
+                else "Added \"${episode.title}\" to end of Up Next"
+            )
+            if (settingsState.value.autoDownloadUpNext) {
+                repository.enforceAutoDownloadRules(
+                    autoDownloadWifi = settingsState.value.autoDownloadWifi,
+                    autoDownloadUpNext = true,
+                    queueDepth = settingsState.value.autoDownloadQueueDepth
+                )
+            }
+        }
+    }
+
+    fun executeEpisodeSwipeAction(episode: EpisodeEntity, action: EpisodeSwipeAction) {
+        when (action) {
+            EpisodeSwipeAction.UP_NEXT_CHOOSE,
+            EpisodeSwipeAction.PLAY_NEXT -> addEpisodeToUpNext(episode, toBeginning = true)
+            EpisodeSwipeAction.PLAY_LAST -> addEpisodeToUpNext(episode, toBeginning = false)
+            EpisodeSwipeAction.MARK_PLAYED -> markEpisodePlayed(episode, !episode.isPlayed)
+            EpisodeSwipeAction.DOWNLOAD -> toggleDownloaded(episode)
+            EpisodeSwipeAction.BOOKMARK -> {
+                toggleStarred(episode)
+                postStatusMessage(
+                    if (!episode.isStarred) "Bookmarked \"${episode.title}\""
+                    else "Removed bookmark"
+                )
+            }
+            EpisodeSwipeAction.NONE -> Unit
+        }
+    }
+
     fun moveEpisodeToQueueEdge(episode: EpisodeEntity, toBeginning: Boolean) {
         viewModelScope.launch {
             repository.setEpisodeUpNextPosition(episode, toBeginning)
@@ -602,6 +783,143 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.queueEpisodes(episodes, toBeginning)
             postStatusMessage("Added ${episodes.size} episodes to Up Next")
+        }
+    }
+
+    fun executeBatchEpisodeAction(episodes: List<EpisodeEntity>, action: EpisodeBatchAction) {
+        if (episodes.isEmpty()) return
+        val count = episodes.size
+        viewModelScope.launch {
+            when (action) {
+                EpisodeBatchAction.ADD_UP_NEXT_TOP -> {
+                    repository.queueEpisodes(episodes, toBeginning = true)
+                    postStatusMessage("Added $count episode${if (count == 1) "" else "s"} to top of Up Next")
+                }
+                EpisodeBatchAction.ADD_UP_NEXT_BOTTOM -> {
+                    repository.queueEpisodes(episodes, toBeginning = false)
+                    postStatusMessage("Added $count episode${if (count == 1) "" else "s"} to end of Up Next")
+                }
+                EpisodeBatchAction.MOVE_UP_NEXT_TOP -> {
+                    repository.moveEpisodesToQueueEdge(episodes, toBeginning = true)
+                    postStatusMessage("Moved $count episode${if (count == 1) "" else "s"} to top of Up Next")
+                }
+                EpisodeBatchAction.MOVE_UP_NEXT_BOTTOM -> {
+                    repository.moveEpisodesToQueueEdge(episodes, toBeginning = false)
+                    postStatusMessage("Moved $count episode${if (count == 1) "" else "s"} to end of Up Next")
+                }
+                EpisodeBatchAction.REMOVE_FROM_UP_NEXT -> {
+                    repository.removeEpisodesFromUpNext(episodes)
+                    postStatusMessage("Removed $count episode${if (count == 1) "" else "s"} from Up Next")
+                }
+                EpisodeBatchAction.MARK_PLAYED -> {
+                    repository.markEpisodesPlayed(episodes, played = true)
+                    postStatusMessage("Marked $count episode${if (count == 1) "" else "s"} as played")
+                }
+                EpisodeBatchAction.MARK_UNPLAYED -> {
+                    repository.markEpisodesPlayed(episodes, played = false)
+                    postStatusMessage("Marked $count episode${if (count == 1) "" else "s"} as unplayed")
+                }
+                EpisodeBatchAction.DOWNLOAD -> {
+                    postStatusMessage("Downloading $count episode${if (count == 1) "" else "s"}...")
+                    val (ok, failed) = repository.downloadEpisodes(episodes)
+                    postStatusMessage(
+                        if (failed > 0) "Downloaded $ok episode(s) ($failed failed)"
+                        else "Downloaded $ok episode${if (ok == 1) "" else "s"}"
+                    )
+                }
+                EpisodeBatchAction.REMOVE_DOWNLOAD -> {
+                    val removed = repository.removeDownloadsForEpisodes(episodes)
+                    postStatusMessage("Removed $removed offline download${if (removed == 1) "" else "s"}")
+                }
+                EpisodeBatchAction.BOOKMARK -> {
+                    repository.setEpisodesStarred(episodes, starred = true)
+                    postStatusMessage("Starred $count episode${if (count == 1) "" else "s"}")
+                }
+                EpisodeBatchAction.UNBOOKMARK -> {
+                    repository.setEpisodesStarred(episodes, starred = false)
+                    postStatusMessage("Removed star from $count episode${if (count == 1) "" else "s"}")
+                }
+                EpisodeBatchAction.ARCHIVE -> {
+                    repository.archiveEpisodes(episodes)
+                    postStatusMessage("Archived $count episode${if (count == 1) "" else "s"}")
+                }
+            }
+        }
+    }
+
+    fun executeBatchPodcastAction(podcasts: List<PodcastEntity>, action: PodcastBatchAction) {
+        if (podcasts.isEmpty()) return
+        val count = podcasts.size
+        viewModelScope.launch {
+            when (action) {
+                PodcastBatchAction.MARK_ALL_PLAYED -> {
+                    repository.markAllEpisodesPlayedForPodcasts(podcasts)
+                    postStatusMessage("Marked all episodes played for $count show${if (count == 1) "" else "s"}")
+                }
+                PodcastBatchAction.AUTO_QUEUE_ON -> {
+                    repository.updatePodcastsAutoQueue(podcasts, AutoQueueMode.END)
+                    postStatusMessage("Auto-Queue enabled for $count show${if (count == 1) "" else "s"}")
+                }
+                PodcastBatchAction.AUTO_QUEUE_OFF -> {
+                    repository.updatePodcastsAutoQueue(podcasts, AutoQueueMode.OFF)
+                    postStatusMessage("Auto-Queue disabled for $count show${if (count == 1) "" else "s"}")
+                }
+                PodcastBatchAction.REFRESH -> {
+                    refreshSubscribedFeedsNow()
+                }
+                PodcastBatchAction.UNSUBSCRIBE -> {
+                    val removedIds = podcasts.map { it.id }.toSet()
+                    repository.unsubscribePodcasts(podcasts)
+                    if (_selectedPodcastId.value in removedIds) _selectedPodcastId.value = null
+                    postStatusMessage("Unsubscribed from $count show${if (count == 1) "" else "s"}")
+                }
+            }
+        }
+    }
+
+    fun executeBatchPlaylistAction(playlists: List<PlaylistEntity>, action: PlaylistBatchAction) {
+        if (playlists.isEmpty()) return
+        val count = playlists.size
+        viewModelScope.launch {
+            when (action) {
+                PlaylistBatchAction.QUEUE_EPISODES -> {
+                    val allEps = activeEpisodes.value
+                    val resolved = playlists
+                        .flatMap { pl -> resolvePlaylistEpisodes(pl, allEps) }
+                        .distinctBy { it.id }
+                    if (resolved.isNotEmpty()) {
+                        repository.queueEpisodes(resolved, toBeginning = false)
+                        postStatusMessage("Queued ${resolved.size} episode${if (resolved.size == 1) "" else "s"} from $count playlist${if (count == 1) "" else "s"}")
+                    } else {
+                        postStatusMessage("No unplayed episodes in selected playlists")
+                    }
+                }
+                PlaylistBatchAction.PIN -> {
+                    repository.setPlaylistsPinned(playlists, pinned = true)
+                    postStatusMessage("Pinned $count playlist${if (count == 1) "" else "s"}")
+                }
+                PlaylistBatchAction.UNPIN -> {
+                    repository.setPlaylistsPinned(playlists, pinned = false)
+                    postStatusMessage("Unpinned $count playlist${if (count == 1) "" else "s"}")
+                }
+                PlaylistBatchAction.AUTO_DOWNLOAD_ON -> {
+                    repository.setPlaylistsAutoDownload(playlists, enabled = true)
+                    postStatusMessage("Auto-download enabled for $count playlist${if (count == 1) "" else "s"}")
+                }
+                PlaylistBatchAction.AUTO_DOWNLOAD_OFF -> {
+                    repository.setPlaylistsAutoDownload(playlists, enabled = false)
+                    postStatusMessage("Auto-download disabled for $count playlist${if (count == 1) "" else "s"}")
+                }
+                PlaylistBatchAction.DELETE -> {
+                    val customIds = playlists.filter { it.smartRuleType.isEmpty() }.map { it.id }.toSet()
+                    val deleted = repository.deleteCustomPlaylists(playlists)
+                    if (_selectedPlaylistId.value in customIds) _selectedPlaylistId.value = null
+                    postStatusMessage(
+                        if (deleted > 0) "Deleted $deleted custom playlist${if (deleted == 1) "" else "s"}"
+                        else "Smart playlists cannot be deleted"
+                    )
+                }
+            }
         }
     }
 
@@ -747,6 +1065,10 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun subscribeByRssUrl(rssUrl: String) {
+        if (Edition.HAS_PRO && !settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
+            return
+        }
         viewModelScope.launch {
             val res = repository.addPodcastByRssUrl(rssUrl)
             res.onSuccess { pod ->
@@ -803,21 +1125,22 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resolvePlaylistEpisodes(playlist: PlaylistEntity, allEpisodes: List<EpisodeEntity>): List<EpisodeEntity> {
+        val unplayedEpisodes = allEpisodes.filter { !it.isPlayed }
         val smart = SmartPlaylistType.entries.find { it.name == playlist.smartRuleType }
         if (smart != null) {
             return when (smart) {
-                SmartPlaylistType.EVERYTHING -> allEpisodes.sortedByDescending { it.publishedAt }
-                SmartPlaylistType.RECENT_RELEASES -> allEpisodes.sortedByDescending { it.publishedAt }.take(25)
-                SmartPlaylistType.IN_PROGRESS -> allEpisodes.filter { it.resumePositionMs > 0L && !it.isPlayed }
-                SmartPlaylistType.UNPLAYED -> allEpisodes.filter { !it.isPlayed }
-                SmartPlaylistType.DOWNLOADED -> allEpisodes.filter { it.isDownloaded }
-                SmartPlaylistType.STARRED -> allEpisodes.filter { it.isStarred }
-                SmartPlaylistType.SHORT_EPISODES -> allEpisodes.filter { it.durationMs <= 25 * 60 * 1000L }
+                SmartPlaylistType.EVERYTHING -> unplayedEpisodes.sortedByDescending { it.publishedAt }
+                SmartPlaylistType.RECENT_RELEASES -> unplayedEpisodes.sortedByDescending { it.publishedAt }.take(25)
+                SmartPlaylistType.IN_PROGRESS -> unplayedEpisodes.filter { it.resumePositionMs > 0L }
+                SmartPlaylistType.UNPLAYED -> unplayedEpisodes
+                SmartPlaylistType.DOWNLOADED -> unplayedEpisodes.filter { it.isDownloaded }
+                SmartPlaylistType.STARRED -> unplayedEpisodes.filter { it.isStarred }
+                SmartPlaylistType.SHORT_EPISODES -> unplayedEpisodes.filter { it.durationMs <= 25 * 60 * 1000L }
             }
         }
         val assignedPods = playlist.assignedPodcastIdList()
         val explicitEps = playlist.episodeIdList()
-        return allEpisodes.filter { ep ->
+        return unplayedEpisodes.filter { ep ->
             ep.id in explicitEps || ep.podcastId in assignedPods
         }.sortedByDescending { it.publishedAt }
     }
@@ -910,6 +1233,39 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { preferencesRepository.setCustomHexColor(hex, enabled) }
     }
 
+    fun setHomeCardEnabled(card: HomeCardType, enabled: Boolean) {
+        if (enabled && card.isPro && (!Edition.HAS_PRO || !settingsState.value.isProUnlocked)) {
+            if (Edition.HAS_PRO) _showProUpgradeSheet.value = true
+            return
+        }
+        viewModelScope.launch {
+            preferencesRepository.setHomeCardEnabled(
+                card = card,
+                enabled = enabled,
+                isProUnlocked = settingsState.value.isProUnlocked
+            )
+        }
+    }
+
+    fun resetHomeCardsToDefault() {
+        viewModelScope.launch {
+            preferencesRepository.resetHomeCardsToDefault()
+            postStatusMessage("Home screen cards reset to default")
+        }
+    }
+
+    fun setListeningHistoryRange(range: ListeningHistoryRange) {
+        viewModelScope.launch {
+            preferencesRepository.setListeningHistoryRange(range)
+            postStatusMessage("Listening History set to ${range.label}")
+        }
+    }
+
+    fun openPodcastFromHome(podcastId: String) {
+        _selectedTab.value = PrimaryTab.PODCASTS
+        _selectedPodcastId.value = podcastId
+    }
+
     fun setPlaybackSpeed(speed: Float) {
         viewModelScope.launch { preferencesRepository.setPlaybackSpeed(speed) }
     }
@@ -933,6 +1289,13 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     fun setPlaybackExtraOptions(markPlayedFinished: Boolean, resumeHeadset: Boolean, autoRewindSec: Int) {
         viewModelScope.launch {
             preferencesRepository.setPlaybackExtraOptions(markPlayedFinished, resumeHeadset, autoRewindSec)
+        }
+    }
+
+    fun setSwipeActions(rightAction: EpisodeSwipeAction, leftAction: EpisodeSwipeAction) {
+        viewModelScope.launch {
+            preferencesRepository.setSwipeActions(rightAction, leftAction)
+            postStatusMessage("Swipe gestures updated")
         }
     }
 
@@ -1018,9 +1381,196 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         proFeatures.restorePurchases(silent = false)
     }
 
+    fun setCloudSyncProvider(provider: com.example.data.local.CloudSyncProvider) {
+        viewModelScope.launch {
+            preferencesRepository.setCloudSyncProvider(provider)
+        }
+    }
+
+    fun saveWebDavConfig(serverUrl: String, username: String, password: String) {
+        viewModelScope.launch {
+            preferencesRepository.setWebDavConfig(serverUrl, username, password)
+            postStatusMessage("Saved Nextcloud / WebDAV server settings")
+        }
+    }
+
+    fun syncWithWebDav(restore: Boolean = false) {
+        if (Edition.HAS_PRO && !settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
+            return
+        }
+        val current = settingsState.value
+        if (current.webDavServerUrl.isBlank()) {
+            postStatusMessage("Enter your Nextcloud or WebDAV folder URL first")
+            return
+        }
+        viewModelScope.launch {
+            _isCloudSyncBusy.value = true
+            try {
+                val stamp = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
+                val downloadRes = webDavSyncClient.downloadBackup(
+                    serverUrl = current.webDavServerUrl,
+                    username = current.webDavUsername,
+                    password = current.webDavPassword
+                )
+                downloadRes.onSuccess { remoteJson ->
+                    if (restore) {
+                        if (remoteJson.isNullOrBlank()) {
+                            postStatusMessage("No WebDAV sync file found at that URL yet")
+                        } else {
+                            val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                            val banner = mergeResult.summary.toShortBanner("Nextcloud / WebDAV")
+                            preferencesRepository.setCloudSyncStatus(
+                                current.cloudSyncAutoBackup,
+                                "$banner • $stamp"
+                            )
+                            postStatusMessage(banner)
+                        }
+                    } else {
+                        val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                        webDavSyncClient.uploadBackup(
+                            serverUrl = current.webDavServerUrl,
+                            username = current.webDavUsername,
+                            password = current.webDavPassword,
+                            jsonPayload = mergeResult.canonicalJsonPayload
+                        ).onSuccess {
+                            val banner = mergeResult.summary.toShortBanner("Nextcloud / WebDAV")
+                            preferencesRepository.setCloudSyncStatus(
+                                current.cloudSyncAutoBackup,
+                                "$banner • $stamp"
+                            )
+                            postStatusMessage(banner)
+                        }.onFailure { err ->
+                            postStatusMessage(err.localizedMessage ?: "WebDAV upload failed")
+                        }
+                    }
+                }.onFailure { err ->
+                    postStatusMessage(err.localizedMessage ?: "WebDAV sync failed")
+                }
+            } catch (e: Exception) {
+                postStatusMessage("WebDAV sync error: ${e.localizedMessage ?: "Invalid response"}")
+            } finally {
+                _isCloudSyncBusy.value = false
+            }
+        }
+    }
+
+    fun linkSafSyncFile(
+        uri: Uri,
+        provider: com.example.data.local.CloudSyncProvider,
+        syncAfterLink: Boolean = true,
+        restoreOnly: Boolean = false
+    ) {
+        viewModelScope.launch {
+            val displayName = safDriveSyncClient.queryDisplayName(uri)
+            preferencesRepository.setSafSyncFile(
+                uri = uri.toString(),
+                providerName = provider.name,
+                displayName = displayName
+            )
+            if (syncAfterLink && (!Edition.HAS_PRO || settingsState.value.isProUnlocked)) {
+                performSafDriveSyncInternal(
+                    uri = uri,
+                    provider = provider,
+                    restore = restoreOnly
+                )
+            } else {
+                postStatusMessage("Linked ${provider.title} file: $displayName")
+            }
+        }
+    }
+
+    fun unlinkSafSyncFile() {
+        viewModelScope.launch {
+            preferencesRepository.clearSafSyncFile()
+            postStatusMessage("Unlinked cloud drive sync file")
+        }
+    }
+
+    fun syncWithSafDrive(
+        provider: com.example.data.local.CloudSyncProvider,
+        restore: Boolean = false
+    ) {
+        if (Edition.HAS_PRO && !settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
+            return
+        }
+        val uriString = settingsState.value.safSyncUri
+        if (uriString.isBlank()) {
+            postStatusMessage("Link or create a ${provider.title} sync file first")
+            return
+        }
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+        if (uri == null) {
+            postStatusMessage("Invalid linked ${provider.title} file URI")
+            return
+        }
+        viewModelScope.launch {
+            performSafDriveSyncInternal(uri = uri, provider = provider, restore = restore)
+        }
+    }
+
+    private suspend fun performSafDriveSyncInternal(
+        uri: Uri,
+        provider: com.example.data.local.CloudSyncProvider,
+        restore: Boolean
+    ) {
+        _isCloudSyncBusy.value = true
+        try {
+            val stamp = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
+            val readRes = safDriveSyncClient.readSyncFile(uri)
+            val remoteJson = readRes.getOrElse { err ->
+                postStatusMessage("Cannot read ${provider.title} file: ${err.localizedMessage ?: "Permission lost. Re-link file."}")
+                return
+            }
+            if (restore) {
+                if (remoteJson.isNullOrBlank()) {
+                    postStatusMessage("${provider.title} sync file is empty — nothing to restore yet")
+                    return
+                }
+                val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                val banner = mergeResult.summary.toShortBanner(provider.title)
+                preferencesRepository.setCloudSyncStatus(
+                    settingsState.value.cloudSyncAutoBackup,
+                    "$banner • $stamp"
+                )
+                postStatusMessage(banner)
+            } else {
+                val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                safDriveSyncClient.writeSyncFile(uri, mergeResult.canonicalJsonPayload)
+                    .onSuccess {
+                        val banner = mergeResult.summary.toShortBanner(provider.title)
+                        preferencesRepository.setCloudSyncStatus(
+                            settingsState.value.cloudSyncAutoBackup,
+                            "$banner • $stamp"
+                        )
+                        postStatusMessage(banner)
+                    }
+                    .onFailure { err ->
+                        postStatusMessage("${provider.title} write failed: ${err.localizedMessage ?: "Re-link file"}")
+                    }
+            }
+        } catch (e: Exception) {
+            postStatusMessage("${provider.title} sync error: ${e.localizedMessage ?: "Invalid sync file"}")
+        } finally {
+            _isCloudSyncBusy.value = false
+        }
+    }
+
+    fun recordCloudProviderSafSync(provider: com.example.data.local.CloudSyncProvider, restored: Boolean) {
+        viewModelScope.launch {
+            val stamp = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
+            val actionVerb = if (restored) "Pulled from" else "Synced with"
+            preferencesRepository.setCloudSyncStatus(
+                settingsState.value.cloudSyncAutoBackup,
+                "$actionVerb ${provider.title} • $stamp"
+            )
+        }
+    }
+
     fun setCloudSyncAutoBackup(enabled: Boolean) {
-        if (enabled && (!Edition.HAS_PRO || !settingsState.value.isProUnlocked)) {
-            if (Edition.HAS_PRO) _showProUpgradeSheet.value = true
+        if (enabled && Edition.HAS_PRO && !settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
             return
         }
         viewModelScope.launch {
@@ -1075,41 +1625,40 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun performDriveSyncWithToken(accessToken: String, restore: Boolean) {
         try {
             val stamp = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
-            if (restore) {
-                val downloadRes = proFeatures.downloadBackupFromAppData(accessToken)
-                downloadRes.onSuccess { json ->
-                    if (json.isNullOrBlank()) {
-                        postStatusMessage("No Google Drive AppData backup found yet")
+            val downloadRes = proFeatures.downloadBackupFromAppData(accessToken)
+            downloadRes.onSuccess { remoteJson ->
+                if (restore) {
+                    if (remoteJson.isNullOrBlank()) {
+                        postStatusMessage("No Google Drive AppData sync file found yet")
                     } else {
-                        repository.importOpmlOrJson(json, "lohe_cloud_backup.json")
-                            .onSuccess { summary ->
-                                preferencesRepository.setCloudSyncStatus(
-                                    settingsState.value.cloudSyncAutoBackup,
-                                    "Restored from Google Drive AppData • $stamp"
-                                )
-                                postStatusMessage("Restored from Google Drive: $summary")
-                            }
-                            .onFailure { err ->
-                                postStatusMessage("Drive restore parse failed: ${err.localizedMessage}")
-                            }
-                    }
-                }.onFailure { err ->
-                    postStatusMessage("Drive restore failed: ${err.localizedMessage}")
-                }
-            } else {
-                val payload = repository.buildExportPayload(asJson = true)
-                proFeatures.uploadBackupToAppData(accessToken, payload)
-                    .onSuccess { msg ->
+                        val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                        val banner = mergeResult.summary.toShortBanner("Google Drive")
                         preferencesRepository.setCloudSyncStatus(
                             settingsState.value.cloudSyncAutoBackup,
-                            "Synced to Google Drive AppData • $stamp"
+                            "$banner • $stamp"
                         )
-                        postStatusMessage(msg)
+                        postStatusMessage(banner)
                     }
-                    .onFailure { err ->
-                        postStatusMessage("Drive upload failed: ${err.localizedMessage}")
-                    }
+                } else {
+                    val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                    proFeatures.uploadBackupToAppData(accessToken, mergeResult.canonicalJsonPayload)
+                        .onSuccess {
+                            val banner = mergeResult.summary.toShortBanner("Google Drive")
+                            preferencesRepository.setCloudSyncStatus(
+                                settingsState.value.cloudSyncAutoBackup,
+                                "$banner • $stamp"
+                            )
+                            postStatusMessage(banner)
+                        }
+                        .onFailure { err ->
+                            postStatusMessage("Drive upload failed: ${err.localizedMessage}")
+                        }
+                }
+            }.onFailure { err ->
+                postStatusMessage("Drive sync failed: ${err.localizedMessage}")
             }
+        } catch (e: Exception) {
+            postStatusMessage("Drive sync error: ${e.localizedMessage ?: "Invalid sync file"}")
         } finally {
             _isCloudSyncBusy.value = false
         }

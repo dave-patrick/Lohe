@@ -37,7 +37,7 @@ enum class QueueIndicatorSize(val label: String, val sizeDp: Float) {
 }
 
 enum class SmartPlaylistType(val id: String, val title: String, val subtitle: String) {
-    EVERYTHING("smart_everything", "All Signal", "Every episode in your library"),
+    EVERYTHING("smart_everything", "All Episodes", "Every unplayed episode in your library"),
     RECENT_RELEASES("smart_recent", "Recent Releases", "Fresh episodes published recently"),
     IN_PROGRESS("smart_in_progress", "In Progress", "Continue where you left off"),
     UNPLAYED("smart_unplayed", "Unplayed", "All unplayed episodes waiting"),

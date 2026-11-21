@@ -29,6 +29,8 @@ FOSS_LAUNCHER_LABEL = "Lohe (FOSS)"
 KEEP = {
     ".git", ".github", ".gitattributes", "docs", "tools", "README.md", "LICENSE",
     "AGENTS.md", ".herald", "gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar",
+    "local.properties", ".gradle", ".kotlin", ".idea", ".claude", ".codex-attachments",
+    "build", "app/build",
 }
 
 # Paths in the Play Edition that never go public.
@@ -148,17 +150,21 @@ def patch_app_gradle(t):
     t = sub_once(t, r"(?m)^\s*implementation\(libs\.android\.billing\.ktx\)\n", "", "billing dependency")
     t = sub_once(t, r"(?m)^\s*implementation\(libs\.play\.services\.auth\)\n", "", "play-services-auth dependency")
     # Optional local release signing for people building their own FOSS APKs.
+    t = "import java.util.Properties\n" + t
     t = sub_once(
         t, r"(?m)^([ \t]*)buildTypes \{",
-        "\\1// Release signing is optional: set LOHE_KEYSTORE, LOHE_KEYSTORE_PASSWORD,\n"
-        "\\1// LOHE_KEY_ALIAS and LOHE_KEY_PASSWORD to sign; otherwise the release APK is unsigned.\n"
-        "\\1val foss = System.getenv(\"LOHE_KEYSTORE\")\n"
+        "\\1// Release signing is optional: set LOHE_KEYSTORE (or keystore.path in local.properties)\n"
+        "\\1// along with password/alias variables to sign; otherwise the release APK is unsigned.\n"
+        "\\1val props = Properties().also { p ->\n"
+        "\\1  rootProject.file(\"local.properties\").takeIf { it.exists() }?.inputStream()?.use { p.load(it) }\n"
+        "\\1}\n"
+        "\\1val foss = (System.getenv(\"LOHE_KEYSTORE\") ?: System.getenv(\"LOHE_KEYSTORE_PATH\") ?: props.getProperty(\"keystore.path\"))?.takeIf { it.isNotBlank() }\n"
         "\\1if (foss != null) {\n"
         "\\1  signingConfigs.create(\"release\") {\n"
         "\\1    storeFile = file(foss)\n"
-        "\\1    storePassword = System.getenv(\"LOHE_KEYSTORE_PASSWORD\")\n"
-        "\\1    keyAlias = System.getenv(\"LOHE_KEY_ALIAS\")\n"
-        "\\1    keyPassword = System.getenv(\"LOHE_KEY_PASSWORD\")\n"
+        "\\1    storePassword = System.getenv(\"LOHE_KEYSTORE_PASSWORD\") ?: props.getProperty(\"keystore.password\")\n"
+        "\\1    keyAlias = System.getenv(\"LOHE_KEY_ALIAS\") ?: props.getProperty(\"keystore.alias\")\n"
+        "\\1    keyPassword = System.getenv(\"LOHE_KEY_PASSWORD\") ?: props.getProperty(\"keystore.key.password\")\n"
         "\\1  }\n"
         "\\1}\n\n"
         "\\1buildTypes {",

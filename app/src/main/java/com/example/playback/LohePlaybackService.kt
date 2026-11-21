@@ -836,10 +836,22 @@ class LohePlaybackService : MediaLibraryService() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
         if (mediaId.isBlank()) return
         val pos = player.currentPosition.coerceAtLeast(0L)
+        if (pos <= 0L) return
         val dur = player.duration.takeIf { it > 0L } ?: 0L
         cacheResumePositionMs(mediaId, pos)
         serviceScope.launch {
-            loheDao.updatePlaybackPosition(mediaId, pos, dur)
+            val existing = loheDao.getEpisodeById(mediaId)
+            val effectiveDur = if (dur > 0L) dur else (existing?.durationMs ?: 0L)
+            if (existing != null && !existing.isPlayed &&
+                com.example.data.repository.isEpisodeNearCompletion(pos, effectiveDur)
+            ) {
+                loheDao.markEpisodePlayed(mediaId, true, System.currentTimeMillis())
+                if (autoArchivePolicy == "IMMEDIATELY") {
+                    loheDao.archiveAllPlayedNonStarred()
+                }
+            } else if (existing?.isPlayed != true) {
+                loheDao.updatePlaybackPosition(mediaId, pos, dur)
+            }
         }
     }
 
@@ -1223,24 +1235,25 @@ class LohePlaybackService : MediaLibraryService() {
     }
 
     private fun resolvePlaylistEpisodes(playlist: PlaylistEntity, allEpisodes: List<EpisodeEntity>): List<EpisodeEntity> {
+        val unplayedEpisodes = allEpisodes.filter { !it.isPlayed }
         val smart = SmartPlaylistType.entries.find {
             it.name.equals(playlist.smartRuleType, ignoreCase = true) ||
                 it.id.equals(playlist.id, ignoreCase = true)
         }
         if (smart != null) {
             return when (smart) {
-                SmartPlaylistType.EVERYTHING -> allEpisodes.sortedByDescending { it.publishedAt }
-                SmartPlaylistType.RECENT_RELEASES -> allEpisodes.sortedByDescending { it.publishedAt }.take(25)
-                SmartPlaylistType.IN_PROGRESS -> allEpisodes.filter { it.resumePositionMs > 0L && !it.isPlayed }
-                SmartPlaylistType.UNPLAYED -> allEpisodes.filter { !it.isPlayed }
-                SmartPlaylistType.DOWNLOADED -> allEpisodes.filter { it.isDownloaded || it.localFilePath.isNotBlank() }
-                SmartPlaylistType.STARRED -> allEpisodes.filter { it.isStarred }
-                SmartPlaylistType.SHORT_EPISODES -> allEpisodes.filter { it.durationMs <= 25 * 60 * 1000L }
+                SmartPlaylistType.EVERYTHING -> unplayedEpisodes.sortedByDescending { it.publishedAt }
+                SmartPlaylistType.RECENT_RELEASES -> unplayedEpisodes.sortedByDescending { it.publishedAt }.take(25)
+                SmartPlaylistType.IN_PROGRESS -> unplayedEpisodes.filter { it.resumePositionMs > 0L }
+                SmartPlaylistType.UNPLAYED -> unplayedEpisodes
+                SmartPlaylistType.DOWNLOADED -> unplayedEpisodes.filter { it.isDownloaded || it.localFilePath.isNotBlank() }
+                SmartPlaylistType.STARRED -> unplayedEpisodes.filter { it.isStarred }
+                SmartPlaylistType.SHORT_EPISODES -> unplayedEpisodes.filter { it.durationMs <= 25 * 60 * 1000L }
             }
         }
         val assignedPods = playlist.assignedPodcastIdList()
         val explicitEps = playlist.episodeIdList()
-        return allEpisodes.filter { it.id in explicitEps || it.podcastId in assignedPods }
+        return unplayedEpisodes.filter { it.id in explicitEps || it.podcastId in assignedPods }
             .sortedByDescending { it.publishedAt }
     }
 

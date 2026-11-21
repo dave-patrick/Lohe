@@ -99,21 +99,29 @@ class V12FeaturesTest {
         // Home Listening Activity summary card shows streak & saved mins
         composeTestRule.onNodeWithTag("listening_activity_card").assertIsDisplayed()
 
-        // Open Full Player -> verify active Podcasting 2.0 chapter bar & End of Ep sleep timer -> bookmark -> open Notes/Chapters/Transcript/Bookmarks sheet
+        // Open Full Player -> verify active Podcasting 2.0 chapter bar -> bookmark -> open Now Playing Settings -> End of Ep sleep timer -> open Notes/Chapters/Transcript/Bookmarks sheet
         composeTestRule.onNodeWithTag("mini_player_bar").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("full_player_active_chapter").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("sleep_timer_end_of_ep").performScrollTo().performClick()
-        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("full_player_save_bookmark_button").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("bookmark_note_input").performScrollTo().performTextInput("Key takeaway")
         composeTestRule.onNodeWithTag("save_bookmark_confirm_button").performScrollTo().performClick()
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithTag("full_player_open_notes_sheet").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("full_player_audio_settings_button").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("now_playing_settings_sheet").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sleep_timer_end_of_ep").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithContentDescription("Close Settings").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("full_player_open_notes_sheet").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("episode_notes_sheet").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("episode_sheet_artwork").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("episode_sheet_controls_row").assertIsDisplayed()
 
         // Chapters tab + chapter link
         composeTestRule.onNodeWithTag("notes_tab_chapters").performClick()
@@ -135,7 +143,7 @@ class V12FeaturesTest {
         composeTestRule.onNodeWithTag("bookmark_row_0").assertIsDisplayed()
 
         // Dismiss sheet & Full Player
-        composeTestRule.onNodeWithContentDescription("Close Notes").performClick()
+        composeTestRule.onNodeWithContentDescription("Close Episode Details").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("full_player_close_button").performClick()
         composeTestRule.waitUntil(timeoutMillis = 3_000) {

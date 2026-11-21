@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FileUpload
@@ -81,18 +83,31 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.download.PodcastStorageUsage
 import com.example.data.importer.ImportProgressState
 import com.example.data.importer.ImportResultSummary
+import com.example.data.local.CloudSyncProvider
+import com.example.data.local.EpisodeEntity
+import com.example.data.local.EpisodeSwipeAction
+import com.example.data.local.HomeCardType
+import com.example.data.local.ListeningHistoryRange
 import com.example.data.local.LoheUserSettings
 import com.example.data.local.QueueIndicatorSize
 import com.example.data.local.QueueIndicatorStyle
+import com.example.data.local.ToastDurationOption
+import com.example.data.local.ToastPlacement
+import com.example.data.local.ToastVisualStyle
 import com.example.edition.DevTools
 import com.example.edition.Edition
 import com.example.edition.LoheBillingState
 import com.example.ui.SettingsSubScreen
+import com.example.ui.components.LoheToastVisual
 import com.example.ui.components.QueueIndicatorBadge
+import com.example.ui.components.computeListeningHistorySummary
 import com.example.ui.theme.LoheBackgroundDark
 import com.example.ui.theme.LoheBrightBlueText
 import com.example.ui.theme.LoheCyanAccent
@@ -111,6 +126,7 @@ fun SettingsContainerScreen(
     billingState: LoheBillingState,
     isCloudSyncBusy: Boolean,
     downloadedEpisodesCount: Int,
+    episodes: List<EpisodeEntity> = emptyList(),
     storageBreakdown: Pair<Long, List<PodcastStorageUsage>> = 0L to emptyList(),
     importProgressState: ImportProgressState = ImportProgressState(),
     lastImportSummary: ImportResultSummary? = null,
@@ -123,6 +139,9 @@ fun SettingsContainerScreen(
     onIndicatorSizeChange: (QueueIndicatorSize) -> Unit,
     onPresetColorChange: (QueuePresetColor) -> Unit,
     onCustomHexColorChange: (String, Boolean) -> Unit,
+    onToggleHomeCard: (HomeCardType, Boolean) -> Unit = { _, _ -> },
+    onResetHomeCards: () -> Unit = {},
+    onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit = {},
     onSpeedChange: (Float) -> Unit,
     onSkipDurationsChange: (Int, Int) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
@@ -130,6 +149,7 @@ fun SettingsContainerScreen(
     onContinuousPlaybackChange: (Boolean) -> Unit,
     onPlaybackExtraOptionsChange: (Boolean, Boolean, Int) -> Unit,
     onSleepShakeExtendChange: (Boolean) -> Unit = {},
+    onSwipeActionsChange: (EpisodeSwipeAction, EpisodeSwipeAction) -> Unit = { _, _ -> },
     onFloatingPlayerChange: (Boolean) -> Unit,
     onFloatingAppearanceChange: (Int, Int) -> Unit,
     onAutoArchivePolicyChange: (String) -> Unit,
@@ -149,9 +169,20 @@ fun SettingsContainerScreen(
     onExportDatabase: () -> Unit = {},
     onSyncToGoogleDrive: () -> Unit,
     onRestoreFromGoogleDrive: () -> Unit,
+    onCloudProviderChange: (CloudSyncProvider) -> Unit = {},
+    onSaveWebDavConfig: (String, String, String) -> Unit = { _, _, _ -> },
+    onSyncWebDav: () -> Unit = {},
+    onRestoreWebDav: () -> Unit = {},
+    onSyncCloudProviderSaf: (CloudSyncProvider) -> Unit = { _ -> onExportJsonBackup() },
+    onRestoreCloudProviderSaf: (CloudSyncProvider) -> Unit = { _ -> onImportOpmlOrJson() },
+    onLinkSafSyncFile: (CloudSyncProvider) -> Unit = {},
+    onCreateSafSyncFile: (CloudSyncProvider) -> Unit = {},
+    onUnlinkSafSyncFile: () -> Unit = {},
     onToggleCloudAutoBackup: (Boolean) -> Unit,
     onOpenProUpgradeModal: () -> Unit,
-    onRestoreProPurchases: () -> Unit
+    onRestoreProPurchases: () -> Unit,
+    onToastSettingsChange: (Boolean, ToastDurationOption, ToastVisualStyle, ToastPlacement) -> Unit = { _, _, _, _ -> },
+    onPreviewToast: () -> Unit = {}
 ) {
     BackHandler {
         onBack()
@@ -241,6 +272,7 @@ fun SettingsContainerScreen(
                             billingState = billingState,
                             isCloudSyncBusy = isCloudSyncBusy,
                             downloadedEpisodesCount = downloadedEpisodesCount,
+                            episodes = episodes,
                             storageBreakdown = storageBreakdown,
                             importProgressState = importProgressState,
                             lastImportSummary = lastImportSummary,
@@ -251,6 +283,9 @@ fun SettingsContainerScreen(
                             onIndicatorSizeChange = onIndicatorSizeChange,
                             onPresetColorChange = onPresetColorChange,
                             onCustomHexColorChange = onCustomHexColorChange,
+                            onToggleHomeCard = onToggleHomeCard,
+                            onResetHomeCards = onResetHomeCards,
+                            onListeningHistoryRangeChange = onListeningHistoryRangeChange,
                             onSpeedChange = onSpeedChange,
                             onSkipDurationsChange = onSkipDurationsChange,
                             onSkipSilenceChange = onSkipSilenceChange,
@@ -258,6 +293,7 @@ fun SettingsContainerScreen(
                             onContinuousPlaybackChange = onContinuousPlaybackChange,
                             onPlaybackExtraOptionsChange = onPlaybackExtraOptionsChange,
                             onSleepShakeExtendChange = onSleepShakeExtendChange,
+                            onSwipeActionsChange = onSwipeActionsChange,
                             onFloatingPlayerChange = onFloatingPlayerChange,
                             onFloatingAppearanceChange = onFloatingAppearanceChange,
                             onAutoArchivePolicyChange = onAutoArchivePolicyChange,
@@ -277,9 +313,20 @@ fun SettingsContainerScreen(
                             onExportDatabase = onExportDatabase,
                             onSyncToGoogleDrive = onSyncToGoogleDrive,
                             onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
+                            onCloudProviderChange = onCloudProviderChange,
+                            onSaveWebDavConfig = onSaveWebDavConfig,
+                            onSyncWebDav = onSyncWebDav,
+                            onRestoreWebDav = onRestoreWebDav,
+                            onSyncCloudProviderSaf = onSyncCloudProviderSaf,
+                            onRestoreCloudProviderSaf = onRestoreCloudProviderSaf,
+                            onLinkSafSyncFile = onLinkSafSyncFile,
+                            onCreateSafSyncFile = onCreateSafSyncFile,
+                            onUnlinkSafSyncFile = onUnlinkSafSyncFile,
                             onToggleCloudAutoBackup = onToggleCloudAutoBackup,
                             onOpenProUpgradeModal = onOpenProUpgradeModal,
-                            onRestoreProPurchases = onRestoreProPurchases
+                            onRestoreProPurchases = onRestoreProPurchases,
+                            onToastSettingsChange = onToastSettingsChange,
+                            onPreviewToast = onPreviewToast
                         )
                     }
                 }
@@ -299,6 +346,7 @@ fun SettingsContainerScreen(
                         billingState = billingState,
                         isCloudSyncBusy = isCloudSyncBusy,
                         downloadedEpisodesCount = downloadedEpisodesCount,
+                        episodes = episodes,
                         storageBreakdown = storageBreakdown,
                         importProgressState = importProgressState,
                         lastImportSummary = lastImportSummary,
@@ -309,6 +357,9 @@ fun SettingsContainerScreen(
                         onIndicatorSizeChange = onIndicatorSizeChange,
                         onPresetColorChange = onPresetColorChange,
                         onCustomHexColorChange = onCustomHexColorChange,
+                        onToggleHomeCard = onToggleHomeCard,
+                        onResetHomeCards = onResetHomeCards,
+                        onListeningHistoryRangeChange = onListeningHistoryRangeChange,
                         onSpeedChange = onSpeedChange,
                         onSkipDurationsChange = onSkipDurationsChange,
                         onSkipSilenceChange = onSkipSilenceChange,
@@ -316,6 +367,7 @@ fun SettingsContainerScreen(
                         onContinuousPlaybackChange = onContinuousPlaybackChange,
                         onPlaybackExtraOptionsChange = onPlaybackExtraOptionsChange,
                         onSleepShakeExtendChange = onSleepShakeExtendChange,
+                        onSwipeActionsChange = onSwipeActionsChange,
                         onFloatingPlayerChange = onFloatingPlayerChange,
                         onFloatingAppearanceChange = onFloatingAppearanceChange,
                         onAutoArchivePolicyChange = onAutoArchivePolicyChange,
@@ -335,9 +387,20 @@ fun SettingsContainerScreen(
                         onExportDatabase = onExportDatabase,
                         onSyncToGoogleDrive = onSyncToGoogleDrive,
                         onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
+                        onCloudProviderChange = onCloudProviderChange,
+                        onSaveWebDavConfig = onSaveWebDavConfig,
+                        onSyncWebDav = onSyncWebDav,
+                        onRestoreWebDav = onRestoreWebDav,
+                        onSyncCloudProviderSaf = onSyncCloudProviderSaf,
+                        onRestoreCloudProviderSaf = onRestoreCloudProviderSaf,
+                        onLinkSafSyncFile = onLinkSafSyncFile,
+                        onCreateSafSyncFile = onCreateSafSyncFile,
+                        onUnlinkSafSyncFile = onUnlinkSafSyncFile,
                         onToggleCloudAutoBackup = onToggleCloudAutoBackup,
                         onOpenProUpgradeModal = onOpenProUpgradeModal,
-                        onRestoreProPurchases = onRestoreProPurchases
+                        onRestoreProPurchases = onRestoreProPurchases,
+                        onToastSettingsChange = onToastSettingsChange,
+                        onPreviewToast = onPreviewToast
                     )
                 }
             }
@@ -352,6 +415,7 @@ private fun SettingsDetailContent(
     billingState: LoheBillingState,
     isCloudSyncBusy: Boolean,
     downloadedEpisodesCount: Int,
+    episodes: List<EpisodeEntity>,
     storageBreakdown: Pair<Long, List<PodcastStorageUsage>>,
     importProgressState: ImportProgressState,
     lastImportSummary: ImportResultSummary?,
@@ -362,6 +426,9 @@ private fun SettingsDetailContent(
     onIndicatorSizeChange: (QueueIndicatorSize) -> Unit,
     onPresetColorChange: (QueuePresetColor) -> Unit,
     onCustomHexColorChange: (String, Boolean) -> Unit,
+    onToggleHomeCard: (HomeCardType, Boolean) -> Unit,
+    onResetHomeCards: () -> Unit,
+    onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSkipDurationsChange: (Int, Int) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
@@ -369,6 +436,7 @@ private fun SettingsDetailContent(
     onContinuousPlaybackChange: (Boolean) -> Unit,
     onPlaybackExtraOptionsChange: (Boolean, Boolean, Int) -> Unit,
     onSleepShakeExtendChange: (Boolean) -> Unit,
+    onSwipeActionsChange: (EpisodeSwipeAction, EpisodeSwipeAction) -> Unit,
     onFloatingPlayerChange: (Boolean) -> Unit,
     onFloatingAppearanceChange: (Int, Int) -> Unit,
     onAutoArchivePolicyChange: (String) -> Unit,
@@ -388,9 +456,20 @@ private fun SettingsDetailContent(
     onExportDatabase: () -> Unit,
     onSyncToGoogleDrive: () -> Unit,
     onRestoreFromGoogleDrive: () -> Unit,
+    onCloudProviderChange: (CloudSyncProvider) -> Unit,
+    onSaveWebDavConfig: (String, String, String) -> Unit,
+    onSyncWebDav: () -> Unit,
+    onRestoreWebDav: () -> Unit,
+    onSyncCloudProviderSaf: (CloudSyncProvider) -> Unit,
+    onRestoreCloudProviderSaf: (CloudSyncProvider) -> Unit,
+    onLinkSafSyncFile: (CloudSyncProvider) -> Unit,
+    onCreateSafSyncFile: (CloudSyncProvider) -> Unit,
+    onUnlinkSafSyncFile: () -> Unit,
     onToggleCloudAutoBackup: (Boolean) -> Unit,
     onOpenProUpgradeModal: () -> Unit,
-    onRestoreProPurchases: () -> Unit
+    onRestoreProPurchases: () -> Unit,
+    onToastSettingsChange: (Boolean, ToastDurationOption, ToastVisualStyle, ToastPlacement) -> Unit,
+    onPreviewToast: () -> Unit
 ) {
     when (subScreen) {
         SettingsSubScreen.OVERVIEW -> Unit
@@ -407,15 +486,31 @@ private fun SettingsDetailContent(
             onOpenProModal = onOpenProUpgradeModal
         )
 
+        SettingsSubScreen.TOAST_NOTIFICATIONS -> ToastNotificationsSettingsSubScreen(
+            settings = settings,
+            onToastSettingsChange = onToastSettingsChange,
+            onPreviewToast = onPreviewToast
+        )
+
+        SettingsSubScreen.HOME_CARDS -> HomeCardsSettingsSubScreen(
+            settings = settings,
+            onToggleHomeCard = onToggleHomeCard,
+            onResetHomeCards = onResetHomeCards,
+            onListeningHistoryRangeChange = onListeningHistoryRangeChange,
+            onOpenProModal = onOpenProUpgradeModal
+        )
+
         SettingsSubScreen.PLAYBACK -> PlaybackSettingsSubScreen(
             settings = settings,
+            episodes = episodes,
             onSpeedChange = onSpeedChange,
             onSkipDurationsChange = onSkipDurationsChange,
             onSkipSilenceChange = onSkipSilenceChange,
             onVolumeBoostChange = onVolumeBoostChange,
             onContinuousPlaybackChange = onContinuousPlaybackChange,
             onPlaybackExtraOptionsChange = onPlaybackExtraOptionsChange,
-            onSleepShakeExtendChange = onSleepShakeExtendChange
+            onSleepShakeExtendChange = onSleepShakeExtendChange,
+            onSwipeActionsChange = onSwipeActionsChange
         )
 
         SettingsSubScreen.FLOATING_PLAYER -> {
@@ -461,20 +556,25 @@ private fun SettingsDetailContent(
             onExportDatabase = onExportDatabase
         )
 
-        SettingsSubScreen.CLOUD_SYNC -> {
-            if (Edition.HAS_PRO) {
-                CloudSyncSettingsSubScreen(
-                    settings = settings,
-                    isCloudSyncBusy = isCloudSyncBusy,
-                    onSyncToGoogleDrive = onSyncToGoogleDrive,
-                    onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
-                    onToggleCloudAutoBackup = onToggleCloudAutoBackup,
-                    onImportFromDriveSaf = onImportOpmlOrJson,
-                    onExportToDriveSaf = onExportJsonBackup,
-                    onOpenProModal = onOpenProUpgradeModal
-                )
-            }
-        }
+        SettingsSubScreen.CLOUD_SYNC -> CloudSyncSettingsSubScreen(
+            settings = settings,
+            isCloudSyncBusy = isCloudSyncBusy,
+            onCloudProviderChange = onCloudProviderChange,
+            onSaveWebDavConfig = onSaveWebDavConfig,
+            onSyncToGoogleDrive = onSyncToGoogleDrive,
+            onRestoreFromGoogleDrive = onRestoreFromGoogleDrive,
+            onSyncWebDav = onSyncWebDav,
+            onRestoreWebDav = onRestoreWebDav,
+            onSyncCloudProviderSaf = onSyncCloudProviderSaf,
+            onRestoreCloudProviderSaf = onRestoreCloudProviderSaf,
+            onLinkSafSyncFile = onLinkSafSyncFile,
+            onCreateSafSyncFile = onCreateSafSyncFile,
+            onUnlinkSafSyncFile = onUnlinkSafSyncFile,
+            onToggleCloudAutoBackup = onToggleCloudAutoBackup,
+            onImportFromDriveSaf = onImportOpmlOrJson,
+            onExportToDriveSaf = onExportJsonBackup,
+            onOpenProModal = onOpenProUpgradeModal
+        )
 
         SettingsSubScreen.ABOUT -> AboutSettingsSubScreen(
             settings = settings,
@@ -501,6 +601,8 @@ private fun SettingsOverviewList(
 ) {
     val entries: List<Pair<SettingsSubScreen, ImageVector>> = buildList {
         add(SettingsSubScreen.APPEARANCE to Icons.Filled.Palette)
+        add(SettingsSubScreen.TOAST_NOTIFICATIONS to Icons.Filled.NotificationsActive)
+        add(SettingsSubScreen.HOME_CARDS to Icons.Filled.DashboardCustomize)
         add(SettingsSubScreen.PLAYBACK to Icons.Filled.PlayCircleFilled)
         add(SettingsSubScreen.FLOATING_PLAYER to Icons.Filled.PictureInPictureAlt)
         add(SettingsSubScreen.ARCHIVING to Icons.Filled.Archive)
@@ -514,7 +616,7 @@ private fun SettingsOverviewList(
     }.filter { (sub, _) -> Edition.HAS_PRO || !sub.isProFeatured }
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.testTag("settings_overview_list")
     ) {
@@ -553,13 +655,14 @@ private fun SettingsOverviewList(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (settings.isProUnlocked) "Floating player, extra indicators, custom hex & Google Drive Sync unlocked"
-                                    else "Unlock Floating Player, custom indicator styles, hex colors & Google Drive Sync",
+                                    text = if (settings.isProUnlocked) "Pro Home cards, floating player, custom RSS, hex colors & Cloud Sync unlocked"
+                                    else "Unlock Pro Home cards, custom RSS, Floating Player, hex colors & Cloud Sync",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = null,
@@ -672,7 +775,7 @@ private fun AppearanceSettingsSubScreen(
     val pillBorder = if (isDark) com.example.ui.theme.LoheBorderDark else MaterialTheme.colorScheme.outline
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 4.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.testTag("appearance_settings_list")
     ) {
@@ -983,42 +1086,38 @@ private fun LoheSegmentPillButton(
 @Composable
 private fun PlaybackSettingsSubScreen(
     settings: LoheUserSettings,
+    episodes: List<EpisodeEntity> = emptyList(),
     onSpeedChange: (Float) -> Unit,
     onSkipDurationsChange: (Int, Int) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
     onVolumeBoostChange: (Int) -> Unit,
     onContinuousPlaybackChange: (Boolean) -> Unit,
     onPlaybackExtraOptionsChange: (Boolean, Boolean, Int) -> Unit,
-    onSleepShakeExtendChange: (Boolean) -> Unit = {}
+    onSleepShakeExtendChange: (Boolean) -> Unit = {},
+    onSwipeActionsChange: (EpisodeSwipeAction, EpisodeSwipeAction) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             SettingsCard(title = "Default Playback Speed") {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f).forEach { speed ->
-                        FilterChip(
-                            selected = kotlin.math.abs(settings.playbackSpeed - speed) < 0.03f,
-                            onClick = { onSpeedChange(speed) },
-                            label = { Text("${speed}x") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = LoheElectricBlue,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
+                com.example.ui.components.VariableSpeedSliderBar(
+                    speed = settings.playbackSpeed,
+                    onSpeedChange = onSpeedChange,
+                    title = "Global Speed",
+                    keySpeedTagPrefix = "settings_speed",
+                    onDarkSurface = MaterialTheme.colorScheme.background == LoheBackgroundDark
+                )
             }
         }
 
         item {
             SettingsCard(title = "Skip Back, Forward & Smart Rewind") {
                 Text("Skip Back:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(10, 15, 30).forEach { sec ->
                         FilterChip(
                             selected = settings.skipBackSeconds == sec,
@@ -1029,7 +1128,7 @@ private fun PlaybackSettingsSubScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Skip Forward:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(15, 30, 45, 60).forEach { sec ->
                         FilterChip(
                             selected = settings.skipForwardSeconds == sec,
@@ -1040,7 +1139,7 @@ private fun PlaybackSettingsSubScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Auto-Rewind on Resume:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(0, 3, 5, 10).forEach { sec ->
                         FilterChip(
                             selected = settings.autoRewindSeconds == sec,
@@ -1099,6 +1198,56 @@ private fun PlaybackSettingsSubScreen(
         }
 
         item {
+            SettingsCard(title = "Episode Swipe Gestures") {
+                Text(
+                    text = "Slide episode rows right to choose Top or Bottom of Up Next, or left for quick actions. In Up Next, slide right to move Top/Bottom and left to mark Played or Remove.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Swipe Right: ${settings.swipeRightAction.label}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LoheCyanAccent
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    EpisodeSwipeAction.entries.forEach { action ->
+                        FilterChip(
+                            selected = settings.swipeRightAction == action,
+                            onClick = { onSwipeActionsChange(action, settings.swipeLeftAction) },
+                            label = { Text(action.shortLabel) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LoheElectricBlue,
+                                selectedLabelColor = Color.White
+                            ),
+                            modifier = Modifier.testTag("swipe_right_${action.name.lowercase()}")
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Swipe Left: ${settings.swipeLeftAction.label}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LoheCyanAccent
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    EpisodeSwipeAction.entries.forEach { action ->
+                        FilterChip(
+                            selected = settings.swipeLeftAction == action,
+                            onClick = { onSwipeActionsChange(settings.swipeRightAction, action) },
+                            label = { Text(action.shortLabel) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LoheElectricBlue,
+                                selectedLabelColor = Color.White
+                            ),
+                            modifier = Modifier.testTag("swipe_left_${action.name.lowercase()}")
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
             SettingsCard(title = "Queue Automation & Battery Setup") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1109,6 +1258,7 @@ private fun PlaybackSettingsSubScreen(
                         Text("Continuous Queue Playback", style = MaterialTheme.typography.titleMedium)
                         Text("Auto-advance to next episode in Up Next", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(checked = settings.continuousPlayback, onCheckedChange = onContinuousPlaybackChange)
                 }
 
@@ -1117,7 +1267,12 @@ private fun PlaybackSettingsSubScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Mark played when finished", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Mark played when finished",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.markPlayedWhenFinished,
                         onCheckedChange = {
@@ -1131,7 +1286,12 @@ private fun PlaybackSettingsSubScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Resume on headset connect", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Resume on headset connect",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.resumeOnHeadsetConnect,
                         onCheckedChange = {
@@ -1153,6 +1313,7 @@ private fun PlaybackSettingsSubScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.sleepShakeToExtendEnabled,
                         onCheckedChange = onSleepShakeExtendChange,
@@ -1171,31 +1332,48 @@ private fun PlaybackSettingsSubScreen(
                             )
                         }
                     },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("battery_setup_button")
                 ) {
                     Icon(Icons.Filled.BatteryChargingFull, contentDescription = null, tint = LoheCyanAccent)
                     Spacer(Modifier.width(8.dp))
-                    Text("Unrestricted Background Audio / Battery Setup")
+                    Text(
+                        text = "Background Audio & Battery Setup",
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
 
         item {
-            val totalMins14d = settings.dailyListeningMinutes.sum()
-            val hrs = totalMins14d / 60
-            val remMins = totalMins14d % 60
+            val summary = remember(episodes, settings.dailyListeningMinutes, settings.listeningHistoryRange) {
+                computeListeningHistorySummary(
+                    episodes = episodes,
+                    dailyMinutes = settings.dailyListeningMinutes,
+                    historyRange = settings.listeningHistoryRange
+                )
+            }
+            val hrs = summary.totalMinutes / 60
+            val remMins = summary.totalMinutes % 60
             val savedMins = settings.totalTimeSavedMs / 60_000L
-            var streak = 0
-            for (i in settings.dailyListeningMinutes.lastIndex downTo 0) {
-                if (settings.dailyListeningMinutes[i] > 0) streak++ else break
+            val periodLabel = if (settings.listeningHistoryRange == ListeningHistoryRange.ALL_TIME) {
+                "all time"
+            } else {
+                "last ${settings.listeningHistoryRange.label}"
             }
             SettingsCard(title = "Listening Stats & DSP Savings") {
                 Column(modifier = Modifier.testTag("listening_stats_summary_card")) {
                     Text(
-                        text = "${hrs}h ${remMins}m listened in last 14 days • $streak-day streak",
+                        text = if (summary.streakDays > 0) {
+                            "${hrs}h ${remMins}m listened ($periodLabel) • ${summary.streakDays}-day streak"
+                        } else {
+                            "${hrs}h ${remMins}m listened ($periodLabel)"
+                        },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = LoheCyanAccent
@@ -1212,6 +1390,7 @@ private fun PlaybackSettingsSubScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FloatingPlayerSettingsSubScreen(
     settings: LoheUserSettings,
@@ -1223,7 +1402,7 @@ private fun FloatingPlayerSettingsSubScreen(
     val hasOverlayPermission = runCatching { Settings.canDrawOverlays(context) }.getOrDefault(false)
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -1235,7 +1414,11 @@ private fun FloatingPlayerSettingsSubScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Enable Floating Mini-Player", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = "Enable Floating Mini-Player",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
                             Spacer(Modifier.width(8.dp))
                             ProBadgePill(unlocked = settings.isProUnlocked)
                         }
@@ -1245,6 +1428,7 @@ private fun FloatingPlayerSettingsSubScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.floatingMiniPlayerEnabled,
                         onCheckedChange = { enabled ->
@@ -1257,7 +1441,7 @@ private fun FloatingPlayerSettingsSubScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Text("Button Size:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(48, 56, 72, 88).forEach { dp ->
                         FilterChip(
                             selected = settings.floatingButtonSizeDp == dp,
@@ -1269,7 +1453,7 @@ private fun FloatingPlayerSettingsSubScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Transparency:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(0, 25, 50, 75).forEach { pct ->
                         FilterChip(
                             selected = settings.floatingTransparencyPct == pct,
@@ -1303,14 +1487,20 @@ private fun FloatingPlayerSettingsSubScreen(
                             )
                         }
                     },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("floating_overlay_permission_button")
                 ) {
                     Icon(Icons.Filled.PictureInPictureAlt, contentDescription = null, tint = LoheCyanAccent)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (hasOverlayPermission) "Manage System Overlay Permission" else "Grant System Overlay Permission")
+                    Text(
+                        text = if (hasOverlayPermission) "Overlay Permission Settings" else "Allow System Overlay",
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
                 if (!settings.isProUnlocked) {
@@ -1318,11 +1508,12 @@ private fun FloatingPlayerSettingsSubScreen(
                     Button(
                         onClick = onOpenProModal,
                         colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                     ) {
-                        Text("Unlock Lohe Pro Bundle", color = Color.White)
+                        Text("Unlock Lohe Pro Bundle", color = Color.White, textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -1330,6 +1521,7 @@ private fun FloatingPlayerSettingsSubScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ArchivingSettingsSubScreen(
     settings: LoheUserSettings,
@@ -1339,7 +1531,7 @@ private fun ArchivingSettingsSubScreen(
     onArchivePlayedNow: () -> Unit
 ) {
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -1377,17 +1569,18 @@ private fun ArchivingSettingsSubScreen(
                         Text("Protect Bookmarked / Starred Episodes", style = MaterialTheme.typography.titleMedium)
                         Text("Never auto-archive episodes you have bookmarked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(checked = settings.keepStarredExcluded, onCheckedChange = onKeepStarredChange)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Text("Episode Limit Per Podcast:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(10, 25, 50, 100).forEach { limit ->
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 25, 50, 100).forEach { limit ->
                         FilterChip(
                             selected = settings.episodeLimitPerShow == limit,
                             onClick = { onEpisodeLimitChange(limit) },
-                            label = { Text("$limit eps") }
+                            label = { Text(if (limit == 0) "All" else "$limit eps") }
                         )
                     }
                 }
@@ -1395,13 +1588,19 @@ private fun ArchivingSettingsSubScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = onArchivePlayedNow,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                 ) {
                     Icon(Icons.Filled.Archive, contentDescription = null, tint = LoheCyanAccent)
                     Spacer(Modifier.width(8.dp))
-                    Text("Archive All Played Non-Starred Now")
+                    Text(
+                        text = "Archive Played Episodes",
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1431,7 +1630,7 @@ private fun DownloadsSettingsSubScreen(
     }
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.testTag("downloads_settings_list")
     ) {
@@ -1446,14 +1645,21 @@ private fun DownloadsSettingsSubScreen(
                 Button(
                     onClick = onImportOpmlOrJson,
                     colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("downloads_import_opml_json_button")
                 ) {
                     Icon(Icons.Filled.FileOpen, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(8.dp))
-                    Text("Import Backup (.db, .json, .opml)", color = Color.White)
+                    Text(
+                        text = "Import Backup or OPML",
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -1462,38 +1668,46 @@ private fun DownloadsSettingsSubScreen(
                 ) {
                     OutlinedButton(
                         onClick = onExportOpml,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("downloads_export_opml_button")
                     ) {
                         Icon(Icons.Filled.FileUpload, contentDescription = null, tint = LoheCyanAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Export OPML")
+                        Text("Export OPML", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                     OutlinedButton(
                         onClick = onExportJsonBackup,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("downloads_export_json_button")
                     ) {
                         Icon(Icons.Filled.FileUpload, contentDescription = null, tint = LoheElectricBlue, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Export JSON")
+                        Text("Export JSON", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onExportDatabase,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("downloads_export_db_button")
                 ) {
                     Icon(Icons.Filled.FileUpload, contentDescription = null, tint = LoheCyanAccent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Export Lohe Database (.db) for Migration")
+                    Text(
+                        text = "Export Database (.db)",
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1517,6 +1731,7 @@ private fun DownloadsSettingsSubScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.newEpisodeNotificationsEnabled,
                         onCheckedChange = onNewEpisodeNotificationsChange,
@@ -1538,6 +1753,7 @@ private fun DownloadsSettingsSubScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.backgroundSyncEnabled,
                         onCheckedChange = { onBackgroundSyncPolicyChange(it, settings.backgroundSyncIntervalHours) },
@@ -1548,7 +1764,7 @@ private fun DownloadsSettingsSubScreen(
                 if (settings.backgroundSyncEnabled) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Sync Interval:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(6, 12, 24).forEach { hrs ->
                             FilterChip(
                                 selected = settings.backgroundSyncIntervalHours == hrs,
@@ -1569,7 +1785,12 @@ private fun DownloadsSettingsSubScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Auto-download on unmetered Wi-Fi", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Auto-download on unmetered Wi-Fi",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.autoDownloadWifi,
                         onCheckedChange = { onAutoDownloadChange(it, settings.autoDownloadUpNext, settings.autoDownloadQueueDepth) }
@@ -1580,7 +1801,12 @@ private fun DownloadsSettingsSubScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Auto-download episodes added to Up Next", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Auto-download episodes added to Up Next",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.autoDownloadUpNext,
                         onCheckedChange = { onAutoDownloadChange(settings.autoDownloadWifi, it, settings.autoDownloadQueueDepth) }
@@ -1588,7 +1814,7 @@ private fun DownloadsSettingsSubScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Queue Download Depth:", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(2, 5, 10, 20).forEach { depth ->
                         FilterChip(
                             selected = settings.autoDownloadQueueDepth == depth,
@@ -1627,23 +1853,25 @@ private fun DownloadsSettingsSubScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = onRefreshFeedsNow,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("downloads_refresh_feeds_button")
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, tint = LoheCyanAccent)
                     Spacer(Modifier.width(8.dp))
-                    Text("Refresh Subscribed Feeds Now")
+                    Text("Refresh All Feeds", textAlign = TextAlign.Center, maxLines = 2)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onClearDownloads,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                 ) {
-                    Text("Clear All Cached Audio Downloads")
+                    Text("Clear Cached Downloads", textAlign = TextAlign.Center, maxLines = 2)
                 }
             }
         }
@@ -1696,7 +1924,7 @@ private fun ImportFromAnotherAppSettingsSubScreen(
     onExportDatabase: () -> Unit
 ) {
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.testTag("import_from_app_settings_list")
     ) {
@@ -1978,45 +2206,160 @@ private fun ImportFormatOptionRow(
         OutlinedButton(
             onClick = onClick,
             enabled = enabled,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             modifier = Modifier
-                .height(48.dp)
+                .heightIn(min = 44.dp)
                 .testTag(testTag)
         ) {
-            Text(buttonLabel)
+            Text(buttonLabel, maxLines = 1, softWrap = false)
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CloudSyncSettingsSubScreen(
     settings: LoheUserSettings,
     isCloudSyncBusy: Boolean,
+    onCloudProviderChange: (CloudSyncProvider) -> Unit,
+    onSaveWebDavConfig: (String, String, String) -> Unit,
     onSyncToGoogleDrive: () -> Unit,
     onRestoreFromGoogleDrive: () -> Unit,
+    onSyncWebDav: () -> Unit,
+    onRestoreWebDav: () -> Unit,
+    onSyncCloudProviderSaf: (CloudSyncProvider) -> Unit,
+    onRestoreCloudProviderSaf: (CloudSyncProvider) -> Unit,
+    onLinkSafSyncFile: (CloudSyncProvider) -> Unit,
+    onCreateSafSyncFile: (CloudSyncProvider) -> Unit,
+    onUnlinkSafSyncFile: () -> Unit,
     onToggleCloudAutoBackup: (Boolean) -> Unit,
     onImportFromDriveSaf: () -> Unit,
     onExportToDriveSaf: () -> Unit,
     onOpenProModal: () -> Unit
 ) {
+    var webDavUrl by remember(settings.webDavServerUrl) { mutableStateOf(settings.webDavServerUrl) }
+    var webDavUser by remember(settings.webDavUsername) { mutableStateOf(settings.webDavUsername) }
+    var webDavPass by remember(settings.webDavPassword) { mutableStateOf(settings.webDavPassword) }
+    val selectedProvider = settings.cloudSyncProvider
+
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 172.dp, top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.testTag("cloud_sync_settings_list")
     ) {
         item {
-            SettingsCard(title = "Google Drive & Cloud Sync (Pro Bundle)") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProBadgePill(unlocked = settings.isProUnlocked)
-                    Spacer(Modifier.width(8.dp))
-                    Text("App-Private Google Drive AppData Sync", style = MaterialTheme.typography.titleSmall, color = LoheCyanAccent)
+            SettingsCard(title = "Drive-Only Cloud Sync") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.testTag("cloud_sync_domains_card")
+                ) {
+                    if (Edition.HAS_PRO) {
+                        ProBadgePill(unlocked = settings.isProUnlocked)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = "Your Drive, Zero Central Servers",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = LoheCyanAccent
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Backs up your subscriptions, Up Next queue, playlists, and playback progress directly to your hidden Google Drive AppData folder using OAuth.",
+                    text = "Two-way conflict-safe sync directly through Google Drive, OneDrive, Dropbox, Nextcloud/WebDAV, or Box — no Lohe account or external sync server required.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Status: ${settings.lastCloudSyncSummary}", style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Playlists", "Up Next", "Podcasts", "Episode Status").forEach { domain ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = LoheElectricBlue.copy(alpha = 0.14f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = LoheCyanAccent,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = domain,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Choose Cloud Drive Provider") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CloudSyncProvider.availableProviders().forEach { provider ->
+                        val isSelected = selectedProvider == provider
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) LoheElectricBlue.copy(alpha = 0.14f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { onCloudProviderChange(provider) }
+                                .testTag("cloud_provider_${provider.name.lowercase()}")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = provider.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = provider.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { onCloudProviderChange(provider) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = LoheElectricBlue)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "${selectedProvider.title} Sync") {
+                Text(
+                    text = "Status: ${settings.lastCloudSyncSummary}",
+                    style = MaterialTheme.typography.labelLarge
+                )
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
@@ -2025,13 +2368,14 @@ private fun CloudSyncSettingsSubScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Automatic Background Backup", style = MaterialTheme.typography.titleSmall)
+                        Text("Automatic Background Drive Sync", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "Backs up library changes periodically via WorkManager",
+                            text = "Merges playlists, Up Next, podcasts & episode status via ${selectedProvider.title}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
                     Switch(
                         checked = settings.cloudSyncAutoBackup,
                         onCheckedChange = onToggleCloudAutoBackup,
@@ -2042,28 +2386,174 @@ private fun CloudSyncSettingsSubScreen(
                         modifier = Modifier.testTag("cloud_sync_auto_switch")
                     )
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (!settings.isProUnlocked) {
+                if (selectedProvider == CloudSyncProvider.WEBDAV) {
+                    OutlinedTextField(
+                        value = webDavUrl,
+                        onValueChange = { webDavUrl = it },
+                        label = { Text("WebDAV Folder URL (https://...)") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("webdav_url_input")
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = webDavUser,
+                        onValueChange = { webDavUser = it },
+                        label = { Text("Username") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("webdav_user_input")
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = webDavPass,
+                        onValueChange = { webDavPass = it },
+                        label = { Text("App Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("webdav_pass_input")
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onSaveWebDavConfig(webDavUrl, webDavUser, webDavPass) },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("webdav_save_config_button")
+                    ) {
+                        Text("Save Server Credentials")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                if (selectedProvider == CloudSyncProvider.ONEDRIVE ||
+                    selectedProvider == CloudSyncProvider.DROPBOX ||
+                    selectedProvider == CloudSyncProvider.OTHER_CLOUD
+                ) {
+                    val hasLinkedFile = settings.safSyncUri.isNotBlank()
+                    val linkedName = settings.safSyncDisplayName.ifBlank { "lohe_cloud_sync.json" }
+                    val linkedProviderLabel = CloudSyncProvider.fromName(settings.safSyncProviderName).title
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (hasLinkedFile) LoheElectricBlue.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = 1.dp,
+                                color = if (hasLinkedFile) LoheElectricBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = if (hasLinkedFile) {
+                                    "Linked sync file: $linkedName ($linkedProviderLabel)"
+                                } else {
+                                    "No persistent ${selectedProvider.title} file linked yet. Link or create lohe_cloud_sync.json inside ${selectedProvider.title} for one-tap two-way sync."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onLinkSafSyncFile(selectedProvider) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("cloud_sync_link_file_button")
+                                ) {
+                                    Text("Link Existing", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                }
+                                OutlinedButton(
+                                    onClick = { onCreateSafSyncFile(selectedProvider) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("cloud_sync_create_file_button")
+                                ) {
+                                    Text("Create Sync File", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            if (hasLinkedFile) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                TextButton(
+                                    onClick = onUnlinkSafSyncFile,
+                                    modifier = Modifier
+                                        .heightIn(min = 40.dp)
+                                        .testTag("cloud_sync_unlink_file_button")
+                                ) {
+                                    Text("Unlink current sync file")
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                if (Edition.HAS_PRO && !settings.isProUnlocked) {
                     Button(
                         onClick = onOpenProModal,
                         colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("cloud_sync_unlock_pro_button")
                     ) {
-                        Text("Unlock Google Drive Cloud Sync", color = Color.White)
+                        Text("Unlock Cloud Sync", color = Color.White, textAlign = TextAlign.Center)
                     }
                 } else {
+                    val primarySyncAction: () -> Unit = when (selectedProvider) {
+                        CloudSyncProvider.GOOGLE_DRIVE -> onSyncToGoogleDrive
+                        CloudSyncProvider.WEBDAV -> {
+                            {
+                                onSaveWebDavConfig(webDavUrl, webDavUser, webDavPass)
+                                onSyncWebDav()
+                            }
+                        }
+                        CloudSyncProvider.ONEDRIVE,
+                        CloudSyncProvider.DROPBOX,
+                        CloudSyncProvider.OTHER_CLOUD -> {
+                            { onSyncCloudProviderSaf(selectedProvider) }
+                        }
+                    }
+                    val primaryRestoreAction: () -> Unit = when (selectedProvider) {
+                        CloudSyncProvider.GOOGLE_DRIVE -> onRestoreFromGoogleDrive
+                        CloudSyncProvider.WEBDAV -> {
+                            {
+                                onSaveWebDavConfig(webDavUrl, webDavUser, webDavPass)
+                                onRestoreWebDav()
+                            }
+                        }
+                        CloudSyncProvider.ONEDRIVE,
+                        CloudSyncProvider.DROPBOX,
+                        CloudSyncProvider.OTHER_CLOUD -> {
+                            { onRestoreCloudProviderSaf(selectedProvider) }
+                        }
+                    }
+
                     Button(
-                        onClick = onSyncToGoogleDrive,
+                        onClick = primarySyncAction,
                         enabled = !isCloudSyncBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("cloud_sync_upload_button")
                     ) {
                         if (isCloudSyncBusy) {
@@ -2073,25 +2563,35 @@ private fun CloudSyncSettingsSubScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("Syncing with Google Drive...", color = Color.White)
+                            Text("Syncing...", color = Color.White)
                         } else {
-                            Icon(Icons.Filled.CloudUpload, contentDescription = null, tint = Color.White)
+                            Icon(Icons.Filled.CloudSync, contentDescription = null, tint = Color.White)
                             Spacer(Modifier.width(8.dp))
-                            Text("Sync to Google Drive Now", color = Color.White)
+                            Text(
+                                text = "Sync Now with ${selectedProvider.title}",
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
-                        onClick = onRestoreFromGoogleDrive,
+                        onClick = primaryRestoreAction,
                         enabled = !isCloudSyncBusy,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("cloud_sync_restore_button")
                     ) {
                         Icon(Icons.Filled.CloudDownload, contentDescription = null, tint = LoheCyanAccent)
                         Spacer(Modifier.width(8.dp))
-                        Text("Restore from Google Drive")
+                        Text(
+                            text = "Pull & Merge from ${selectedProvider.title}",
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
+                        )
                     }
                 }
 
@@ -2106,14 +2606,245 @@ private fun CloudSyncSettingsSubScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(onClick = onImportFromDriveSaf, modifier = Modifier.weight(1f).height(48.dp)) {
-                        Text("SAF Drive Import")
+                    OutlinedButton(
+                        onClick = onImportFromDriveSaf,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Text("Import File", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
-                    OutlinedButton(onClick = onExportToDriveSaf, modifier = Modifier.weight(1f).height(48.dp)) {
-                        Text("SAF Drive Export")
+                    OutlinedButton(
+                        onClick = onExportToDriveSaf,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Text("Export JSON", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HomeCardsSettingsSubScreen(
+    settings: LoheUserSettings,
+    onToggleHomeCard: (HomeCardType, Boolean) -> Unit,
+    onResetHomeCards: () -> Unit,
+    onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit,
+    onOpenProModal: () -> Unit
+) {
+    val freeCards = remember { HomeCardType.entries.filter { !it.isPro } }
+    val proCards = remember { HomeCardType.entries.filter { it.isPro } }
+    val totalAvailable = if (Edition.HAS_PRO) HomeCardType.entries.size else freeCards.size
+    val activeCount = settings.enabledHomeCards.count { !it.isPro || (Edition.HAS_PRO && settings.isProUnlocked) }
+
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.testTag("home_cards_settings_list")
+    ) {
+        item {
+            SettingsCard(title = "Home Screen Layout") {
+                Text(
+                    text = "Pick exactly which telemetry, library, and ranking cards show up on your Home tab.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$activeCount of $totalAvailable cards visible",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LoheCyanAccent,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onResetHomeCards,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .testTag("home_cards_reset_button")
+                    ) {
+                        Text("Reset Defaults", maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Listening History Length") {
+                Text(
+                    text = "Choose how far back the Listening History chart on Home displays.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("home_history_range_selector")
+                ) {
+                    ListeningHistoryRange.entries.forEach { range ->
+                        val selected = settings.listeningHistoryRange == range
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onListeningHistoryRangeChange(range) },
+                            label = { Text(range.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LoheElectricBlue.copy(alpha = 0.22f),
+                                selectedLabelColor = LoheCyanAccent
+                            ),
+                            modifier = Modifier.testTag("history_range_chip_${range.days}")
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(title = "Dashboard Cards (Free)") {
+                freeCards.forEachIndexed { idx, card ->
+                    val checked = card in settings.enabledHomeCards
+                    HomeCardToggleRow(
+                        card = card,
+                        checked = checked,
+                        isLockedPro = false,
+                        isProUnlocked = settings.isProUnlocked,
+                        onToggle = { enabled -> onToggleHomeCard(card, enabled) }
+                    )
+                    if (idx < freeCards.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (Edition.HAS_PRO) {
+            item {
+                SettingsCard(title = "Pro Insight Cards") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ProBadgePill(unlocked = settings.isProUnlocked)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (settings.isProUnlocked) "Included with your Lohe Pro Bundle"
+                            else "Unlock advanced listening rankings & queue spotlight",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    proCards.forEachIndexed { idx, card ->
+                        val isLocked = !settings.isProUnlocked
+                        val checked = !isLocked && card in settings.enabledHomeCards
+                        HomeCardToggleRow(
+                            card = card,
+                            checked = checked,
+                            isLockedPro = isLocked,
+                            isProUnlocked = settings.isProUnlocked,
+                            onToggle = { enabled ->
+                                if (isLocked) onOpenProModal() else onToggleHomeCard(card, enabled)
+                            }
+                        )
+                        if (idx < proCards.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                            )
+                        }
+                    }
+                    if (!settings.isProUnlocked) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onOpenProModal,
+                            colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("home_cards_unlock_pro_button")
+                        ) {
+                            Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Unlock Lohe Pro Bundle", color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeCardToggleRow(
+    card: HomeCardType,
+    checked: Boolean,
+    isLockedPro: Boolean,
+    isProUnlocked: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle(!checked) }
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = card.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (card.isPro && Edition.HAS_PRO) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ProBadgePill(unlocked = isProUnlocked)
+                }
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = card.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        if (isLockedPro) {
+            IconButton(
+                onClick = { onToggle(true) },
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("home_card_toggle_${card.name.lowercase()}")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = "Unlock ${card.title} with Lohe Pro",
+                    tint = LoheCyanAccent
+                )
+            }
+        } else {
+            Switch(
+                checked = checked,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = LoheElectricBlue
+                ),
+                modifier = Modifier.testTag("home_card_toggle_${card.name.lowercase()}")
+            )
         }
     }
 }
@@ -2139,6 +2870,249 @@ private fun SettingsCard(
             )
             Spacer(modifier = Modifier.height(10.dp))
             content()
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ToastNotificationsSettingsSubScreen(
+    settings: LoheUserSettings,
+    onToastSettingsChange: (Boolean, ToastDurationOption, ToastVisualStyle, ToastPlacement) -> Unit,
+    onPreviewToast: () -> Unit
+) {
+    val enabled = settings.toastNotificationsEnabled
+    val duration = settings.toastDuration
+    val style = settings.toastStyle
+    val placement = settings.toastPlacement
+
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 32.dp, top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.testTag("toast_notifications_settings_list")
+    ) {
+        item {
+            SettingsCard("Toast Notifications") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Show toast notifications",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (enabled) {
+                                "On • ${style.label} at ${placement.label} (${duration.shortLabel})"
+                            } else {
+                                "Off • In-app action confirmations are hidden"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { newEnabled ->
+                            onToastSettingsChange(newEnabled, duration, style, placement)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = LoheElectricBlue
+                        ),
+                        modifier = Modifier.testTag("toast_enabled_switch")
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Live Preview") {
+                Text(
+                    text = "Preview how toasts appear on screen (${placement.label} • ${duration.label})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 112.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .padding(12.dp),
+                    contentAlignment = when (placement) {
+                        ToastPlacement.TOP -> Alignment.TopCenter
+                        ToastPlacement.CENTER -> Alignment.Center
+                        ToastPlacement.BOTTOM -> Alignment.BottomCenter
+                    }
+                ) {
+                    LoheToastVisual(
+                        message = "Added to top of Up Next",
+                        style = style,
+                        onDismiss = null,
+                        modifier = Modifier.testTag("toast_live_preview_visual")
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onPreviewToast,
+                    colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("toast_preview_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.NotificationsActive,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Show Test Toast", color = Color.White)
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Duration") {
+                Text(
+                    text = "Choose how long toast notifications stay visible before fading out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ToastDurationOption.entries.forEach { option ->
+                        val selected = duration == option
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                onToastSettingsChange(enabled, option, style, placement)
+                            },
+                            label = { Text(option.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LoheElectricBlue.copy(alpha = 0.20f),
+                                selectedLabelColor = LoheElectricBlue
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("toast_duration_${option.name.lowercase()}")
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Look & Style") {
+                Text(
+                    text = "Pick the visual style for toast notifications.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToastVisualStyle.entries.forEach { option ->
+                        val selected = style == option
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) LoheElectricBlue.copy(alpha = 0.14f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    if (selected) 1.5.dp else 1.dp,
+                                    if (selected) LoheElectricBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable {
+                                    onToastSettingsChange(enabled, duration, option, placement)
+                                }
+                                .testTag("toast_style_${option.name.lowercase()}")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = {
+                                        onToastSettingsChange(enabled, duration, option, placement)
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = LoheElectricBlue)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = option.label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (selected) LoheElectricBlue else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = option.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Placement") {
+                Text(
+                    text = "Choose where toast notifications appear on screen. Bottom placement always stays clear of the mini player and navigation bar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ToastPlacement.entries.forEach { option ->
+                        val selected = placement == option
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                onToastSettingsChange(enabled, duration, style, option)
+                            },
+                            label = { Text(option.label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LoheElectricBlue.copy(alpha = 0.20f),
+                                selectedLabelColor = LoheElectricBlue
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("toast_placement_${option.name.lowercase()}")
+                        )
+                    }
+                }
+            }
         }
     }
 }

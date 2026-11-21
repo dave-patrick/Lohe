@@ -7,10 +7,12 @@ import android.text.Html
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,13 +43,18 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -58,13 +65,16 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Podcasts
@@ -112,9 +122,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -165,10 +178,8 @@ fun formatDurationMmSs(ms: Long): String {
 }
 
 /**
- * Floating Pill Bottom Navigation Bar matching compact-nav81-ready_5458b234.png & indicator-light68_5c756cbf.png:
- * - Rounded floating pill with horizontal margin & navigationBarsPadding()
- * - Exact tab order: Home, Podcasts, Discover, Playlists, Up Next
- * - Active tab in Electric Blue with tiny glowing blue dot below the active label
+ * Compact full-width docked Bottom Navigation Bar attached flush to the bottom edge
+ * with a solid opaque background (no floating card, nothing visible behind it).
  */
 @Composable
 fun LoheFloatingBottomNavBar(
@@ -179,87 +190,88 @@ fun LoheFloatingBottomNavBar(
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background == LoheBackgroundDark
-    val containerColor = if (isDark) LoheGlassNavDark.copy(alpha = 0.96f) else Color.White.copy(alpha = 0.96f)
-    val borderColor = if (isDark) LoheGlassNavBorderDark else Color(0xFFD8DEE8)
+    val containerColor = if (isDark) Color(0xFF0A0F1A) else Color.White
+    val dividerColor = if (isDark) LoheBorderDark else Color(0xFFD8DEE8)
     val mutedColor = if (isDark) LoheTextMutedDark else Color(0xFF6B7280)
 
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RectangleShape,
         color = containerColor,
-        shadowElevation = 10.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .navigationBarsPadding()
-            .padding(bottom = 6.dp)
-            .border(1.dp, borderColor, RoundedCornerShape(28.dp))
             .testTag("bottom_navigation_bar")
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .navigationBarsPadding()
         ) {
-            PrimaryTab.entries.forEach { tab ->
-                val isSelected = !isSettingsOpen && selectedTab == tab
-                val tintColor = if (isSelected) LoheElectricBlue else mutedColor
-                val iconVec = when (tab) {
-                    PrimaryTab.HOME -> if (isSelected) Icons.Filled.Home else Icons.Outlined.Home
-                    PrimaryTab.PODCASTS -> if (isSelected) Icons.Filled.Podcasts else Icons.Outlined.Podcasts
-                    PrimaryTab.DISCOVER -> if (isSelected) Icons.Filled.Explore else Icons.Outlined.Explore
-                    PrimaryTab.PLAYLISTS -> if (isSelected) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay
-                    PrimaryTab.UP_NEXT -> if (isSelected) Icons.AutoMirrored.Filled.QueueMusic else Icons.AutoMirrored.Outlined.QueueMusic
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable { onSelectTab(tab) }
-                        .padding(vertical = 4.dp)
-                        .testTag(tab.testTag),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        Icon(
-                            imageVector = iconVec,
-                            contentDescription = tab.label,
-                            tint = tintColor,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        if (tab == PrimaryTab.UP_NEXT && upNextCount > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = 6.dp, y = (-2).dp)
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(LoheCyanAccent)
-                            )
-                        }
+            HorizontalDivider(thickness = 1.dp, color = dividerColor)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PrimaryTab.entries.forEach { tab ->
+                    val isSelected = !isSettingsOpen && selectedTab == tab
+                    val tintColor = if (isSelected) LoheElectricBlue else mutedColor
+                    val iconVec = when (tab) {
+                        PrimaryTab.HOME -> if (isSelected) Icons.Filled.Home else Icons.Outlined.Home
+                        PrimaryTab.PODCASTS -> if (isSelected) Icons.Filled.Podcasts else Icons.Outlined.Podcasts
+                        PrimaryTab.DISCOVER -> if (isSelected) Icons.Filled.Explore else Icons.Outlined.Explore
+                        PrimaryTab.PLAYLISTS -> if (isSelected) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay
+                        PrimaryTab.UP_NEXT -> if (isSelected) Icons.AutoMirrored.Filled.QueueMusic else Icons.AutoMirrored.Outlined.QueueMusic
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Text(
-                        text = tab.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = tintColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Box(
+                    Column(
                         modifier = Modifier
-                            .size(4.dp)
-                            .clip(CircleShape)
-                            .background(if (isSelected) LoheElectricBlue else Color.Transparent)
-                    )
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable { onSelectTab(tab) }
+                            .testTag(tab.testTag),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isSelected) LoheElectricBlue else Color.Transparent)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Icon(
+                                imageVector = iconVec,
+                                contentDescription = tab.label,
+                                tint = tintColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            if (tab == PrimaryTab.UP_NEXT && upNextCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = 5.dp, y = (-2).dp)
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(LoheCyanAccent)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = tab.label,
+                            fontSize = 10.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = tintColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -352,8 +364,8 @@ fun LoheNavigationRail(
 }
 
 /**
- * Floating Glass Pill Mini-Player directly above the floating bottom nav pill
- * matching compact-nav81-ready_5458b234.png & indicator-light68_5c756cbf.png.
+ * Floating rounded-card Mini-Player sitting inside a locked-off dedicated bottom slot
+ * directly above the docked bottom navigation bar so it never overlaps page content.
  */
 @Composable
 fun MiniPlayerBar(
@@ -373,166 +385,149 @@ fun MiniPlayerBar(
     val containerBrush = if (isDark) {
         Brush.horizontalGradient(listOf(LoheMiniPlayerStartDark, LoheMiniPlayerEndDark))
     } else {
-        Brush.horizontalGradient(listOf(Color.White, Color(0xFFF3F7FC)))
+        Brush.horizontalGradient(listOf(Color(0xFFF6F9FE), Color(0xFFEDF4FD)))
     }
-    val borderBrush = if (isDark) {
-        Brush.horizontalGradient(
-            listOf(
-                LoheElectricBlue.copy(alpha = 0.72f),
-                LoheCyanAccent.copy(alpha = 0.82f),
-                LoheElectricBlue.copy(alpha = 0.72f)
-            )
-        )
-    } else {
-        Brush.horizontalGradient(
-            listOf(
-                LoheElectricBlue.copy(alpha = 0.55f),
-                LoheCyanAccent.copy(alpha = 0.65f),
-                LoheElectricBlue.copy(alpha = 0.55f)
-            )
-        )
-    }
+    val cardBorderColor = if (isDark) LoheElectricBlue.copy(alpha = 0.50f) else Color(0xFFBFD4F5)
     val trackColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f)
+    val cardShape = RoundedCornerShape(22.dp)
+
+    val glowAlpha = if (isDark) 115 else 55
+    val glowPaint = remember(glowAlpha) {
+        Paint().apply {
+            asFrameworkPaint().apply {
+                isAntiAlias = true
+                color = android.graphics.Color.argb(glowAlpha, 0, 142, 255)
+            }
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .drawBehind {
-                drawIntoCanvas { canvas ->
-                    val paint = Paint().apply {
-                        asFrameworkPaint().apply {
-                            isAntiAlias = true
-                            color = android.graphics.Color.argb(
-                                if (isDark) 135 else 85,
-                                0, 142, 255
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Surface(
+            shape = cardShape,
+            color = Color.Transparent,
+            tonalElevation = 0.dp,
+            shadowElevation = if (isDark) 14.dp else 5.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val inset = 2.dp.toPx()
+                    val right = size.width - inset
+                    val bottom = size.height - inset
+                    val blurPx = 14.dp.toPx()
+                    if (right > inset && bottom > inset && blurPx >= 1f) {
+                        drawIntoCanvas { canvas ->
+                            glowPaint.asFrameworkPaint().maskFilter = BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
+                            val r = 22.dp.toPx()
+                            canvas.drawRoundRect(
+                                left = inset,
+                                top = inset,
+                                right = right,
+                                bottom = bottom,
+                                radiusX = r,
+                                radiusY = r,
+                                paint = glowPaint
                             )
-                            maskFilter = BlurMaskFilter(18.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
                         }
                     }
-                    val radius = 28.dp.toPx()
-                    canvas.drawRoundRect(
-                        left = 0f,
-                        top = 0f,
-                        right = size.width,
-                        bottom = size.height,
-                        radiusX = radius,
-                        radiusY = radius,
-                        paint = paint
-                    )
                 }
-            }
-            .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(28.dp),
-                ambientColor = LoheElectricBlue,
-                spotColor = LoheCyanAccent
-            )
-            .clip(RoundedCornerShape(28.dp))
-            .background(containerBrush)
-            .border(1.25.dp, borderBrush, RoundedCornerShape(28.dp))
-            .clickable(onClick = onOpenFullPlayer)
-            .testTag("mini_player_bar")
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 10.dp, top = 9.dp, bottom = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PodcastArtworkThumbnail(
-                    artworkUrl = episode.artworkUrl,
-                    title = episode.podcastTitle,
-                    cornerRadius = 12.dp,
-                    modifier = Modifier.size(52.dp)
+                .shadow(
+                    elevation = if (isDark) 14.dp else 6.dp,
+                    shape = cardShape,
+                    ambientColor = LoheElectricBlue,
+                    spotColor = LoheElectricBlue
                 )
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = episode.title,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                .clip(cardShape)
+                .background(containerBrush)
+                .border(1.dp, cardBorderColor, cardShape)
+                .clickable(onClick = onOpenFullPlayer)
+                .testTag("mini_player_bar")
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PodcastArtworkThumbnail(
+                        artworkUrl = episode.artworkUrl,
+                        title = episode.podcastTitle,
+                        cornerRadius = 12.dp,
+                        modifier = Modifier.size(44.dp)
                     )
-                    Text(
-                        text = episode.podcastTitle,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (nextUpEpisode != null) {
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Next up • ${nextUpEpisode.title}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = LoheBrightBlueText,
+                            text = episode.title,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                    } else {
                         Text(
-                            text = "${formatDurationMmSs(playbackState.positionMs)} / ${formatDurationMmSs(playbackState.durationMs)}",
+                            text = if (nextUpEpisode != null) {
+                                "${episode.podcastTitle} • Next: ${nextUpEpisode.title}"
+                            } else {
+                                "${episode.podcastTitle} • ${formatDurationMmSs(playbackState.positionMs)} / ${formatDurationMmSs(playbackState.durationMs)}"
+                            },
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = LoheBrightBlueText,
-                            maxLines = 1
+                            color = if (isDark) LoheBrightBlueText else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(LoheElectricBlue)
+                            .clickable(onClick = onTogglePlayPause)
+                            .testTag("mini_player_play_pause"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOpenFullPlayer,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("mini_player_expand_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowUp,
+                            contentDescription = "Open Full Player",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Circular glowing blue Play/Pause button
-                Box(
+                // Subtle playback progress bar nested cleanly along the bottom edge of the card
+                LinearProgressIndicator(
+                    progress = { playbackState.progressFraction.coerceIn(0.01f, 1f) },
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(LoheElectricBlue.copy(alpha = 0.22f))
-                        .padding(3.dp)
-                        .clip(CircleShape)
-                        .background(LoheElectricBlue)
-                        .clickable(onClick = onTogglePlayPause)
-                        .testTag("mini_player_play_pause"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onOpenFullPlayer,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag("mini_player_expand_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowUp,
-                        contentDescription = "Open Full Player",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = LoheElectricBlue,
+                    trackColor = trackColor
+                )
             }
-
-            LinearProgressIndicator(
-                progress = { playbackState.progressFraction.coerceIn(0.02f, 1f) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .height(2.5.dp)
-                    .clip(RoundedCornerShape(2.dp)),
-                color = LoheElectricBlue,
-                trackColor = trackColor
-            )
         }
     }
 }
@@ -554,6 +549,15 @@ fun FloatingMiniPlayerPill(
     var offsetY by remember { mutableFloatStateOf(0f) }
     val alpha = (1f - transparencyPct / 100f).coerceIn(0.25f, 1f)
 
+    val glowPaint = remember {
+        Paint().apply {
+            asFrameworkPaint().apply {
+                isAntiAlias = true
+                color = android.graphics.Color.argb(130, 0, 142, 255)
+            }
+        }
+    }
+
     Surface(
         modifier = modifier
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
@@ -565,24 +569,21 @@ fun FloatingMiniPlayerPill(
                 }
             }
             .drawBehind {
-                drawIntoCanvas { canvas ->
-                    val paint = Paint().apply {
-                        asFrameworkPaint().apply {
-                            isAntiAlias = true
-                            color = android.graphics.Color.argb(130, 0, 142, 255)
-                            maskFilter = BlurMaskFilter(14.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
-                        }
+                val blurPx = 14.dp.toPx()
+                if (size.width > 0f && size.height > 0f && blurPx >= 1f) {
+                    drawIntoCanvas { canvas ->
+                        glowPaint.asFrameworkPaint().maskFilter = BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
+                        val radius = size.height / 2f
+                        canvas.drawRoundRect(
+                            left = 0f,
+                            top = 0f,
+                            right = size.width,
+                            bottom = size.height,
+                            radiusX = radius,
+                            radiusY = radius,
+                            paint = glowPaint
+                        )
                     }
-                    val radius = size.height / 2f
-                    canvas.drawRoundRect(
-                        left = 0f,
-                        top = 0f,
-                        right = size.width,
-                        bottom = size.height,
-                        radiusX = radius,
-                        radiusY = radius,
-                        paint = paint
-                    )
                 }
             }
             .shadow(
@@ -641,7 +642,7 @@ fun FloatingMiniPlayerPill(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerModalDialog(
     playbackState: PlaybackUiState,
@@ -672,13 +673,13 @@ fun FullPlayerModalDialog(
     var bookmarkNoteInput by remember { mutableStateOf("") }
 
     var showSpeedPicker by remember { mutableStateOf(false) }
-    var showVolumeBoostPicker by remember { mutableStateOf(false) }
     var showSleepTimerPicker by remember { mutableStateOf(false) }
+    var showNowPlayingSettingsSheet by remember { mutableStateOf(false) }
     var showChapterPicker by remember(episode.id) { mutableStateOf(false) }
     var inlineContentTab by remember(episode.id) { mutableIntStateOf(0) } // 0 = Notes, 1 = Transcript
     var inlineTranscriptQuery by remember(episode.id) { mutableStateOf("") }
+    var dismissDragOffsetY by remember { mutableFloatStateOf(0f) }
     val scrollState = rememberScrollState()
-    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     val plainRichNotes = remember(episode.descriptionHtml) {
         Html.fromHtml(episode.descriptionHtml, Html.FROM_HTML_MODE_COMPACT).toString().trim()
     }
@@ -692,10 +693,32 @@ fun FullPlayerModalDialog(
 
     BackHandler(onBack = onDismiss)
 
+    val swipeDownModifier = Modifier.pointerInput(Unit) {
+        detectVerticalDragGestures(
+            onDragEnd = {
+                if (dismissDragOffsetY > 180f) {
+                    dismissDragOffsetY = 0f
+                    onDismiss()
+                } else {
+                    dismissDragOffsetY = 0f
+                }
+            },
+            onDragCancel = { dismissDragOffsetY = 0f },
+            onVerticalDrag = { change, dragAmount ->
+                val next = dismissDragOffsetY + dragAmount
+                if (next >= 0f) {
+                    change.consume()
+                    dismissDragOffsetY = next.coerceAtMost(420f)
+                }
+            }
+        )
+    }
+
     Surface(
         color = LoheBackgroundDark,
         modifier = Modifier
             .fillMaxSize()
+            .offset { IntOffset(0, dismissDragOffsetY.roundToInt()) }
             .background(LoheBackgroundDark)
             .statusBarsPadding()
             .navigationBarsPadding()
@@ -705,19 +728,35 @@ fun FullPlayerModalDialog(
                 .fillMaxSize()
                 .background(LoheBackgroundDark)
         ) {
-            Row(
+            // Swipe-down grab bar + header
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .then(swipeDownModifier)
+                    .testTag("full_player_drag_header"),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(
-                    onClick = onDismiss,
+                Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .testTag("full_player_close_button")
+                        .padding(top = 6.dp, bottom = 2.dp)
+                        .width(38.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.White.copy(alpha = 0.28f))
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("full_player_close_button")
+                    ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,
                         contentDescription = "Collapse Player",
@@ -779,7 +818,6 @@ fun FullPlayerModalDialog(
                             showBookmarkDialog = !showBookmarkDialog
                             if (showBookmarkDialog) {
                                 showSpeedPicker = false
-                                showVolumeBoostPicker = false
                                 showSleepTimerPicker = false
                             }
                         },
@@ -795,15 +833,26 @@ fun FullPlayerModalDialog(
                     }
                 }
             }
+            }
 
             BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                val maxArtworkSide = minOf(maxWidth, (maxHeight * 0.72f).coerceAtLeast(320.dp))
-                val isFullBleed = maxArtworkSide >= maxWidth - 2.dp
-                val artCornerRadius = if (isFullBleed) 0.dp else 20.dp
+                val maxArtworkSide = minOf(
+                    (maxWidth - 28.dp).coerceAtLeast(120.dp),
+                    (maxHeight * 0.65f).coerceIn(140.dp, 460.dp)
+                )
+                val artCornerRadius = 24.dp
+                val artworkGlowPaint = remember {
+                    Paint().apply {
+                        asFrameworkPaint().apply {
+                            isAntiAlias = true
+                            color = android.graphics.Color.argb(95, 0, 142, 255)
+                        }
+                    }
+                }
 
                 Column(
                     modifier = Modifier
@@ -811,25 +860,46 @@ fun FullPlayerModalDialog(
                         .verticalScroll(scrollState)
                         .testTag("full_player_modal")
                 ) {
+                    // Floating Artwork Card maximizing visual real estate with swipe-down & Now Playing Settings button
                     Box(
-                        modifier = if (isFullBleed) {
-                            Modifier
-                                .fillMaxWidth()
-                                .height(maxArtworkSide)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = listOf(
-                                            LoheElectricBlue.copy(alpha = 0.35f),
-                                            LoheSurfaceDark,
-                                            LoheBackgroundDark
-                                        )
-                                    )
-                                )
-                                .testTag("full_player_artwork")
-                        } else {
-                            Modifier
-                                .align(Alignment.CenterHorizontally)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(swipeDownModifier)
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
                                 .size(maxArtworkSide)
+                                .drawBehind {
+                                    val left = 6.dp.toPx()
+                                    val top = 10.dp.toPx()
+                                    val right = size.width - 6.dp.toPx()
+                                    val bottom = size.height + 6.dp.toPx()
+                                    val blurPx = 22.dp.toPx()
+                                    if (right > left && bottom > top && blurPx >= 1f) {
+                                        drawIntoCanvas { canvas ->
+                                            artworkGlowPaint.asFrameworkPaint().maskFilter =
+                                                BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
+                                            val r = artCornerRadius.toPx()
+                                            canvas.drawRoundRect(
+                                                left = left,
+                                                top = top,
+                                                right = right,
+                                                bottom = bottom,
+                                                radiusX = r,
+                                                radiusY = r,
+                                                paint = artworkGlowPaint
+                                            )
+                                        }
+                                    }
+                                }
+                                .shadow(
+                                    elevation = 20.dp,
+                                    shape = RoundedCornerShape(artCornerRadius),
+                                    ambientColor = LoheElectricBlue,
+                                    spotColor = Color.Black
+                                )
                                 .clip(RoundedCornerShape(artCornerRadius))
                                 .background(
                                     Brush.radialGradient(
@@ -840,32 +910,122 @@ fun FullPlayerModalDialog(
                                         )
                                     )
                                 )
-                                .border(1.dp, LoheBorderDark, RoundedCornerShape(artCornerRadius))
-                                .testTag("full_player_artwork")
-                        },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (effectiveArtworkUrl.isNotBlank()) {
-                            PodcastArtworkThumbnail(
-                                artworkUrl = effectiveArtworkUrl,
-                                title = currentChapter?.title ?: episode.podcastTitle,
-                                cornerRadius = artCornerRadius,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Filled.GraphicEq,
-                                    contentDescription = null,
-                                    tint = LoheCyanAccent,
-                                    modifier = Modifier.size(84.dp)
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.22f),
+                                            LoheElectricBlue.copy(alpha = 0.40f),
+                                            Color.White.copy(alpha = 0.08f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(artCornerRadius)
                                 )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = if (playbackState.isPlaying) "MEDIA3 EXOPLAYER ACTIVE" else "PAUSED • READY",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = LoheCyanAccent
+                                .testTag("full_player_artwork"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (effectiveArtworkUrl.isNotBlank()) {
+                                PodcastArtworkThumbnail(
+                                    artworkUrl = effectiveArtworkUrl,
+                                    title = currentChapter?.title ?: episode.podcastTitle,
+                                    cornerRadius = artCornerRadius,
+                                    modifier = Modifier.fillMaxSize()
                                 )
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Filled.GraphicEq,
+                                        contentDescription = null,
+                                        tint = LoheCyanAccent,
+                                        modifier = Modifier.size(84.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = if (playbackState.isPlaying) "MEDIA3 EXOPLAYER ACTIVE" else "PAUSED • READY",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = LoheCyanAccent
+                                    )
+                                }
+                            }
+
+                            // Chapters, Notes & Transcript floating button in lower-left corner of artwork card
+                            val hasChaptersOrTranscript = activeChapters.isNotEmpty() || activeTranscriptCues.isNotEmpty()
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(12.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { onOpenNotes(episode) },
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(LoheBackgroundDark.copy(alpha = 0.80f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (hasChaptersOrTranscript) LoheElectricBlue else Color.White.copy(alpha = 0.24f),
+                                            shape = CircleShape
+                                        )
+                                        .testTag("full_player_open_notes_sheet")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.AutoStories,
+                                        contentDescription = "Chapters, Notes & Transcript",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                if (hasChaptersOrTranscript) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(3.dp)
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(LoheElectricBlue)
+                                    )
+                                }
+                            }
+
+                            // Now Playing Settings floating button in lower-right corner of artwork card
+                            val hasActiveAudioSetting = playbackState.volumeBoostDb > 0 ||
+                                playbackState.skipSilenceEnabled ||
+                                playbackState.sleepAtEndOfEpisode
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(12.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { showNowPlayingSettingsSheet = true },
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(LoheBackgroundDark.copy(alpha = 0.80f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (hasActiveAudioSetting) LoheElectricBlue else Color.White.copy(alpha = 0.24f),
+                                            shape = CircleShape
+                                        )
+                                        .testTag("full_player_audio_settings_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Tune,
+                                        contentDescription = "Now Playing Settings",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(21.dp)
+                                    )
+                                }
+                                if (hasActiveAudioSetting) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(3.dp)
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(LoheElectricBlue)
+                                    )
+                                }
                             }
                         }
                     }
@@ -892,14 +1052,15 @@ fun FullPlayerModalDialog(
                             overflow = TextOverflow.Ellipsis
                         )
 
+            val maxSliderMs = playbackState.durationMs.coerceAtLeast(1000L).toFloat()
             Slider(
-                value = playbackState.positionMs.toFloat(),
+                value = playbackState.positionMs.toFloat().coerceIn(0f, maxSliderMs),
                 onValueChange = { onSeekTo(it.toLong()) },
-                valueRange = 0f..playbackState.durationMs.coerceAtLeast(1000L).toFloat(),
+                valueRange = 0f..maxSliderMs,
                 colors = SliderDefaults.colors(
-                    thumbColor = LoheCyanAccent,
+                    thumbColor = Color(0xFFB4BCC8),
                     activeTrackColor = LoheElectricBlue,
-                    inactiveTrackColor = LoheBorderDark
+                    inactiveTrackColor = Color(0xFF2C3340)
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -990,12 +1151,13 @@ fun FullPlayerModalDialog(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            if (currentChapter.url.isNotBlank()) {
+                            val safeCurrentChapterUrl = remember(currentChapter.url) { sanitizeExternalNoteUrl(currentChapter.url) }
+                            if (safeCurrentChapterUrl != null) {
                                 IconButton(
                                     onClick = {
                                         runCatching {
                                             context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, Uri.parse(currentChapter.url)).apply {
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(safeCurrentChapterUrl)).apply {
                                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                 }
                                             )
@@ -1111,12 +1273,13 @@ fun FullPlayerModalDialog(
                                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                                                 color = if (isSelected) LoheCyanAccent else LoheTextMutedDark
                                             )
-                                            if (ch.url.isNotBlank()) {
+                                            val safeChapterUrl = remember(ch.url) { sanitizeExternalNoteUrl(ch.url) }
+                                            if (safeChapterUrl != null) {
                                                 IconButton(
                                                     onClick = {
                                                         runCatching {
                                                             context.startActivity(
-                                                                Intent(Intent.ACTION_VIEW, Uri.parse(ch.url)).apply {
+                                                                Intent(Intent.ACTION_VIEW, Uri.parse(safeChapterUrl)).apply {
                                                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                                 }
                                                             )
@@ -1142,250 +1305,182 @@ fun FullPlayerModalDialog(
                 Spacer(modifier = Modifier.height(6.dp))
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val speedActive = kotlin.math.abs(playbackState.playbackSpeed - 1.0f) >= 0.03f
-                IconButton(
-                    onClick = {
-                        showSpeedPicker = !showSpeedPicker
-                        if (showSpeedPicker) {
-                            showVolumeBoostPicker = false
-                            showSleepTimerPicker = false
-                            showBookmarkDialog = false
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(if (speedActive || showSpeedPicker) LoheElectricBlue else LoheSurfaceDark)
-                        .border(
-                            1.dp,
-                            if (speedActive || showSpeedPicker) LoheCyanAccent else LoheBorderDark,
-                            CircleShape
-                        )
-                        .testTag("full_player_speed_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Speed,
-                        contentDescription = "Playback Speed",
-                        tint = if (speedActive || showSpeedPicker) Color.White else LoheElectricBlue,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onSkipBack,
-                    shape = RoundedCornerShape(50),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .height(48.dp)
-                        .testTag("full_player_skip_back")
-                ) {
-                    Icon(
-                        Icons.Filled.FastRewind,
-                        contentDescription = null,
-                        tint = LoheTextPrimaryDark,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(2.dp))
-                    Text(
-                        text = "-${settings.skipBackSeconds}s",
-                        color = LoheTextPrimaryDark,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-
-                IconButton(
-                    onClick = onTogglePlayPause,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(LoheElectricBlue)
-                        .testTag("full_player_play_pause")
-                ) {
-                    Icon(
-                        imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(34.dp)
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onSkipForward,
-                    shape = RoundedCornerShape(50),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .height(48.dp)
-                        .testTag("full_player_skip_forward")
-                ) {
-                    Text(
-                        text = "+${settings.skipForwardSeconds}s",
-                        color = LoheTextPrimaryDark,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                    Spacer(Modifier.width(2.dp))
-                    Icon(
-                        Icons.Filled.FastForward,
-                        contentDescription = null,
-                        tint = LoheTextPrimaryDark,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                val sleepTimerActive = playbackState.sleepTimerRemainingSeconds > 0
-                IconButton(
-                    onClick = {
-                        showSleepTimerPicker = !showSleepTimerPicker
-                        if (showSleepTimerPicker) {
-                            showSpeedPicker = false
-                            showVolumeBoostPicker = false
-                            showBookmarkDialog = false
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(if (sleepTimerActive || showSleepTimerPicker) LoheElectricBlue else LoheSurfaceDark)
-                        .border(
-                            1.dp,
-                            if (sleepTimerActive || showSleepTimerPicker) LoheCyanAccent else LoheBorderDark,
-                            CircleShape
-                        )
-                        .testTag("full_player_sleep_timer_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Timer,
-                        contentDescription = "Sleep Timer",
-                        tint = if (sleepTimerActive || showSleepTimerPicker) Color.White else LoheElectricBlue,
-                        modifier = Modifier.size(22.dp)
-                    )
+            val controlsCardShape = RoundedCornerShape(22.dp)
+            val controlsCardBrush = Brush.horizontalGradient(listOf(LoheMiniPlayerStartDark, LoheMiniPlayerEndDark))
+            val controlsGlowPaint = remember {
+                Paint().apply {
+                    asFrameworkPaint().apply {
+                        isAntiAlias = true
+                        color = android.graphics.Color.argb(115, 0, 142, 255)
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Slim 4-icon action bar (Volume Boost, Skip Silence, Sleep End of Ep, Chapters & Notes)
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = LoheSurfaceDark,
+                shape = controlsCardShape,
+                color = Color.Transparent,
+                tonalElevation = 0.dp,
+                shadowElevation = 14.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
-                    .border(1.dp, LoheBorderDark, RoundedCornerShape(18.dp))
+                    .padding(vertical = 8.dp)
+                    .drawBehind {
+                        val inset = 2.dp.toPx()
+                        val right = size.width - inset
+                        val bottom = size.height - inset
+                        val blurPx = 14.dp.toPx()
+                        if (right > inset && bottom > inset && blurPx >= 1f) {
+                            drawIntoCanvas { canvas ->
+                                controlsGlowPaint.asFrameworkPaint().maskFilter =
+                                    BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
+                                val r = 22.dp.toPx()
+                                canvas.drawRoundRect(
+                                    left = inset,
+                                    top = inset,
+                                    right = right,
+                                    bottom = bottom,
+                                    radiusX = r,
+                                    radiusY = r,
+                                    paint = controlsGlowPaint
+                                )
+                            }
+                        }
+                    }
+                    .shadow(
+                        elevation = 14.dp,
+                        shape = controlsCardShape,
+                        ambientColor = LoheElectricBlue,
+                        spotColor = LoheElectricBlue
+                    )
+                    .clip(controlsCardShape)
+                    .background(controlsCardBrush)
+                    .border(1.dp, LoheElectricBlue.copy(alpha = 0.50f), controlsCardShape)
+                    .testTag("full_player_controls_card")
             ) {
                 Row(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val boostActive = playbackState.volumeBoostDb > 0
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable {
-                                showVolumeBoostPicker = !showVolumeBoostPicker
-                                if (showVolumeBoostPicker) {
-                                    showSpeedPicker = false
-                                    showSleepTimerPicker = false
-                                    showBookmarkDialog = false
-                                }
+                    val speedActive = kotlin.math.abs(playbackState.playbackSpeed - 1.0f) >= 0.03f
+                    IconButton(
+                        onClick = {
+                            showSpeedPicker = !showSpeedPicker
+                            if (showSpeedPicker) {
+                                showSleepTimerPicker = false
+                                showBookmarkDialog = false
                             }
-                            .testTag("full_player_volume_boost_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(if (boostActive || showVolumeBoostPicker) LoheElectricBlue else Color.Transparent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                contentDescription = "Volume Boost",
-                                tint = if (boostActive || showVolumeBoostPicker) Color.White else LoheCyanAccent,
-                                modifier = Modifier.size(19.dp)
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(if (speedActive || showSpeedPicker) LoheElectricBlue else LoheSurfaceDark.copy(alpha = 0.85f))
+                            .border(
+                                1.dp,
+                                if (speedActive || showSpeedPicker) LoheCyanAccent else LoheBorderDark,
+                                CircleShape
                             )
-                        }
+                            .testTag("full_player_speed_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Speed,
+                            contentDescription = "Playback Speed",
+                            tint = if (speedActive || showSpeedPicker) Color.White else LoheElectricBlue,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
 
-                    Box(
+                    OutlinedButton(
+                        onClick = onSkipBack,
+                        shape = RoundedCornerShape(50),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable { onSkipSilenceChange(!playbackState.skipSilenceEnabled) }
-                            .testTag("full_player_skip_silence_button"),
-                        contentAlignment = Alignment.Center
+                            .height(48.dp)
+                            .testTag("full_player_skip_back")
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(if (playbackState.skipSilenceEnabled) LoheElectricBlue else Color.Transparent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.GraphicEq,
-                                contentDescription = if (playbackState.skipSilenceEnabled) "Skip Silence On" else "Skip Silence Off",
-                                tint = if (playbackState.skipSilenceEnabled) Color.White else LoheCyanAccent,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
+                        Icon(
+                            Icons.Filled.FastRewind,
+                            contentDescription = null,
+                            tint = LoheTextPrimaryDark,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = "-${settings.skipBackSeconds}s",
+                            color = LoheTextPrimaryDark,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
-                    Box(
+                    IconButton(
+                        onClick = onTogglePlayPause,
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable { onSetSleepEndOfEpisode(!playbackState.sleepAtEndOfEpisode) }
-                            .testTag("sleep_timer_end_of_ep"),
-                        contentAlignment = Alignment.Center
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(LoheElectricBlue)
+                            .testTag("full_player_play_pause")
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(if (playbackState.sleepAtEndOfEpisode) LoheElectricBlue else Color.Transparent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Bedtime,
-                                contentDescription = if (playbackState.sleepAtEndOfEpisode) "Sleep at End of Episode On" else "Sleep at End of Episode",
-                                tint = if (playbackState.sleepAtEndOfEpisode) Color.White else LoheElectricBlue,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(34.dp)
+                        )
                     }
 
-                    Box(
+                    OutlinedButton(
+                        onClick = onSkipForward,
+                        shape = RoundedCornerShape(50),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable { onOpenNotes(episode) }
-                            .testTag("full_player_open_notes_sheet"),
-                        contentAlignment = Alignment.Center
+                            .height(48.dp)
+                            .testTag("full_player_skip_forward")
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Description,
-                                contentDescription = "Episode Notes, Chapters & Transcript",
-                                tint = LoheCyanAccent,
-                                modifier = Modifier.size(19.dp)
+                        Text(
+                            text = "+${settings.skipForwardSeconds}s",
+                            color = LoheTextPrimaryDark,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Icon(
+                            Icons.Filled.FastForward,
+                            contentDescription = null,
+                            tint = LoheTextPrimaryDark,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    val sleepTimerActive = playbackState.sleepTimerRemainingSeconds > 0
+                    IconButton(
+                        onClick = {
+                            showSleepTimerPicker = !showSleepTimerPicker
+                            if (showSleepTimerPicker) {
+                                showSpeedPicker = false
+                                showBookmarkDialog = false
+                            }
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(if (sleepTimerActive || showSleepTimerPicker) LoheElectricBlue else LoheSurfaceDark.copy(alpha = 0.85f))
+                            .border(
+                                1.dp,
+                                if (sleepTimerActive || showSleepTimerPicker) LoheCyanAccent else LoheBorderDark,
+                                CircleShape
                             )
-                        }
+                            .testTag("full_player_sleep_timer_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Timer,
+                            contentDescription = "Sleep Timer",
+                            tint = if (sleepTimerActive || showSleepTimerPicker) Color.White else LoheElectricBlue,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             }
@@ -1399,74 +1494,14 @@ fun FullPlayerModalDialog(
                         .padding(top = 8.dp)
                         .border(1.dp, LoheBorderDark, RoundedCornerShape(16.dp))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Variable Speed (${String.format("%.2fx", playbackState.playbackSpeed)})",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = LoheTextPrimaryDark
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f).forEach { speed ->
-                                val selected = kotlin.math.abs(playbackState.playbackSpeed - speed) < 0.03f
-                                Button(
-                                    onClick = {
-                                        onSpeedChange(speed)
-                                        showSpeedPicker = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selected) LoheElectricBlue else LoheSurfaceElevatedDark
-                                    ),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("${speed}x", color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = showVolumeBoostPicker) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = LoheSurfaceDark,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .border(1.dp, LoheBorderDark, RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Volume Boost & Skip Silence (Free)",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = LoheTextPrimaryDark
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf(0 to "Off (0dB)", 3 to "Mild (+3dB)", 6 to "Voice (+6dB)", 10 to "Max (+10dB)").forEach { (db, label) ->
-                                val selected = playbackState.volumeBoostDb == db
-                                Button(
-                                    onClick = {
-                                        onVolumeBoostChange(db)
-                                        showVolumeBoostPicker = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selected) LoheElectricBlue else LoheSurfaceElevatedDark
-                                    ),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text(label, color = Color.White)
-                                }
-                            }
-                        }
-                    }
+                    VariableSpeedSliderBar(
+                        speed = playbackState.playbackSpeed,
+                        onSpeedChange = onSpeedChange,
+                        title = "Variable Speed",
+                        keySpeedTagPrefix = "full_player_speed",
+                        onDarkSurface = true,
+                        modifier = Modifier.padding(14.dp)
+                    )
                 }
             }
 
@@ -1709,23 +1744,17 @@ fun FullPlayerModalDialog(
                                     Spacer(modifier = Modifier.height(10.dp))
                                 }
 
-                                androidx.compose.ui.viewinterop.AndroidView(
-                                    factory = { ctx ->
-                                        android.widget.TextView(ctx).apply {
-                                            setTextColor(android.graphics.Color.parseColor("#E6EAF2"))
-                                            setLinkTextColor(android.graphics.Color.parseColor("#38BDF8"))
-                                            textSize = 15f
-                                            setLineSpacing(8f, 1.3f)
-                                            movementMethod = android.text.method.LinkMovementMethod.getInstance()
-                                        }
-                                    },
-                                    update = { tv ->
-                                        val htmlSource = episode.descriptionHtml.ifBlank {
-                                            "<p>No show notes provided for this episode.</p>"
-                                        }
-                                        tv.text = Html.fromHtml(htmlSource, Html.FROM_HTML_MODE_COMPACT)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                                ClickableShowNotesText(
+                                    rawHtml = episode.descriptionHtml,
+                                    textColor = LoheTextPrimaryDark,
+                                    linkColor = LoheElectricBlue,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = 15.sp,
+                                        lineHeight = 23.sp
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("full_player_notes_clickable_text")
                                 )
                             }
                         } else {
@@ -1852,6 +1881,203 @@ fun FullPlayerModalDialog(
             }
         }
     }
+
+    if (showNowPlayingSettingsSheet) {
+        val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showNowPlayingSettingsSheet = false },
+            sheetState = settingsSheetState,
+            containerColor = LoheSurfaceDark,
+            contentColor = LoheTextPrimaryDark
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .navigationBarsPadding()
+                    .testTag("now_playing_settings_sheet"),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = null,
+                            tint = LoheCyanAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Now Playing Settings",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = LoheTextPrimaryDark
+                        )
+                    }
+                    IconButton(
+                        onClick = { showNowPlayingSettingsSheet = false },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close Settings", tint = LoheTextMutedDark)
+                    }
+                }
+
+                // 1) Volume Boost
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = LoheBackgroundDark,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, LoheBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .testTag("full_player_volume_boost_button")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                tint = LoheCyanAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Volume Boost",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = LoheTextPrimaryDark
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0 to "Off", 3 to "+3dB", 6 to "+6dB", 10 to "+10dB").forEach { (db, label) ->
+                                val selected = playbackState.volumeBoostDb == db
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { onVolumeBoostChange(db) },
+                                    label = { Text(label) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = LoheElectricBlue,
+                                        selectedLabelColor = Color.White,
+                                        labelColor = LoheTextPrimaryDark
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2) Skip Silence toggle
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = LoheBackgroundDark,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, LoheBorderDark, RoundedCornerShape(14.dp))
+                        .clickable { onSkipSilenceChange(!playbackState.skipSilenceEnabled) }
+                        .testTag("full_player_skip_silence_button")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GraphicEq,
+                                contentDescription = null,
+                                tint = LoheCyanAccent,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Skip Silence",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = LoheTextPrimaryDark
+                                )
+                                Text(
+                                    text = "Automatically trim quiet pauses during speech",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LoheTextMutedDark
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = playbackState.skipSilenceEnabled,
+                            onCheckedChange = onSkipSilenceChange,
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue)
+                        )
+                    }
+                }
+
+                // 3) Sleep at End of Episode toggle
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = LoheBackgroundDark,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, LoheBorderDark, RoundedCornerShape(14.dp))
+                        .clickable { onSetSleepEndOfEpisode(!playbackState.sleepAtEndOfEpisode) }
+                        .testTag("sleep_timer_end_of_ep")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Bedtime,
+                                contentDescription = null,
+                                tint = LoheElectricBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Sleep at End of Episode",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = LoheTextPrimaryDark
+                                )
+                                Text(
+                                    text = "Pause automatically when this episode finishes",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LoheTextMutedDark
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = playbackState.sleepAtEndOfEpisode,
+                            onCheckedChange = onSetSleepEndOfEpisode,
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -1864,7 +2090,15 @@ fun EpisodeNotesBottomSheet(
     isLoadingExtras: Boolean = false,
     onDismiss: () -> Unit,
     onSeekToMs: (Long) -> Unit,
-    onDeleteBookmark: (String) -> Unit = {}
+    onDeleteBookmark: (String) -> Unit = {},
+    isPlaying: Boolean = false,
+    isDownloading: Boolean = false,
+    onPlayToggle: (() -> Unit)? = null,
+    onAddToUpNext: ((Boolean) -> Unit)? = null,
+    onRemoveFromUpNext: (() -> Unit)? = null,
+    onToggleStarred: (() -> Unit)? = null,
+    onToggleDownloaded: (() -> Unit)? = null,
+    onMarkPlayed: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1883,15 +2117,23 @@ fun EpisodeNotesBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 10.dp)
                 .navigationBarsPadding()
                 .testTag("episode_notes_sheet")
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                PodcastArtworkThumbnail(
+                    artworkUrl = episode.artworkUrl,
+                    title = episode.podcastTitle,
+                    cornerRadius = 14.dp,
+                    modifier = Modifier
+                        .size(66.dp)
+                        .testTag("episode_sheet_artwork")
+                )
+                Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = episode.podcastTitle,
@@ -1909,9 +2151,125 @@ fun EpisodeNotesBottomSheet(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val durMins = (episode.durationMs / 60_000L).coerceAtLeast(1L)
+                    val dateStr = remember(episode.publishedAt) {
+                        if (episode.publishedAt > 0L) {
+                            java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+                                .format(java.util.Date(episode.publishedAt))
+                        } else ""
+                    }
+                    Text(
+                        text = listOfNotNull(
+                            dateStr.takeIf { it.isNotBlank() },
+                            "$durMins min",
+                            if (episode.isPlayed) "Played" else null
+                        ).joinToString(" • "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LoheTextMutedDark
+                    )
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close Notes", tint = LoheTextMutedDark)
+                IconButton(onClick = onDismiss, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close Episode Details", tint = LoheTextMutedDark)
+                }
+            }
+
+            if (onPlayToggle != null || onAddToUpNext != null || onToggleStarred != null || onToggleDownloaded != null || onMarkPlayed != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("episode_sheet_controls_row"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onPlayToggle != null) {
+                        Button(
+                            onClick = onPlayToggle,
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(containerColor = LoheElectricBlue),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .testTag("episode_sheet_play_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (isPlaying) "Pause" else "Play",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    if (onAddToUpNext != null) {
+                        UpNextQueueActionButton(
+                            inUpNext = episode.inUpNext,
+                            onAddToBeginning = { onAddToUpNext(true) },
+                            onAddToEnd = { onAddToUpNext(false) },
+                            onRemoveFromUpNext = onRemoveFromUpNext,
+                            buttonSize = 42.dp,
+                            testTagPrefix = "episode_sheet_up_next_button"
+                        )
+                    }
+
+                    if (onToggleStarred != null) {
+                        IconButton(
+                            onClick = onToggleStarred,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .testTag("episode_sheet_bookmark_button")
+                        ) {
+                            Icon(
+                                imageVector = if (episode.isStarred) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                contentDescription = if (episode.isStarred) "Remove Bookmark" else "Bookmark Episode",
+                                tint = if (episode.isStarred) LoheCyanAccent else LoheTextMutedDark
+                            )
+                        }
+                    }
+
+                    if (onToggleDownloaded != null) {
+                        IconButton(
+                            onClick = onToggleDownloaded,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .testTag("episode_sheet_download_button")
+                        ) {
+                            if (isDownloading) {
+                                CircularProgressIndicator(
+                                    color = LoheCyanAccent,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (episode.isDownloaded) Icons.Filled.DownloadDone else Icons.Filled.DownloadForOffline,
+                                    contentDescription = if (episode.isDownloaded) "Remove Download" else "Download Episode",
+                                    tint = if (episode.isDownloaded) LoheCyanAccent else LoheTextMutedDark
+                                )
+                            }
+                        }
+                    }
+
+                    if (onMarkPlayed != null) {
+                        IconButton(
+                            onClick = onMarkPlayed,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .testTag("episode_sheet_played_button")
+                        ) {
+                            Icon(
+                                imageVector = if (episode.isPlayed) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                                contentDescription = if (episode.isPlayed) "Mark Unplayed" else "Mark Played",
+                                tint = if (episode.isPlayed) Color(0xFF22C55E) else LoheTextMutedDark
+                            )
+                        }
+                    }
                 }
             }
 
@@ -2006,10 +2364,14 @@ fun EpisodeNotesBottomSheet(
                                 .verticalScroll(rememberScrollState())
                                 .padding(16.dp)
                         ) {
-                            Text(
-                                text = plainFromHtml.ifBlank { "No show notes provided for this episode." },
+                            ClickableShowNotesText(
+                                rawHtml = episode.descriptionHtml,
+                                textColor = LoheTextPrimaryDark,
+                                linkColor = LoheElectricBlue,
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = LoheTextPrimaryDark
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("episode_notes_clickable_text")
                             )
                             if (chapters.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(14.dp))
@@ -2087,12 +2449,13 @@ fun EpisodeNotesBottomSheet(
                                             color = LoheTextPrimaryDark,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        if (ch.url.isNotBlank()) {
+                                        val safeChapterUrl = remember(ch.url) { sanitizeExternalNoteUrl(ch.url) }
+                                        if (safeChapterUrl != null) {
                                             IconButton(
                                                 onClick = {
                                                     runCatching {
                                                         context.startActivity(
-                                                            Intent(Intent.ACTION_VIEW, Uri.parse(ch.url)).apply {
+                                                            Intent(Intent.ACTION_VIEW, Uri.parse(safeChapterUrl)).apply {
                                                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                             }
                                                         )
@@ -2271,3 +2634,226 @@ fun EpisodeNotesBottomSheet(
         }
     }
 }
+
+fun formatPlaybackSpeedLabel(speed: Float): String {
+    val snapped = ((speed * 20f).roundToInt() / 20f).coerceIn(0.5f, 3.0f)
+    val hundredths = (snapped * 100f).roundToInt()
+    return when {
+        hundredths % 100 == 0 -> "${hundredths / 100}.0x"
+        hundredths % 10 == 0 -> String.format("%.1fx", snapped)
+        else -> String.format("%.2fx", snapped)
+    }
+}
+
+/**
+ * Horizontal sliding Variable Speed bar (0.5x – 3.0x in 0.05x steps)
+ * with calibrated tick marks and tappable key-speed markers (0.5x, 1.0x, 1.5x, 2.0x, 2.5x, 3.0x).
+ */
+@Composable
+fun VariableSpeedSliderBar(
+    speed: Float,
+    onSpeedChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    title: String = "Variable Speed",
+    keySpeedTagPrefix: String = "speed_mark",
+    onDarkSurface: Boolean = true
+) {
+    val minSpeed = 0.5f
+    val maxSpeed = 3.0f
+    val keySpeeds = remember { listOf(0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f) }
+    val minorSpeeds = remember { listOf(0.75f, 1.25f, 1.75f, 2.25f, 2.75f) }
+
+    val clamped = speed.coerceIn(minSpeed, maxSpeed)
+    val snapped = ((clamped * 20f).roundToInt() / 20f).coerceIn(minSpeed, maxSpeed)
+    val isDark = onDarkSurface || MaterialTheme.colorScheme.background == LoheBackgroundDark
+    val primaryText = if (isDark) LoheTextPrimaryDark else MaterialTheme.colorScheme.onSurface
+    val mutedText = if (isDark) LoheTextMutedDark else MaterialTheme.colorScheme.onSurfaceVariant
+    val stepperBg = if (isDark) LoheSurfaceElevatedDark else MaterialTheme.colorScheme.surfaceVariant
+    val borderClr = if (isDark) LoheBorderDark else MaterialTheme.colorScheme.outline
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = primaryText
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(LoheElectricBlue.copy(alpha = 0.18f))
+                        .border(1.dp, LoheCyanAccent.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        .padding(horizontal = 9.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = formatPlaybackSpeedLabel(snapped),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) LoheCyanAccent else LoheElectricBlue
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (kotlin.math.abs(snapped - 1.0f) >= 0.03f) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(stepperBg)
+                            .border(1.dp, borderClr, RoundedCornerShape(50))
+                            .clickable { onSpeedChange(1.0f) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("${keySpeedTagPrefix}_reset")
+                    ) {
+                        Text(
+                            text = "1.0x",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LoheBrightBlueText
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(stepperBg)
+                        .border(1.dp, borderClr, CircleShape)
+                        .clickable {
+                            val next = (((snapped - 0.05f) * 20f).roundToInt() / 20f).coerceIn(minSpeed, maxSpeed)
+                            onSpeedChange(next)
+                        }
+                        .testTag("${keySpeedTagPrefix}_dec"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Remove,
+                        contentDescription = "Decrease speed",
+                        tint = primaryText,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(stepperBg)
+                        .border(1.dp, borderClr, CircleShape)
+                        .clickable {
+                            val next = (((snapped + 0.05f) * 20f).roundToInt() / 20f).coerceIn(minSpeed, maxSpeed)
+                            onSpeedChange(next)
+                        }
+                        .testTag("${keySpeedTagPrefix}_inc"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Increase speed",
+                        tint = primaryText,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        Slider(
+            value = snapped,
+            onValueChange = { raw ->
+                val quantized = ((raw * 20f).roundToInt() / 20f).coerceIn(minSpeed, maxSpeed)
+                onSpeedChange(quantized)
+            },
+            valueRange = minSpeed..maxSpeed,
+            steps = 49,
+            colors = SliderDefaults.colors(
+                thumbColor = LoheCyanAccent,
+                activeTrackColor = LoheElectricBlue,
+                inactiveTrackColor = borderClr,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("${keySpeedTagPrefix}_slider")
+        )
+
+        // Calibrated horizontal tick bar aligned with the slider range
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp)
+                .height(10.dp)
+                .offset(y = (-6).dp)
+        ) {
+            val span = maxSpeed - minSpeed
+            minorSpeeds.forEach { m ->
+                val frac = ((m - minSpeed) / span).coerceIn(0f, 1f)
+                val x = size.width * frac
+                val near = kotlin.math.abs(snapped - m) < 0.04f
+                drawLine(
+                    color = if (near) LoheCyanAccent else mutedText.copy(alpha = 0.45f),
+                    start = Offset(x, 2.dp.toPx()),
+                    end = Offset(x, 7.dp.toPx()),
+                    strokeWidth = if (near) 2.dp.toPx() else 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+            keySpeeds.forEach { k ->
+                val frac = ((k - minSpeed) / span).coerceIn(0f, 1f)
+                val x = size.width * frac
+                val active = kotlin.math.abs(snapped - k) < 0.04f
+                drawLine(
+                    color = if (active) LoheCyanAccent else LoheElectricBlue.copy(alpha = 0.85f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = if (active) 2.5.dp.toPx() else 1.75.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        // Tappable key speed labels aligned directly under each major tick
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset(y = (-4).dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            keySpeeds.forEach { mark ->
+                val isSelected = kotlin.math.abs(snapped - mark) < 0.04f
+                val label = if (mark % 1f == 0f) "${mark.toInt()}.0x" else "${mark}x"
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) LoheElectricBlue.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable { onSpeedChange(mark) }
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                        .testTag("${keySpeedTagPrefix}_${mark}")
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) (if (isDark) LoheCyanAccent else LoheElectricBlue) else mutedText,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
+    }
+}
+
