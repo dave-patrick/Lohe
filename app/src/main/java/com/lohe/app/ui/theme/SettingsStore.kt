@@ -76,6 +76,8 @@ data class PlaybackSettings(
     val showNewReleasesSmartPlaylist: Boolean = true,
     val debugButtonEnabled: Boolean = false,
     val queueIndicator: QueueIndicatorSettings = QueueIndicatorSettings(),
+    val googleDriveAutoSync: Boolean = false,
+    val googleDriveLastSyncStatus: String = "",
 ) {
     companion object {
         const val DEFAULT_SKIP_BACK = 10
@@ -216,6 +218,8 @@ class SettingsStore(private val context: Context) {
         val queueIndicatorStyle = stringPreferencesKey("queue_indicator_style")
         val queueIndicatorColor = stringPreferencesKey("queue_indicator_color")
         val queueIndicatorSize = stringPreferencesKey("queue_indicator_size")
+        val googleDriveAutoSync = booleanPreferencesKey("google_drive_auto_sync")
+        val googleDriveLastSyncStatus = stringPreferencesKey("google_drive_last_sync_status")
     }
 
     private fun showBoolKey(podcastUuid: String, suffix: String) =
@@ -281,6 +285,8 @@ class SettingsStore(private val context: Context) {
                 prefs[Keys.queueIndicatorEnabled], prefs[Keys.queueIndicatorStyle],
                 prefs[Keys.queueIndicatorColor], prefs[Keys.queueIndicatorSize],
             ),
+            googleDriveAutoSync = prefs[Keys.googleDriveAutoSync] ?: false,
+            googleDriveLastSyncStatus = prefs[Keys.googleDriveLastSyncStatus] ?: "",
         )
     }
 
@@ -295,6 +301,12 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setDebugButtonEnabled(value: Boolean) =
         edit { it[Keys.debugButtonEnabled] = value }
+
+    suspend fun setGoogleDriveAutoSync(value: Boolean) =
+        edit { it[Keys.googleDriveAutoSync] = value }
+
+    suspend fun setGoogleDriveLastSyncStatus(value: String) =
+        edit { it[Keys.googleDriveLastSyncStatus] = value }
 
     suspend fun setQueueIndicatorEnabled(value: Boolean) = edit { it[Keys.queueIndicatorEnabled] = value }
     suspend fun setQueueIndicatorStyle(value: QueueIndicatorStyle) = edit { it[Keys.queueIndicatorStyle] = value.name }

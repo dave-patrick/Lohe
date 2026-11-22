@@ -770,6 +770,7 @@ private fun LoheNavigationContent(
                     settingsStore = settingsStore,
                     category = SettingsCategory.fromRoute(entry.arguments?.getString("category")),
                     onOpenCategory = { navController.navigate(Routes.settings(it)) },
+                    onExportDatabase = { dbExportWriter.launch("lohe.db") },
                 )
             }
 

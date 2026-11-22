@@ -265,5 +265,12 @@ abstract class AppDatabase : RoomDatabase() {
                     .build()
                     .also { instance = it }
             }
+
+        fun closeForRestore() {
+            synchronized(this) {
+                instance?.close()
+                instance = null
+            }
+        }
     }
 }

@@ -149,6 +149,14 @@ fun SettingsScreen(
             }
         }
 
+        if (category == SettingsCategory.GOOGLE_DRIVE_SYNC) {
+            GoogleDriveSyncSection(
+                settings = settings,
+                settingsStore = settingsStore,
+                onExportDatabase = onExportDatabase,
+            )
+        }
+
         if (category == SettingsCategory.DEBUG) {
             ToggleRow(
                 label = "Local bug reports",
@@ -505,7 +513,7 @@ private fun ChoiceRow(
 }
 
 @Composable
-private fun ToggleRow(
+internal fun ToggleRow(
     label: String,
     hint: String,
     checked: Boolean,

@@ -10,7 +10,7 @@ plugins {
 // custom build ID increases for each distinct build, even within one release.
 val loheReleaseVersion = "0.11.1"
 // Format: YYYY.DD.MM.revision (for example, 2025.25.10.4).
-val loheBuildId = "2026.19.11.91"
+val loheBuildId = "2026.22.11.92"
 val lohePlayStore = providers.gradleProperty("lohePlayStore").orNull == "true"
 val loheVersionParts = loheReleaseVersion.split(".").map { it.toInt() }
 check(loheVersionParts.size == 3 && loheVersionParts.all { it in 0..99 }) {
@@ -149,6 +149,7 @@ implementation(libs.androidx.compose.foundation)
     // Declared so Gradle settles on 1.5.0: activity 1.13 asks for a savedstate
     // version that resolves fine online but is absent from this cache.
     implementation(libs.androidx.savedstate)
+    implementation(libs.play.services.auth)
 
     debugImplementation(libs.androidx.ui.tooling)
 

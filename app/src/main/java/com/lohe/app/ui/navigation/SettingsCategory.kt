@@ -7,6 +7,7 @@ enum class SettingsCategory(val route: String, val title: String, val summary: S
     ARCHIVING("archiving", "Archiving", "Archive delay and downloaded-copy cleanup"),
     DOWNLOADS("downloads", "Downloads", "Automatic downloads for Up Next"),
     PODCAST_UPDATES("podcast-updates", "Podcast updates", "Choose how often Lohe checks for new episodes"),
+    GOOGLE_DRIVE_SYNC("google-drive-sync", "Google Drive sync", "Back up and restore your library with Google Drive"),
     DEBUG("debug", "Diagnostics", "Optional local bug reports");
 
     companion object {

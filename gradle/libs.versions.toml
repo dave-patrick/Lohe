@@ -20,6 +20,7 @@ kxml2 = "2.3.0"
 # Pinned to the coroutines that compose/lifecycle already resolve, so the test
 # artifact cannot drag a second core version onto the classpath.
 coroutines = "1.9.0"
+playServicesAuth = "21.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -60,6 +61,7 @@ androidx-test-runner = { group = "androidx.test", name = "runner", version = "1.
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
