@@ -1631,7 +1631,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         _pendingDriveAuthIntent.value = null
         val token = proFeatures.extractDriveTokenFromResult(resultCode, data)
         if (token.isNullOrBlank()) {
-            postStatusMessage("Google Drive authorization canceled")
+            postStatusMessage("Google Drive OAuth canceled — tap Link Existing or Create Sync File above to sync directly via Google Drive")
             return
         }
         viewModelScope.launch {

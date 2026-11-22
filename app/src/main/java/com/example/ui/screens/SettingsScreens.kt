@@ -2433,7 +2433,8 @@ private fun CloudSyncSettingsSubScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                if (selectedProvider == CloudSyncProvider.ONEDRIVE ||
+                if (selectedProvider == CloudSyncProvider.GOOGLE_DRIVE ||
+                    selectedProvider == CloudSyncProvider.ONEDRIVE ||
                     selectedProvider == CloudSyncProvider.DROPBOX ||
                     selectedProvider == CloudSyncProvider.OTHER_CLOUD
                 ) {
@@ -2456,6 +2457,8 @@ private fun CloudSyncSettingsSubScreen(
                             Text(
                                 text = if (hasLinkedFile) {
                                     "Linked sync file: $linkedName ($linkedProviderLabel)"
+                                } else if (selectedProvider == CloudSyncProvider.GOOGLE_DRIVE) {
+                                    "Link or create lohe_cloud_sync.json in Google Drive for instant two-way sync without OAuth setup, or tap Sync Now below for Google Drive AppData."
                                 } else {
                                     "No persistent ${selectedProvider.title} file linked yet. Link or create lohe_cloud_sync.json inside ${selectedProvider.title} for one-tap two-way sync."
                                 },
@@ -2518,7 +2521,13 @@ private fun CloudSyncSettingsSubScreen(
                     }
                 } else {
                     val primarySyncAction: () -> Unit = when (selectedProvider) {
-                        CloudSyncProvider.GOOGLE_DRIVE -> onSyncToGoogleDrive
+                        CloudSyncProvider.GOOGLE_DRIVE -> {
+                            if (settings.safSyncUri.isNotBlank()) {
+                                { onSyncCloudProviderSaf(CloudSyncProvider.GOOGLE_DRIVE) }
+                            } else {
+                                onSyncToGoogleDrive
+                            }
+                        }
                         CloudSyncProvider.WEBDAV -> {
                             {
                                 onSaveWebDavConfig(webDavUrl, webDavUser, webDavPass)
@@ -2532,7 +2541,13 @@ private fun CloudSyncSettingsSubScreen(
                         }
                     }
                     val primaryRestoreAction: () -> Unit = when (selectedProvider) {
-                        CloudSyncProvider.GOOGLE_DRIVE -> onRestoreFromGoogleDrive
+                        CloudSyncProvider.GOOGLE_DRIVE -> {
+                            if (settings.safSyncUri.isNotBlank()) {
+                                { onRestoreCloudProviderSaf(CloudSyncProvider.GOOGLE_DRIVE) }
+                            } else {
+                                onRestoreFromGoogleDrive
+                            }
+                        }
                         CloudSyncProvider.WEBDAV -> {
                             {
                                 onSaveWebDavConfig(webDavUrl, webDavUser, webDavPass)
