@@ -3,11 +3,13 @@
 
     <!-- Required on Android 11+ to query and bind to Lohe Play and Lohe FOSS providers. -->
     <queries>
+        <package android:name="com.lohe.app.preview" />
         <package android:name="com.lohe.app" />
         <package android:name="com.lohe.app.foss" />
     </queries>
 
     <!-- Signature-protected owner-only permissions defined by Play and FOSS builds. -->
+    <uses-permission android:name="com.lohe.app.preview.permission.OWNER_SYNC" />
     <uses-permission android:name="com.lohe.app.permission.OWNER_SYNC" />
     <uses-permission android:name="com.lohe.app.foss.permission.OWNER_SYNC" />
 
