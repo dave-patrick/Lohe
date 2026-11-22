@@ -498,6 +498,100 @@ class HomeCardsAndFeedSyncTest {
             com.example.data.local.ToastPlacement.fromName("INVALID")
         )
     }
+
+    @Test
+    fun feedRefresh_skipsAncientBackCatalogEpisodes_andDeduplicatesQueryStringAudioUrls() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(
+            context,
+            com.example.data.local.LoheDatabase::class.java
+        ).allowMainThreadQueries().build()
+        try {
+            val repo = com.example.data.repository.LoheRepository(db.loheDao())
+            val dayMs = 86_400_000L
+            val nowMs = 1_800_000_000_000L
+
+            val existing = listOf(
+                com.example.data.local.EpisodeEntity(
+                    id = "ep_existing_latest",
+                    guid = "guid_latest",
+                    podcastId = "pod_long",
+                    podcastTitle = "Long Show",
+                    title = "Episode 1000 — Latest",
+                    descriptionHtml = "",
+                    audioUrl = "http://cdn.example.com/ep1000.mp3",
+                    artworkUrl = "",
+                    publishedAt = nowMs - 2 * dayMs,
+                    durationMs = 1_800_000L,
+                    isPlayed = true,
+                    playedAt = nowMs - dayMs
+                )
+            )
+
+            val incomingFromRss = buildList {
+                // Brand-new episode released today -> MUST be added
+                add(
+                    com.example.data.local.EpisodeEntity(
+                        id = "ep_new_1001",
+                        guid = "guid_1001",
+                        podcastId = "pod_long",
+                        podcastTitle = "Long Show",
+                        title = "Episode 1001 — Brand New",
+                        descriptionHtml = "",
+                        audioUrl = "https://cdn.example.com/ep1001.mp3",
+                        artworkUrl = "",
+                        publishedAt = nowMs,
+                        durationMs = 1_800_000L,
+                        isPlayed = false
+                    )
+                )
+                // Existing episode with https + tracking query params + different punctuation -> MUST NOT duplicate
+                add(
+                    com.example.data.local.EpisodeEntity(
+                        id = "ep_dup_1000",
+                        guid = "",
+                        podcastId = "pod_long",
+                        podcastTitle = "Long Show",
+                        title = "Episode 1000 - Latest",
+                        descriptionHtml = "",
+                        audioUrl = "https://cdn.example.com/ep1000.mp3?utm_source=rss&aw=123",
+                        artworkUrl = "",
+                        publishedAt = nowMs - 2 * dayMs,
+                        durationMs = 1_800_000L,
+                        isPlayed = false
+                    )
+                )
+                // 50 historical back-catalog episodes from 30..500 days ago -> MUST NOT flood as unplayed
+                for (i in 1..50) {
+                    add(
+                        com.example.data.local.EpisodeEntity(
+                            id = "ep_old_$i",
+                            guid = "guid_old_$i",
+                            podcastId = "pod_long",
+                            podcastTitle = "Long Show",
+                            title = "Episode ${1000 - i}",
+                            descriptionHtml = "",
+                            audioUrl = "https://cdn.example.com/ep_${1000 - i}.mp3",
+                            artworkUrl = "",
+                            publishedAt = nowMs - (30 + i * 7) * dayMs,
+                            durationMs = 1_800_000L,
+                            isPlayed = false
+                        )
+                    )
+                }
+            }
+
+            val (newEps, matchedPairs) = repo.selectNewFeedEpisodesForPodcast(
+                podcastId = "pod_long",
+                existingForPodcast = existing,
+                incomingFromFeed = incomingFromRss
+            )
+            assertEquals("Only the genuinely new Episode 1001 should be added", listOf("ep_new_1001"), newEps.map { it.id })
+            assertEquals("Existing Episode 1000 should match despite https/query-param differences", 1, matchedPairs.size)
+        } finally {
+            db.close()
+        }
+    }
 }
 
 

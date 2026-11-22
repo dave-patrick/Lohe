@@ -484,8 +484,83 @@ class LoheRepository(
     }
 
     private fun normalizeEpisodeTitleKey(podcastId: String, title: String): String {
-        val normalized = title.trim().lowercase().replace(Regex("\\s+"), " ")
+        val normalized = title.trim()
+            .lowercase(java.util.Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+            .trim()
         return "$podcastId|$normalized"
+    }
+
+    private fun normalizeAudioUrlKey(podcastId: String, audioUrl: String): String {
+        val cleaned = audioUrl.trim()
+            .substringBefore('#')
+            .substringBefore('?')
+            .lowercase(java.util.Locale.ROOT)
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .trimEnd('/')
+        return "$podcastId|$cleaned"
+    }
+
+    internal fun selectNewFeedEpisodesForPodcast(
+        podcastId: String,
+        existingForPodcast: List<EpisodeEntity>,
+        incomingFromFeed: List<EpisodeEntity>
+    ): Pair<List<EpisodeEntity>, List<Pair<EpisodeEntity, EpisodeEntity>>> {
+        val existingById = existingForPodcast.associateBy { it.id }
+        val existingByGuid = existingForPodcast
+            .filter { it.guid.isNotBlank() }
+            .associateBy { "${podcastId}|${it.guid.trim()}" }
+        val existingByAudio = existingForPodcast
+            .filter { it.audioUrl.isNotBlank() }
+            .associateBy { normalizeAudioUrlKey(podcastId, it.audioUrl) }
+        val existingByTitle = existingForPodcast
+            .filter { it.title.isNotBlank() }
+            .associateBy { normalizeEpisodeTitleKey(podcastId, it.title) }
+
+        val realExisting = existingForPodcast.filter {
+            !it.id.startsWith("opml_ep_") && !it.audioUrl.contains("exoplayer-test-media", ignoreCase = true)
+        }
+        val newestExistingPubAt = realExisting
+            .filter { it.publishedAt > 0L }
+            .maxOfOrNull { it.publishedAt } ?: 0L
+        // Keep a 7-day overlap window for newly published or slightly back-dated episodes,
+        // without flooding established/imported shows with 1,000+ historical back-catalog episodes.
+        val backCatalogCutoffMs = if (realExisting.isNotEmpty() && newestExistingPubAt > 0L) {
+            (newestExistingPubAt - 7L * 24L * 3_600_000L).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+
+        val newEps = mutableListOf<EpisodeEntity>()
+        val matchedPairs = mutableListOf<Pair<EpisodeEntity, EpisodeEntity>>()
+        val seenNewKeys = mutableSetOf<String>()
+
+        for (raw in incomingFromFeed) {
+            val guidKey = raw.guid.trim().takeIf { it.isNotBlank() }?.let { "$podcastId|$it" }
+            val audioKey = raw.audioUrl.trim().takeIf { it.isNotBlank() }?.let { normalizeAudioUrlKey(podcastId, it) }
+            val titleKey = raw.title.trim().takeIf { it.isNotBlank() }?.let { normalizeEpisodeTitleKey(podcastId, it) }
+
+            val matched = existingById[raw.id]
+                ?: guidKey?.let { existingByGuid[it] }
+                ?: audioKey?.let { existingByAudio[it] }
+                ?: titleKey?.let { existingByTitle[it] }
+
+            if (matched != null) {
+                matchedPairs.add(matched to raw)
+                continue
+            }
+
+            if (backCatalogCutoffMs > 0L && raw.publishedAt > 0L && raw.publishedAt < backCatalogCutoffMs) {
+                continue
+            }
+
+            val dedupKey = guidKey ?: audioKey ?: titleKey ?: raw.id
+            if (seenNewKeys.add(dedupKey)) {
+                newEps.add(raw)
+            }
+        }
+        return newEps to matchedPairs
     }
 
     private suspend fun upsertPodcastPreservingUserState(incoming: PodcastEntity): PodcastEntity {
@@ -1007,19 +1082,7 @@ class LoheRepository(
     suspend fun refreshAllSubscribedFeedsWithAlerts(): Pair<Int, List<NewEpisodeAlert>> {
         val podcasts = dao.getSubscribedPodcasts().first()
         val existingEpisodes = dao.getAllEpisodes().first()
-        val existingById = existingEpisodes.associateBy { it.id }.toMutableMap()
-        val existingByGuid = existingEpisodes
-            .filter { it.guid.isNotBlank() }
-            .associateBy { "${it.podcastId}|${it.guid.trim()}" }
-            .toMutableMap()
-        val existingByAudio = existingEpisodes
-            .filter { it.audioUrl.isNotBlank() }
-            .associateBy { "${it.podcastId}|${it.audioUrl.trim()}" }
-            .toMutableMap()
-        val existingByTitle = existingEpisodes
-            .filter { it.title.isNotBlank() }
-            .associateBy { normalizeEpisodeTitleKey(it.podcastId, it.title) }
-            .toMutableMap()
+        val existingByPodcast = existingEpisodes.groupBy { it.podcastId }
         val existingQueue = dao.getUpNextEpisodes().first()
         var minOrder = existingQueue.minOfOrNull { it.upNextOrder } ?: 0
         var maxOrder = existingQueue.maxOfOrNull { it.upNextOrder } ?: 0
@@ -1035,58 +1098,44 @@ class LoheRepository(
                 fallbackArtUrl = pod.artworkUrl,
                 maxEpisodes = 0
             ) ?: continue
-            val newEps = mutableListOf<EpisodeEntity>()
-            for (raw in parsed.second) {
-                val guidKey = raw.guid.trim().takeIf { it.isNotBlank() }?.let { "${pod.id}|$it" }
-                val audioKey = raw.audioUrl.trim().takeIf { it.isNotBlank() }?.let { "${pod.id}|$it" }
-                val titleKey = raw.title.trim().takeIf { it.isNotBlank() }
-                    ?.let { normalizeEpisodeTitleKey(pod.id, it) }
-                val matchedExisting = existingById[raw.id]
-                    ?: guidKey?.let { existingByGuid[it] }
-                    ?: audioKey?.let { existingByAudio[it] }
-                    ?: titleKey?.let { existingByTitle[it] }
-                if (matchedExisting == null) {
-                    newEps.add(raw)
-                } else {
-                    // Heal missing/corrupted duration or publish date from live RSS feed without altering played status
-                    val needsDuration = matchedExisting.durationMs <= 5_000L && raw.durationMs > matchedExisting.durationMs
-                    val needsPublishedAt = matchedExisting.publishedAt <= 0L && raw.publishedAt > 0L
-                    val needsArt = (matchedExisting.artworkUrl.isBlank() || matchedExisting.artworkUrl.startsWith("drawable://")) &&
-                        raw.artworkUrl.startsWith("http")
-                    if (needsDuration || needsPublishedAt || needsArt) {
-                        val newDuration = if (needsDuration) raw.durationMs else matchedExisting.durationMs
-                        val newPublishedAt = if (needsPublishedAt) raw.publishedAt else matchedExisting.publishedAt
-                        val newArtwork = if (needsArt) raw.artworkUrl else matchedExisting.artworkUrl
-                        dao.healEpisodeMetadata(
-                            episodeId = matchedExisting.id,
-                            durationMs = newDuration,
-                            publishedAt = newPublishedAt,
-                            artworkUrl = newArtwork,
-                            descriptionHtml = matchedExisting.descriptionHtml
-                        )
-                        existingById[matchedExisting.id] = matchedExisting.copy(
-                            durationMs = newDuration,
-                            publishedAt = newPublishedAt,
-                            artworkUrl = newArtwork
-                        )
-                    }
+            val existingForPod = existingByPodcast[pod.id].orEmpty()
+            val (newEps, matchedPairs) = selectNewFeedEpisodesForPodcast(
+                podcastId = pod.id,
+                existingForPodcast = existingForPod,
+                incomingFromFeed = parsed.second
+            )
+            for ((matchedExisting, raw) in matchedPairs) {
+                // Heal missing/corrupted duration or publish date from live RSS feed without altering played status
+                val needsDuration = matchedExisting.durationMs <= 5_000L && raw.durationMs > matchedExisting.durationMs
+                val needsPublishedAt = matchedExisting.publishedAt <= 0L && raw.publishedAt > 0L
+                val needsArt = (matchedExisting.artworkUrl.isBlank() || matchedExisting.artworkUrl.startsWith("drawable://")) &&
+                    raw.artworkUrl.startsWith("http")
+                if (needsDuration || needsPublishedAt || needsArt) {
+                    val newDuration = if (needsDuration) raw.durationMs else matchedExisting.durationMs
+                    val newPublishedAt = if (needsPublishedAt) raw.publishedAt else matchedExisting.publishedAt
+                    val newArtwork = if (needsArt) raw.artworkUrl else matchedExisting.artworkUrl
+                    dao.healEpisodeMetadata(
+                        episodeId = matchedExisting.id,
+                        durationMs = newDuration,
+                        publishedAt = newPublishedAt,
+                        artworkUrl = newArtwork,
+                        descriptionHtml = matchedExisting.descriptionHtml
+                    )
                 }
             }
             if (newEps.isNotEmpty()) {
                 val mode = AutoQueueMode.entries.find { it.name == pod.autoQueueMode } ?: AutoQueueMode.OFF
+                val autoQueueCutoffMs = System.currentTimeMillis() - 14L * 24L * 3_600_000L
                 val prepared = newEps.map { raw ->
-                    val ready = when (mode) {
-                        AutoQueueMode.BEGINNING -> raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = --minOrder)
-                        AutoQueueMode.END -> raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = ++maxOrder)
-                        AutoQueueMode.OFF -> raw.copy(podcastId = pod.id, podcastTitle = pod.title)
+                    val eligibleForAutoQueue = raw.publishedAt <= 0L || raw.publishedAt >= autoQueueCutoffMs
+                    when {
+                        mode == AutoQueueMode.BEGINNING && eligibleForAutoQueue ->
+                            raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = --minOrder)
+                        mode == AutoQueueMode.END && eligibleForAutoQueue ->
+                            raw.copy(podcastId = pod.id, podcastTitle = pod.title, inUpNext = true, upNextOrder = ++maxOrder)
+                        else ->
+                            raw.copy(podcastId = pod.id, podcastTitle = pod.title)
                     }
-                    existingById[ready.id] = ready
-                    ready.guid.trim().takeIf { it.isNotBlank() }?.let { existingByGuid["${pod.id}|$it"] = ready }
-                    ready.audioUrl.trim().takeIf { it.isNotBlank() }?.let { existingByAudio["${pod.id}|$it"] = ready }
-                    ready.title.trim().takeIf { it.isNotBlank() }?.let {
-                        existingByTitle[normalizeEpisodeTitleKey(pod.id, it)] = ready
-                    }
-                    ready
                 }
                 dao.insertEpisodes(prepared)
                 addedCount += prepared.size
