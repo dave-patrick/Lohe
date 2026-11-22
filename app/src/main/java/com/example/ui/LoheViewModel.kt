@@ -1600,8 +1600,8 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun syncWithGoogleDrive(restore: Boolean = false) {
-        if (!Edition.HAS_PRO || !settingsState.value.isProUnlocked) {
-            if (Edition.HAS_PRO) _showProUpgradeSheet.value = true
+        if (Edition.HAS_PRO && !settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
             return
         }
         viewModelScope.launch {

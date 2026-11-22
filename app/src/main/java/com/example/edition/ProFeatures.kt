@@ -127,6 +127,22 @@ object NoOpProFeatures : ProFeatures {
     ) = Unit
 }
 
+class FossDriveProFeatures(context: Context) : ProFeatures by NoOpProFeatures {
+    private val driveSyncManager = com.example.data.sync.GoogleDriveSyncManager(context)
+
+    override suspend fun requestDriveAuthorization(): DriveAuthOutcome =
+        driveSyncManager.requestDriveAuthorization()
+
+    override fun extractDriveTokenFromResult(resultCode: Int, data: Intent?): String? =
+        driveSyncManager.extractTokenFromResult(resultCode, data)
+
+    override suspend fun uploadBackupToAppData(accessToken: String, jsonPayload: String): Result<String> =
+        driveSyncManager.uploadBackupToAppData(accessToken, jsonPayload)
+
+    override suspend fun downloadBackupFromAppData(accessToken: String): Result<String?> =
+        driveSyncManager.downloadBackupFromAppData(accessToken)
+}
+
 object ProFeaturesRegistry {
     fun create(
         context: Context,
@@ -134,7 +150,7 @@ object ProFeaturesRegistry {
         onEntitlementChanged: (Boolean) -> Unit,
         onStatusNotice: (String) -> Unit
     ): ProFeatures {
-        if (!Edition.HAS_PRO) return NoOpProFeatures
+        if (!Edition.HAS_PRO) return FossDriveProFeatures(context)
         return runCatching {
             val clazz = Class.forName("com.example.pro.ProFeaturesImpl")
             val ctor = clazz.getConstructor(
@@ -144,6 +160,6 @@ object ProFeaturesRegistry {
                 Function1::class.java
             )
             ctor.newInstance(context, scope, onEntitlementChanged, onStatusNotice) as ProFeatures
-        }.getOrDefault(NoOpProFeatures)
+        }.getOrDefault(FossDriveProFeatures(context))
     }
 }

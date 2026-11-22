@@ -68,16 +68,12 @@ enum class CloudSyncProvider(
     );
 
     companion object {
-        fun defaultProvider(): CloudSyncProvider =
-            if (com.example.edition.Edition.HAS_PRO) GOOGLE_DRIVE else WEBDAV
+        fun defaultProvider(): CloudSyncProvider = GOOGLE_DRIVE
 
-        fun availableProviders(): List<CloudSyncProvider> =
-            if (com.example.edition.Edition.HAS_PRO) entries else entries.filter { it != GOOGLE_DRIVE }
+        fun availableProviders(): List<CloudSyncProvider> = entries
 
-        fun fromName(name: String?): CloudSyncProvider {
-            val resolved = entries.firstOrNull { it.name == name } ?: defaultProvider()
-            return if (!com.example.edition.Edition.HAS_PRO && resolved == GOOGLE_DRIVE) WEBDAV else resolved
-        }
+        fun fromName(name: String?): CloudSyncProvider =
+            entries.firstOrNull { it.name == name } ?: defaultProvider()
     }
 }
 
