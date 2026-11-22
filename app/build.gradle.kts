@@ -14,8 +14,8 @@ android {
     applicationId = "com.lohe.app.foss"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1219
-    versionName = "1219.0"
+    versionCode = 1220
+    versionName = "1220.0"
     buildConfigField("String", "OAUTH_CLIENT_ID", "\"\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -54,12 +54,7 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions {
-    unitTests {
-      isIncludeAndroidResources = true
-      all { it.maxHeapSize = "2048m" }
-    }
-  }
+  testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = false

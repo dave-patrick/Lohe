@@ -83,7 +83,7 @@ enum class PrimaryTab(val label: String, val testTag: String) {
 enum class SettingsSubScreen(val title: String, val subtitle: String, val isProFeatured: Boolean = false) {
     OVERVIEW("Settings", "Configure Lohe v0.12.0"),
     APPEARANCE("Appearance", "Dark or light theme, Up Next indicator style, color & size"),
-    TOAST_NOTIFICATIONS("Toast notifications", "Turn toasts on or off, duration, look & placement"),
+    TOAST_NOTIFICATIONS("Notifications", "Turn notifications on or off, duration, look & placement"),
     HOME_CARDS("Home screen", "Choose Home dashboard cards, Pro insights & history length"),
     PLAYBACK("Playback", "Speed, skip buttons, Sleep Shake-to-Extend, Boost & Battery setup"),
     FLOATING_PLAYER("Floating player", "Cross-app controls, size, transparency & battery setup", isProFeatured = true),
@@ -508,7 +508,7 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
 
     fun previewToastNotification() {
         val current = settingsState.value
-        val msg = "Preview toast • ${current.toastStyle.label} (${current.toastPlacement.label}, ${current.toastDuration.shortLabel})"
+        val msg = "Preview notification • ${current.toastStyle.label} (${current.toastPlacement.label}, ${current.toastDuration.shortLabel})"
         showToastMessage(msg)
     }
 

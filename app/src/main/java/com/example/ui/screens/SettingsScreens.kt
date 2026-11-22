@@ -2892,7 +2892,7 @@ private fun ToastNotificationsSettingsSubScreen(
         modifier = Modifier.testTag("toast_notifications_settings_list")
     ) {
         item {
-            SettingsCard("Toast Notifications") {
+            SettingsCard("Notifications") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2900,7 +2900,7 @@ private fun ToastNotificationsSettingsSubScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Show toast notifications",
+                            text = "Show notifications",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface
@@ -2935,7 +2935,7 @@ private fun ToastNotificationsSettingsSubScreen(
         item {
             SettingsCard("Live Preview") {
                 Text(
-                    text = "Preview how toasts appear on screen (${placement.label} • ${duration.label})",
+                    text = "Preview how notifications appear on screen (${placement.label} • ${duration.label})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2981,7 +2981,7 @@ private fun ToastNotificationsSettingsSubScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Show Test Toast", color = Color.White)
+                    Text("Show Test Notification", color = Color.White)
                 }
             }
         }
@@ -2989,7 +2989,7 @@ private fun ToastNotificationsSettingsSubScreen(
         item {
             SettingsCard("Duration") {
                 Text(
-                    text = "Choose how long toast notifications stay visible before fading out.",
+                    text = "Choose how long notifications stay visible before fading out.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3023,7 +3023,7 @@ private fun ToastNotificationsSettingsSubScreen(
         item {
             SettingsCard("Look & Style") {
                 Text(
-                    text = "Pick the visual style for toast notifications.",
+                    text = "Pick the visual style for notifications.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3084,7 +3084,7 @@ private fun ToastNotificationsSettingsSubScreen(
         item {
             SettingsCard("Placement") {
                 Text(
-                    text = "Choose where toast notifications appear on screen. Bottom placement always stays clear of the mini player and navigation bar.",
+                    text = "Choose where notifications appear on screen. Bottom placement always stays clear of the mini player and navigation bar.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
