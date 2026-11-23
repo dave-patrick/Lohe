@@ -73,6 +73,7 @@ class PodcastAppImporter(
 
     companion object {
         private val SQLITE_MAGIC = "SQLite format 3".toByteArray(Charsets.US_ASCII)
+        private val WHITESPACE_REGEX = Regex("\\s+")
 
         /**
          * Positions within the last 10 seconds or past 95% of duration count as played.
@@ -94,7 +95,7 @@ class PodcastAppImporter(
         fun normalizeTitle(raw: String): String {
             return raw.trim()
                 .lowercase(Locale.ROOT)
-                .replace(Regex("\\s+"), " ")
+                .replace(WHITESPACE_REGEX, " ")
         }
 
         /**
@@ -519,37 +520,62 @@ class PodcastAppImporter(
         val episodesTable = tables.firstOrNull { it.equals("episodes", ignoreCase = true) }
         if (episodesTable != null) {
             db.rawQuery("SELECT * FROM $episodesTable", null).use { cursor ->
+                val idxId = cursor.findColumnIndexIgnoreCase("id")
+                val idxPodId = cursor.findColumnIndexIgnoreCase("podcastId")
+                val idxPodTitle = cursor.findColumnIndexIgnoreCase("podcastTitle")
+                val idxTitle = cursor.findColumnIndexIgnoreCase("title")
+                val idxDesc = cursor.findColumnIndexIgnoreCase("descriptionHtml")
+                val idxAudio = cursor.findColumnIndexIgnoreCase("audioUrl")
+                val idxArt = cursor.findColumnIndexIgnoreCase("artworkUrl")
+                val idxPub = cursor.findColumnIndexIgnoreCase("publishedAt")
+                val idxDur = cursor.findColumnIndexIgnoreCase("durationMs")
+                val idxResume = cursor.findColumnIndexIgnoreCase("resumePositionMs")
+                val idxPlayed = cursor.findColumnIndexIgnoreCase("isPlayed")
+                val idxArchived = cursor.findColumnIndexIgnoreCase("isArchived")
+                val idxStarred = cursor.findColumnIndexIgnoreCase("isStarred")
+                val idxUpNext = cursor.findColumnIndexIgnoreCase("inUpNext")
+                val idxUpNextOrder = cursor.findColumnIndexIgnoreCase("upNextOrder")
+                val idxChapUrl = cursor.findColumnIndexIgnoreCase("chaptersUrl")
+                val idxChapJson = cursor.findColumnIndexIgnoreCase("chaptersJson")
+                val idxTransUrl = cursor.findColumnIndexIgnoreCase("transcriptUrl")
+                val idxTransMime = cursor.findColumnIndexIgnoreCase("transcriptMimeType")
+                val idxTransText = cursor.findColumnIndexIgnoreCase("transcriptText")
+                val idxGuid = cursor.findColumnIndexIgnoreCase("guid")
+                val idxPlayedAt = cursor.findColumnIndexIgnoreCase("playedAt")
+
+                fun str(i: Int): String = if (i < 0 || cursor.isNull(i)) "" else cursor.getString(i)?.trim().orEmpty()
+                fun lng(i: Int): Long = if (i < 0 || cursor.isNull(i)) 0L else cursor.getLong(i)
+                fun intVal(i: Int): Int = if (i < 0 || cursor.isNull(i)) 0 else cursor.getInt(i)
+
                 while (cursor.moveToNext()) {
-                    val id = cursor.getStringOrBlank("id").ifBlank { continue }
-                    val podcastId = cursor.getStringOrBlank("podcastId")
-                    val title = cursor.getStringOrBlank("title").ifBlank { "Migrated Episode" }
+                    val id = str(idxId).ifBlank { continue }
                     episodes.add(
                         EpisodeEntity(
                             id = id,
-                            podcastId = podcastId,
-                            podcastTitle = cursor.getStringOrBlank("podcastTitle"),
-                            title = title,
-                            descriptionHtml = cursor.getStringOrBlank("descriptionHtml"),
-                            audioUrl = cursor.getStringOrBlank("audioUrl"),
-                            artworkUrl = cursor.getStringOrBlank("artworkUrl"),
-                            publishedAt = cursor.getLongOrDefault(0L, "publishedAt").coerceAtLeast(0L),
-                            durationMs = cursor.getLongOrDefault(0L, "durationMs").coerceAtLeast(0L),
-                            resumePositionMs = cursor.getLongOrDefault(0L, "resumePositionMs").coerceAtLeast(0L),
-                            isPlayed = cursor.getIntOrDefault(0, "isPlayed") != 0,
-                            isArchived = cursor.getIntOrDefault(0, "isArchived") != 0,
+                            podcastId = str(idxPodId),
+                            podcastTitle = str(idxPodTitle),
+                            title = str(idxTitle).ifBlank { "Migrated Episode" },
+                            descriptionHtml = str(idxDesc),
+                            audioUrl = str(idxAudio),
+                            artworkUrl = str(idxArt),
+                            publishedAt = lng(idxPub).coerceAtLeast(0L),
+                            durationMs = lng(idxDur).coerceAtLeast(0L),
+                            resumePositionMs = lng(idxResume).coerceAtLeast(0L),
+                            isPlayed = intVal(idxPlayed) != 0,
+                            isArchived = intVal(idxArchived) != 0,
                             // Local files inside another package's private directory cannot be accessed cross-app
                             isDownloaded = false,
                             localFilePath = "",
-                            isStarred = cursor.getIntOrDefault(0, "isStarred") != 0,
-                            inUpNext = cursor.getIntOrDefault(0, "inUpNext") != 0,
-                            upNextOrder = cursor.getIntOrDefault(0, "upNextOrder"),
-                            chaptersUrl = cursor.getStringOrBlank("chaptersUrl"),
-                            chaptersJson = cursor.getStringOrBlank("chaptersJson"),
-                            transcriptUrl = cursor.getStringOrBlank("transcriptUrl"),
-                            transcriptMimeType = cursor.getStringOrBlank("transcriptMimeType"),
-                            transcriptText = cursor.getStringOrBlank("transcriptText"),
-                            guid = cursor.getStringOrBlank("guid"),
-                            playedAt = cursor.getLongOrDefault(0L, "playedAt").coerceAtLeast(0L)
+                            isStarred = intVal(idxStarred) != 0,
+                            inUpNext = intVal(idxUpNext) != 0,
+                            upNextOrder = intVal(idxUpNextOrder),
+                            chaptersUrl = str(idxChapUrl),
+                            chaptersJson = str(idxChapJson),
+                            transcriptUrl = str(idxTransUrl),
+                            transcriptMimeType = str(idxTransMime),
+                            transcriptText = str(idxTransText),
+                            guid = str(idxGuid),
+                            playedAt = lng(idxPlayedAt).coerceAtLeast(0L)
                         )
                     )
                 }
@@ -927,25 +953,36 @@ class PodcastAppImporter(
         var processedCount = 0
 
         database.withTransaction {
-            val existingPodcasts = dao.getAllPodcasts().first().toMutableList()
-            val existingEpisodes = dao.getAllEpisodes().first().toMutableList()
-            val existingBookmarks = dao.getAllBookmarks().first().toMutableList()
+            val existingPodcasts = dao.getAllPodcasts().first()
+            val existingEpisodes = dao.getAllEpisodes().first()
+            val existingBookmarks = dao.getAllBookmarks().first()
+
+            // O(1) podcast lookup maps
+            val podById = HashMap<String, PodcastEntity>(existingPodcasts.size * 2 + 16)
+            val podByFeed = HashMap<String, PodcastEntity>(existingPodcasts.size * 2 + 16)
+            val podByTitle = HashMap<String, PodcastEntity>(existingPodcasts.size * 2 + 16)
+            fun indexPodcast(pod: PodcastEntity) {
+                podById[pod.id] = pod
+                val normFeed = normalizeUrl(pod.feedUrl)
+                if (normFeed.isNotBlank()) podByFeed[normFeed] = pod
+                val normTitle = normalizeTitle(pod.title)
+                if (normTitle.isNotBlank()) podByTitle[normTitle] = pod
+            }
+            existingPodcasts.forEach(::indexPodcast)
 
             // Map imported IDs -> resolved local IDs
-            val importedPodIdToLocalPod = mutableMapOf<String, PodcastEntity>()
-            val importedEpIdToLocalEpId = mutableMapOf<String, String>()
+            val importedPodIdToLocalPod = HashMap<String, PodcastEntity>(payload.podcasts.size * 2 + 16)
+            val importedEpIdToLocalEpId = HashMap<String, String>(payload.episodes.size * 2 + 16)
+            val podcastsToUpsert = LinkedHashMap<String, PodcastEntity>()
 
             for (importedPod in payload.podcasts) {
                 processedCount++
                 val normalizedImportRss = normalizeUrl(importedPod.feedUrl)
                 val normalizedImportTitle = normalizeTitle(importedPod.title)
 
-                val matchedPodcast = existingPodcasts.firstOrNull { existing ->
-                    (normalizedImportRss.isNotBlank() && normalizeUrl(existing.feedUrl) == normalizedImportRss) ||
-                        existing.id == importedPod.id
-                } ?: existingPodcasts.firstOrNull { existing ->
-                    normalizedImportTitle.isNotBlank() && normalizeTitle(existing.title) == normalizedImportTitle
-                }
+                val matchedPodcast = (if (normalizedImportRss.isNotBlank()) podByFeed[normalizedImportRss] else null)
+                    ?: podById[importedPod.id]
+                    ?: (if (normalizedImportTitle.isNotBlank()) podByTitle[normalizedImportTitle] else null)
 
                 if (matchedPodcast != null) {
                     if (!matchedPodcast.isSubscribed && importedPod.isSubscribed) {
@@ -959,9 +996,8 @@ class PodcastAppImporter(
                             customVolumeBoostDb = if (isNativeLoheMigration && importedPod.useCustomAudio && !matchedPodcast.useCustomAudio) importedPod.customVolumeBoostDb else matchedPodcast.customVolumeBoostDb,
                             notifyNewEpisodes = if (isNativeLoheMigration) importedPod.notifyNewEpisodes else matchedPodcast.notifyNewEpisodes
                         )
-                        dao.updatePodcast(resubscribed)
-                        val idx = existingPodcasts.indexOfFirst { it.id == matchedPodcast.id }
-                        if (idx >= 0) existingPodcasts[idx] = resubscribed
+                        podcastsToUpsert[resubscribed.id] = resubscribed
+                        indexPodcast(resubscribed)
                         importedPodIdToLocalPod[importedPod.id] = resubscribed
                         showsAdded++
                     } else {
@@ -973,9 +1009,8 @@ class PodcastAppImporter(
                                 customVolumeBoostDb = importedPod.customVolumeBoostDb,
                                 autoQueueMode = if (matchedPodcast.autoQueueMode == AutoQueueMode.OFF.name) importedPod.autoQueueMode else matchedPodcast.autoQueueMode
                             )
-                            dao.updatePodcast(updatedAudio)
-                            val idx = existingPodcasts.indexOfFirst { it.id == matchedPodcast.id }
-                            if (idx >= 0) existingPodcasts[idx] = updatedAudio
+                            podcastsToUpsert[updatedAudio.id] = updatedAudio
+                            indexPodcast(updatedAudio)
                             importedPodIdToLocalPod[importedPod.id] = updatedAudio
                         } else {
                             importedPodIdToLocalPod[importedPod.id] = matchedPodcast
@@ -984,40 +1019,119 @@ class PodcastAppImporter(
                     }
                 } else if (importedPod.feedUrl.isNotBlank() || importedPod.title.isNotBlank()) {
                     val toInsert = if (isNativeLoheMigration) importedPod else importedPod.copy(isSubscribed = true)
-                    dao.insertPodcast(toInsert)
-                    existingPodcasts.add(toInsert)
+                    podcastsToUpsert[toInsert.id] = toInsert
+                    indexPodcast(toInsert)
                     importedPodIdToLocalPod[importedPod.id] = toInsert
                     showsAdded++
                 } else {
                     itemsSkipped++
                 }
 
-                onProgress(
-                    ImportProgressState(
-                        isImporting = true,
-                        stageMessage = "Importing subscriptions ($processedCount / $totalWorkItems)...",
-                        processedItems = processedCount,
-                        totalItems = totalWorkItems,
-                        progressFraction = (0.3f + 0.3f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.3f, 0.6f)
+                if (processedCount % 25 == 0 || processedCount == payload.podcasts.size) {
+                    onProgress(
+                        ImportProgressState(
+                            isImporting = true,
+                            stageMessage = "Importing subscriptions ($processedCount / $totalWorkItems)...",
+                            processedItems = processedCount,
+                            totalItems = totalWorkItems,
+                            progressFraction = (0.3f + 0.2f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.3f, 0.5f)
+                        )
                     )
-                )
+                }
+            }
+            if (podcastsToUpsert.isNotEmpty()) {
+                podcastsToUpsert.values.chunked(250).forEach { dao.insertPodcasts(it) }
             }
 
-            // Process episodes using strict priority:
-            // 1. GUID first
-            // 2. Enclosure URL second
-            // 3. Title + publish date third
+            // O(1) episode lookup index preserving strict matching priority:
+            // 1. GUID first (same show, then any show)
+            // 2. Enclosure URL second (same show, then any show)
+            // 3. Title + publish date third (exact timestamp, then 24h tolerance)
+            val epCap = (existingEpisodes.size + payload.episodes.size).coerceAtLeast(16)
+            val epById = HashMap<String, EpisodeEntity>(epCap)
+            val epByPodGuid = HashMap<String, EpisodeEntity>(epCap)
+            val epByGuid = HashMap<String, EpisodeEntity>(epCap)
+            val epByPodUrl = HashMap<String, EpisodeEntity>(epCap)
+            val epByUrl = HashMap<String, EpisodeEntity>(epCap)
+            val epByPodTitle = HashMap<String, MutableList<EpisodeEntity>>(epCap)
+            val epByTitle = HashMap<String, MutableList<EpisodeEntity>>(epCap)
+
+            fun indexEpisode(ep: EpisodeEntity) {
+                epById[ep.id] = ep
+                val g = ep.guid.trim()
+                if (g.isNotBlank()) {
+                    epByPodGuid["${ep.podcastId}|$g"] = ep
+                    epByGuid[g] = ep
+                }
+                val idKey = ep.id.trim()
+                if (idKey.isNotBlank()) {
+                    epByPodGuid.putIfAbsent("${ep.podcastId}|$idKey", ep)
+                    epByGuid.putIfAbsent(idKey, ep)
+                }
+                val u = normalizeUrl(ep.audioUrl)
+                if (u.isNotBlank()) {
+                    epByPodUrl["${ep.podcastId}|$u"] = ep
+                    epByUrl[u] = ep
+                }
+                val t = normalizeTitle(ep.title)
+                if (t.isNotBlank() && ep.publishedAt > 0L) {
+                    val podList = epByPodTitle.getOrPut("${ep.podcastId}|$t") { ArrayList(2) }
+                    val existingIdx = podList.indexOfFirst { it.id == ep.id }
+                    if (existingIdx >= 0) podList[existingIdx] = ep else podList.add(ep)
+
+                    val globalList = epByTitle.getOrPut(t) { ArrayList(2) }
+                    val globalIdx = globalList.indexOfFirst { it.id == ep.id }
+                    if (globalIdx >= 0) globalList[globalIdx] = ep else globalList.add(ep)
+                }
+            }
+            existingEpisodes.forEach(::indexEpisode)
+
+            fun lookupEpisodeFast(imported: EpisodeEntity, targetPodcastId: String): EpisodeEntity? {
+                val candidateGuid = imported.guid.trim()
+                if (candidateGuid.isNotBlank()) {
+                    epByPodGuid["$targetPodcastId|$candidateGuid"]?.let { return epById[it.id] ?: it }
+                    epByGuid[candidateGuid]?.let { return epById[it.id] ?: it }
+                }
+                val candidateUrl = normalizeUrl(imported.audioUrl)
+                if (candidateUrl.isNotBlank()) {
+                    epByPodUrl["$targetPodcastId|$candidateUrl"]?.let { return epById[it.id] ?: it }
+                    epByUrl[candidateUrl]?.let { return epById[it.id] ?: it }
+                }
+                val candidateTitle = normalizeTitle(imported.title)
+                val candidatePubDate = imported.publishedAt
+                if (candidateTitle.isNotBlank() && candidatePubDate > 0L) {
+                    val sameShowCandidates = epByPodTitle["$targetPodcastId|$candidateTitle"]
+                    if (!sameShowCandidates.isNullOrEmpty()) {
+                        sameShowCandidates.firstOrNull { datesMatch(it.publishedAt, candidatePubDate, exactOnly = true) }
+                            ?.let { return epById[it.id] ?: it }
+                    }
+                    val anyShowCandidates = epByTitle[candidateTitle]
+                    if (!anyShowCandidates.isNullOrEmpty()) {
+                        anyShowCandidates.firstOrNull { datesMatch(it.publishedAt, candidatePubDate, exactOnly = true) }
+                            ?.let { return epById[it.id] ?: it }
+                    }
+                    if (!sameShowCandidates.isNullOrEmpty()) {
+                        sameShowCandidates.firstOrNull { datesMatch(it.publishedAt, candidatePubDate, exactOnly = false) }
+                            ?.let { return epById[it.id] ?: it }
+                    }
+                    if (!anyShowCandidates.isNullOrEmpty()) {
+                        anyShowCandidates.firstOrNull { datesMatch(it.publishedAt, candidatePubDate, exactOnly = false) }
+                            ?.let { return epById[it.id] ?: it }
+                    }
+                }
+                return null
+            }
+
+            val episodesToUpsert = LinkedHashMap<String, EpisodeEntity>(payload.episodes.size)
+            val progressStride = (payload.episodes.size / 40).coerceAtLeast(100)
+
             for (importedEp in payload.episodes) {
                 processedCount++
                 val mappedParent = importedPodIdToLocalPod[importedEp.podcastId]
                 val targetPodcastId = mappedParent?.id ?: importedEp.podcastId
                 val targetPodcastTitle = mappedParent?.title ?: importedEp.podcastTitle
 
-                val matchedExisting = findMatchingEpisode(
-                    imported = importedEp,
-                    targetPodcastId = targetPodcastId,
-                    existingEpisodes = existingEpisodes
-                )
+                val matchedExisting = lookupEpisodeFast(importedEp, targetPodcastId)
 
                 val effectiveDuration = maxOf(
                     matchedExisting?.durationMs ?: 0L,
@@ -1070,21 +1184,17 @@ class PodcastAppImporter(
                     )
 
                     if (stateMovedForward) {
-                        dao.updateEpisode(updatedEntity)
-                        val idx = existingEpisodes.indexOfFirst { it.id == matchedExisting.id }
-                        if (idx >= 0) existingEpisodes[idx] = updatedEntity
+                        episodesToUpsert[updatedEntity.id] = updatedEntity
+                        indexEpisode(updatedEntity)
                         episodesUpdated++
                     } else {
                         if (updatedEntity != matchedExisting) {
-                            // Backfill missing metadata (e.g., GUID, chapters, transcript) without counting as a state update
-                            dao.updateEpisode(updatedEntity)
-                            val idx = existingEpisodes.indexOfFirst { it.id == matchedExisting.id }
-                            if (idx >= 0) existingEpisodes[idx] = updatedEntity
+                            episodesToUpsert[updatedEntity.id] = updatedEntity
+                            indexEpisode(updatedEntity)
                         }
                         itemsSkipped++
                     }
                 } else {
-                    // Episode not yet in database
                     val hasMeaningfulIdentity = importedEp.guid.isNotBlank() ||
                         importedEp.audioUrl.isNotBlank() ||
                         importedEp.title.isNotBlank()
@@ -1104,8 +1214,8 @@ class PodcastAppImporter(
                             isDownloaded = false,
                             localFilePath = ""
                         )
-                        dao.insertEpisode(newEntity)
-                        existingEpisodes.add(newEntity)
+                        episodesToUpsert[newEntity.id] = newEntity
+                        indexEpisode(newEntity)
                         importedEpIdToLocalEpId[importedEp.id] = newEntity.id
 
                         val hasForwardState = importedCountsAsPlayed ||
@@ -1123,15 +1233,32 @@ class PodcastAppImporter(
                     }
                 }
 
+                if (processedCount % progressStride == 0) {
+                    onProgress(
+                        ImportProgressState(
+                            isImporting = true,
+                            stageMessage = "Merging episodes ($processedCount / $totalWorkItems)...",
+                            processedItems = processedCount,
+                            totalItems = totalWorkItems,
+                            progressFraction = (0.5f + 0.35f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.5f, 0.85f)
+                        )
+                    )
+                }
+            }
+
+            if (episodesToUpsert.isNotEmpty()) {
                 onProgress(
                     ImportProgressState(
                         isImporting = true,
-                        stageMessage = "Updating episodes ($processedCount / $totalWorkItems)...",
+                        stageMessage = "Writing ${episodesToUpsert.size} episodes to database...",
                         processedItems = processedCount,
                         totalItems = totalWorkItems,
-                        progressFraction = (0.6f + 0.3f * (processedCount.toFloat() / totalWorkItems)).coerceIn(0.6f, 0.9f)
+                        progressFraction = 0.9f
                     )
                 )
+                episodesToUpsert.values.chunked(500).forEach { chunk ->
+                    dao.insertEpisodes(chunk)
+                }
             }
 
             if (payload.playlists.isNotEmpty()) {
@@ -1160,17 +1287,17 @@ class PodcastAppImporter(
             }
 
             if (payload.bookmarks.isNotEmpty()) {
+                val existingBookmarkIds = existingBookmarks.mapTo(HashSet()) { it.id }
+                val existingBookmarkKeys = existingBookmarks.mapTo(HashSet()) { "${it.episodeId}|${it.positionMs}|${it.label}" }
                 val bookmarksToInsert = mutableListOf<EpisodeBookmarkEntity>()
                 for (bm in payload.bookmarks) {
                     val targetEpId = importedEpIdToLocalEpId[bm.episodeId] ?: bm.episodeId
-                    val alreadyExists = existingBookmarks.any {
-                        it.id == bm.id ||
-                            (it.episodeId == targetEpId && it.positionMs == bm.positionMs && it.label == bm.label)
-                    }
-                    if (!alreadyExists) {
+                    val key = "$targetEpId|${bm.positionMs}|${bm.label}"
+                    if (bm.id !in existingBookmarkIds && key !in existingBookmarkKeys) {
                         val remapped = bm.copy(episodeId = targetEpId)
                         bookmarksToInsert.add(remapped)
-                        existingBookmarks.add(remapped)
+                        existingBookmarkIds.add(remapped.id)
+                        existingBookmarkKeys.add(key)
                     }
                 }
                 if (bookmarksToInsert.isNotEmpty()) {
