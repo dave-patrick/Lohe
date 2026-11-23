@@ -28,7 +28,7 @@ The Google Play phone/tablet build does not advertise Android Auto or Automotive
 
 ## Lohe Pro and Google Drive sync (Google Play edition)
 
-The Google Play edition offers an optional Lohe Pro yearly subscription. Google Play Billing processes the purchase under Google's terms. Lohe receives the subscription status needed to unlock Pro features and does not see or store your payment details.
+The Google Play edition offers an optional Lohe Pro one-time purchase. Google Play Billing processes the purchase under Google's terms. Lohe receives the purchase status needed to unlock Pro features and does not see or store your payment details.
 
 Pro includes optional Google Drive sync. If you turn it on, you sign in with a Google Account you choose, and Lohe uses that sign-in to identify the account and keep a backup of your library in the hidden app-data area of your own Google Drive. That backup and your account email address go between your device and Google. The developer does not receive them. You can turn sync off and remove the backup through your Google Account's Drive settings. Google's privacy policy governs what Google processes. The open-source edition does not include Google Play Billing or Google sign-in.
 
