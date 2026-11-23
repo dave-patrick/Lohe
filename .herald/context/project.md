@@ -2,7 +2,7 @@
 
 ## How this repository is produced
 
-- The main Lohe codebase is the **private Play Edition** (`dave-patrick/Lohe-Play-Edition-`), developed in Google AI Studio. This public repository is the free, open-source (FOSS) edition generated from it.
+- The main Lohe codebase is the **private Play Edition** (`dave-patrick/Lohe-Play-Edition`), developed in Google AI Studio. This public repository is the free, open-source (FOSS) edition generated from it.
 - `tools/foss-export/export.py` copies the Play Edition here and removes: the Pro package (`app/src/main/java/com/example/pro`), debug-only owner tools (`app/src/debug`), AI Studio/Firebase configuration, Google Play Billing, Google sign-in and the secrets/google-services Gradle plugins. It sets `Edition.HAS_PRO = false` and the application ID `com.lohe.app.foss`, then fails if any private material remains.
 - `.github/workflows/foss-export.yml` runs the export daily or on demand, builds and tests the result, and opens a pull request. It needs the `PLAY_EDITION_TOKEN` secret (read-only access to the Play Edition repository).
 - **Do not edit app code here.** Changes to `app/`, Gradle files or `gradle/` are overwritten by the next export. Make app changes in the Play Edition (via AI Studio prompts) instead.

@@ -6,7 +6,7 @@ name: FOSS export
 # opens a pull request. Nothing reaches main without review.
 #
 # Needs the repository secret PLAY_EDITION_TOKEN: a fine-grained GitHub token
-# with read-only "Contents" access to dave-patrick/Lohe-Play-Edition- only.
+# with read-only "Contents" access to dave-patrick/Lohe-Play-Edition only.
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$PLAY_EDITION_TOKEN" ]; then echo "::error::Add the PLAY_EDITION_TOKEN repository secret"; exit 1; fi
-          git clone --depth 1 "https://x-access-token:${PLAY_EDITION_TOKEN}@github.com/dave-patrick/Lohe-Play-Edition-.git" "$RUNNER_TEMP/play"
+          git clone --depth 1 "https://x-access-token:${PLAY_EDITION_TOKEN}@github.com/dave-patrick/Lohe-Play-Edition.git" "$RUNNER_TEMP/play"
           echo "PLAY_SHA=$(git -C "$RUNNER_TEMP/play" rev-parse --short HEAD)" >> "$GITHUB_ENV"
           echo "PLAY_SUBJECT=$(git -C "$RUNNER_TEMP/play" log -1 --format=%s)" >> "$GITHUB_ENV"
           rm -rf "$RUNNER_TEMP/play/.git"
