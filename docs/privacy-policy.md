@@ -1,6 +1,6 @@
 # Privacy Policy — Lohe
 
-Last updated: October 31, 2026
+Last updated: November 23, 2026
 
 Lohe is a podcast player from Atomic 22 Industries. Contact us about privacy or support at atomic22industries@gmail.com.
 
@@ -25,6 +25,12 @@ Media playback can continue in the background using Android's media playback ser
 On Android 13 and later, Lohe offers optional notification access when you enable floating controls, so its ongoing notification can provide a Hide controls action. Denying this does not prevent ordinary audio playback. You can change notification access in Android settings. Local-file and backup imports and exports use Android's file picker and only the files or folders you choose.
 
 The Google Play phone/tablet build does not advertise Android Auto or Automotive support. Other distributions may expose your media library and playback controls to a connected Android car media host. Android and the connected host handle their own platform services under their respective privacy policies.
+
+## Lohe Pro and Google Drive sync (Google Play edition)
+
+The Google Play edition offers an optional Lohe Pro yearly subscription. Google Play Billing processes the purchase under Google's terms. Lohe receives the subscription status needed to unlock Pro features and does not see or store your payment details.
+
+Pro includes optional Google Drive sync. If you turn it on, you sign in with a Google Account you choose, and Lohe uses that sign-in to identify the account and keep a backup of your library in the hidden app-data area of your own Google Drive. That backup and your account email address go between your device and Google. The developer does not receive them. You can turn sync off and remove the backup through your Google Account's Drive settings. Google's privacy policy governs what Google processes. The open-source edition does not include Google Play Billing or Google sign-in.
 
 ## Diagnostics and information you choose to send
 
