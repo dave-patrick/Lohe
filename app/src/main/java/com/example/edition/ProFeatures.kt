@@ -14,7 +14,7 @@ data class LoheBillingState(
     val isConnected: Boolean = false,
     val isPlayStoreAvailable: Boolean = true,
     val isBusy: Boolean = false,
-    val formattedPrice: String = "$9.99/year",
+    val formattedPrice: String = "$6.99",
     val statusMessage: String = "Google Play Billing ready"
 )
 

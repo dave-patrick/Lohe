@@ -261,7 +261,7 @@ data class LoheUserSettings(
     val autoDownloadWifi: Boolean = true,
     val autoDownloadUpNext: Boolean = true,
     val autoDownloadQueueDepth: Int = 5,
-    val isProUnlocked: Boolean = false, // Simulated $9.99/year local test upgrade (android.test.purchased)
+    val isProUnlocked: Boolean = false, // Simulated one-time local test upgrade (android.test.purchased)
     val cloudSyncAutoBackup: Boolean = false,
     val cloudSyncProvider: CloudSyncProvider = CloudSyncProvider.defaultProvider(),
     val webDavServerUrl: String = "",
