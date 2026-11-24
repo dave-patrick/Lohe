@@ -953,6 +953,11 @@ class PodcastAppImporter(
         var processedCount = 0
 
         database.withTransaction {
+            // For native Lohe DB/JSON migrations containing episodes, replace the local Up Next queue
+            // with the imported backup's queue instead of leaving stale local items behind.
+            if (isNativeLoheMigration && payload.episodes.isNotEmpty()) {
+                dao.clearUpNextQueue()
+            }
             val existingPodcasts = dao.getAllPodcasts().first()
             val existingEpisodes = dao.getAllEpisodes().first()
             val existingBookmarks = dao.getAllBookmarks().first()
