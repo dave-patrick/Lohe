@@ -2,12 +2,16 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +24,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -55,21 +59,27 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -111,6 +121,7 @@ fun UpNextTabScreen(
     onMarkPlayed: (EpisodeEntity, Boolean) -> Unit,
     onRemoveFromQueue: (EpisodeEntity) -> Unit,
     onClearQueue: () -> Unit,
+    onReorderQueue: (List<String>) -> Unit = {},
     onOpenNotes: (EpisodeEntity) -> Unit = {},
     onBatchUpNextAction: (List<EpisodeEntity>, EpisodeBatchAction) -> Unit = { _, _ -> }
 ) {
@@ -125,9 +136,109 @@ fun UpNextTabScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedEpisodeIds by remember { mutableStateOf(setOf<String>()) }
+    var localQueue by remember { mutableStateOf(visibleUpNext) }
+    var pendingCommittedIds by remember { mutableStateOf<List<String>?>(null) }
     var draggingEpisodeId by remember { mutableStateOf<String?>(null) }
     var draggingOffsetY by remember { mutableFloatStateOf(0f) }
+    val itemHeights = remember { mutableStateMapOf<String, Int>() }
+    val lazyListState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val spacingPx = remember(density) { with(density) { 8.dp.toPx() } }
+    val fallbackItemPx = remember(density) { with(density) { 84.dp.toPx() } }
+    val latestOnReorderQueue by rememberUpdatedState(onReorderQueue)
+    val latestVisibleUpNext by rememberUpdatedState(visibleUpNext)
+
+    LaunchedEffect(visibleUpNext, draggingEpisodeId) {
+        if (draggingEpisodeId != null) return@LaunchedEffect
+        val committed = pendingCommittedIds
+        if (committed != null) {
+            val incomingIds = visibleUpNext.map { it.id }
+            if (incomingIds == committed || incomingIds.toSet() != committed.toSet()) {
+                pendingCommittedIds = null
+                localQueue = visibleUpNext
+            }
+        } else {
+            localQueue = visibleUpNext
+        }
+    }
+
+    LaunchedEffect(pendingCommittedIds) {
+        if (pendingCommittedIds != null) {
+            delay(750)
+            pendingCommittedIds = null
+            if (draggingEpisodeId == null) {
+                localQueue = latestVisibleUpNext
+            }
+        }
+    }
+
+    fun applyDragSwaps(activeId: String) {
+        var currentIdx = localQueue.indexOfFirst { it.id == activeId }
+        while (currentIdx > 0) {
+            val prevEp = localQueue[currentIdx - 1]
+            val stepPx = (itemHeights[prevEp.id]?.toFloat() ?: fallbackItemPx) + spacingPx
+            if (draggingOffsetY <= -stepPx * 0.5f) {
+                localQueue = localQueue.toMutableList().apply {
+                    add(currentIdx - 1, removeAt(currentIdx))
+                }
+                draggingOffsetY += stepPx
+                currentIdx -= 1
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            } else {
+                break
+            }
+        }
+        while (currentIdx in 0 until localQueue.lastIndex) {
+            val nextEp = localQueue[currentIdx + 1]
+            val stepPx = (itemHeights[nextEp.id]?.toFloat() ?: fallbackItemPx) + spacingPx
+            if (draggingOffsetY >= stepPx * 0.5f) {
+                localQueue = localQueue.toMutableList().apply {
+                    add(currentIdx + 1, removeAt(currentIdx))
+                }
+                draggingOffsetY -= stepPx
+                currentIdx += 1
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            } else {
+                break
+            }
+        }
+    }
+
+    LaunchedEffect(draggingEpisodeId) {
+        val activeId = draggingEpisodeId ?: return@LaunchedEffect
+        val edgeThresholdPx = with(density) { 72.dp.toPx() }
+        val maxScrollStepPx = with(density) { 14.dp.toPx() }
+        while (draggingEpisodeId == activeId) {
+            val layoutInfo = lazyListState.layoutInfo
+            val draggedItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
+            if (draggedItemInfo != null) {
+                val itemTop = draggedItemInfo.offset + draggingOffsetY
+                val itemBottom = itemTop + draggedItemInfo.size
+                val viewportStart = layoutInfo.viewportStartOffset.toFloat()
+                val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
+                val scrollDelta = when {
+                    itemTop < viewportStart + edgeThresholdPx && lazyListState.canScrollBackward -> {
+                        val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                        -maxScrollStepPx * ratio
+                    }
+                    itemBottom > viewportEnd - edgeThresholdPx && lazyListState.canScrollForward -> {
+                        val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                        maxScrollStepPx * ratio
+                    }
+                    else -> 0f
+                }
+                if (scrollDelta != 0f) {
+                    val consumed = lazyListState.scrollBy(scrollDelta)
+                    if (consumed != 0f) {
+                        draggingOffsetY += consumed
+                        applyDragSwaps(activeId)
+                    }
+                }
+            }
+            delay(16)
+        }
+    }
 
     val activeSelectedIds = remember(selectedEpisodeIds, visibleUpNext) {
         val valid = visibleUpNext.map { it.id }.toSet()
@@ -293,148 +404,174 @@ fun UpNextTabScreen(
             }
         } else {
             LazyColumn(
+                state = lazyListState,
                 contentPadding = PaddingValues(bottom = if (isMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                itemsIndexed(visibleUpNext, key = { _, ep -> ep.id }) { idx, ep ->
+                itemsIndexed(localQueue, key = { _, ep -> ep.id }) { idx, ep ->
                     val isPlayingEp = playbackState.currentEpisode?.id == ep.id && playbackState.isPlaying
                     val isExpanded = !isMultiSelectMode && actionTargetId == ep.id
                     val isSelected = ep.id in activeSelectedIds
                     val isDragging = draggingEpisodeId == ep.id
                     val liftScale by animateFloatAsState(
                         targetValue = if (isDragging) 1.03f else 1f,
+                        animationSpec = spring(
+                            stiffness = Spring.StiffnessMedium,
+                            dampingRatio = Spring.DampingRatioNoBouncy
+                        ),
                         label = "upNextLiftScale"
                     )
-                    val animatedOffsetY by animateFloatAsState(
-                        targetValue = if (isDragging) draggingOffsetY else 0f,
-                        label = "upNextDragOffset"
-                    )
-                    SwipeableUpNextRow(
-                        episode = ep,
-                        onMoveToTop = {
-                            actionTargetId = null
-                            onMoveEpisodeEdge(ep, true)
-                        },
-                        onMoveToBottom = {
-                            actionTargetId = null
-                            onMoveEpisodeEdge(ep, false)
-                        },
-                        onMarkPlayed = {
-                            actionTargetId = null
-                            onMarkPlayed(ep, true)
-                        },
-                        onRemoveFromQueue = {
-                            actionTargetId = null
-                            onRemoveFromQueue(ep)
-                        },
-                        cornerRadius = 16.dp,
-                        enabled = !isMultiSelectMode
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected || isDragging) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
-                            shadowElevation = if (isDragging) 12.dp else 0.dp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .zIndex(if (isDragging) 10f else 0f)
-                                .graphicsLayer {
-                                    translationY = if (isDragging) draggingOffsetY else animatedOffsetY
-                                    scaleX = liftScale
-                                    scaleY = liftScale
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 0f)
+                            .then(
+                                if (!isDragging) {
+                                    Modifier.animateItem(
+                                        placementSpec = spring(
+                                            stiffness = Spring.StiffnessMediumLow,
+                                            dampingRatio = Spring.DampingRatioNoBouncy
+                                        )
+                                    )
+                                } else {
+                                    Modifier
                                 }
-                                .border(
-                                    if (isSelected || isDragging) 1.5.dp else 1.dp,
-                                    if (isSelected || isDragging || isPlayingEp) LoheElectricBlue else borderColor,
-                                    RoundedCornerShape(16.dp)
-                                )
-                                .combinedClickable(
-                                    onClick = {
-                                        if (isMultiSelectMode) {
-                                            selectedEpisodeIds = if (isSelected) {
-                                                selectedEpisodeIds - ep.id
-                                            } else {
-                                                selectedEpisodeIds + ep.id
-                                            }
-                                        } else {
-                                            onOpenNotes(ep)
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        actionTargetId = null
-                                        isMultiSelectMode = true
-                                        selectedEpisodeIds = selectedEpisodeIds + ep.id
-                                    }
-                                )
-                                .testTag("up_next_item_${ep.id}")
+                            )
+                            .onGloballyPositioned { coords ->
+                                itemHeights[ep.id] = coords.size.height
+                            }
+                            .graphicsLayer {
+                                translationY = if (isDragging) draggingOffsetY else 0f
+                                scaleX = liftScale
+                                scaleY = liftScale
+                            }
+                    ) {
+                        SwipeableUpNextRow(
+                            episode = ep,
+                            onMoveToTop = {
+                                actionTargetId = null
+                                onMoveEpisodeEdge(ep, true)
+                            },
+                            onMoveToBottom = {
+                                actionTargetId = null
+                                onMoveEpisodeEdge(ep, false)
+                            },
+                            onMarkPlayed = {
+                                actionTargetId = null
+                                onMarkPlayed(ep, true)
+                            },
+                            onRemoveFromQueue = {
+                                actionTargetId = null
+                                onRemoveFromQueue(ep)
+                            },
+                            cornerRadius = 16.dp,
+                            enabled = !isMultiSelectMode && draggingEpisodeId == null
                         ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected || isDragging) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                                shadowElevation = if (isDragging) 14.dp else 0.dp,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .border(
+                                        if (isSelected || isDragging) 1.5.dp else 1.dp,
+                                        if (isSelected || isDragging || isPlayingEp) LoheElectricBlue else borderColor,
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isMultiSelectMode) {
+                                                selectedEpisodeIds = if (isSelected) {
+                                                    selectedEpisodeIds - ep.id
+                                                } else {
+                                                    selectedEpisodeIds + ep.id
+                                                }
+                                            } else {
+                                                onOpenNotes(ep)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            actionTargetId = null
+                                            isMultiSelectMode = true
+                                            selectedEpisodeIds = selectedEpisodeIds + ep.id
+                                        }
+                                    )
+                                    .testTag("up_next_item_${ep.id}")
                             ) {
-                                if (isMultiSelectMode) {
-                                    Box(
-                                        modifier = Modifier.size(36.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
-                                            contentDescription = if (isSelected) "Selected" else "Not selected",
-                                            tint = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier
-                                                .size(22.dp)
-                                                .testTag("up_next_select_icon_${ep.id}")
-                                        )
-                                    }
-                                } else {
-                                    IconButton(
-                                        onClick = { actionTargetId = if (isExpanded) null else ep.id },
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .pointerInput(ep.id, idx, visibleUpNext.size) {
-                                                val thresholdPx = 64.dp.toPx()
-                                                detectDragGesturesAfterLongPress(
-                                                    onDragStart = {
-                                                        draggingEpisodeId = ep.id
-                                                        draggingOffsetY = 0f
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    },
-                                                    onDragEnd = {
-                                                        draggingEpisodeId = null
-                                                        draggingOffsetY = 0f
-                                                    },
-                                                    onDragCancel = {
-                                                        draggingEpisodeId = null
-                                                        draggingOffsetY = 0f
-                                                    },
-                                                    onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        draggingOffsetY += dragAmount.y
-                                                        if (draggingOffsetY <= -thresholdPx && idx > 0) {
-                                                            onMoveEpisode(ep, true)
-                                                            draggingOffsetY += thresholdPx
-                                                        } else if (draggingOffsetY >= thresholdPx && idx < visibleUpNext.lastIndex) {
-                                                            onMoveEpisode(ep, false)
-                                                            draggingOffsetY -= thresholdPx
-                                                        }
-                                                    }
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isMultiSelectMode) {
+                                            Box(
+                                                modifier = Modifier.size(36.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                                    contentDescription = if (isSelected) "Selected" else "Not selected",
+                                                    tint = if (isSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier
+                                                        .size(22.dp)
+                                                        .testTag("up_next_select_icon_${ep.id}")
                                                 )
                                             }
-                                            .testTag("up_next_handle_${ep.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.DragHandle,
-                                            contentDescription = "Reorder or Actions",
-                                            tint = if (isExpanded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                        } else {
+                                            IconButton(
+                                                onClick = { actionTargetId = if (isExpanded) null else ep.id },
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .pointerInput(ep.id) {
+                                                        detectDragGesturesAfterLongPress(
+                                                            onDragStart = {
+                                                                actionTargetId = null
+                                                                draggingEpisodeId = ep.id
+                                                                draggingOffsetY = 0f
+                                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            },
+                                                            onDragEnd = {
+                                                                val finalIds = localQueue.map { it.id }
+                                                                val originalIds = latestVisibleUpNext.map { it.id }
+                                                                draggingEpisodeId = null
+                                                                draggingOffsetY = 0f
+                                                                if (finalIds != originalIds) {
+                                                                    pendingCommittedIds = finalIds
+                                                                    latestOnReorderQueue(finalIds)
+                                                                }
+                                                            },
+                                                            onDragCancel = {
+                                                                val finalIds = localQueue.map { it.id }
+                                                                val originalIds = latestVisibleUpNext.map { it.id }
+                                                                draggingEpisodeId = null
+                                                                draggingOffsetY = 0f
+                                                                if (finalIds != originalIds) {
+                                                                    pendingCommittedIds = finalIds
+                                                                    latestOnReorderQueue(finalIds)
+                                                                }
+                                                            },
+                                                            onDrag = { change, dragAmount ->
+                                                                change.consume()
+                                                                draggingOffsetY += dragAmount.y
+                                                                applyDragSwaps(ep.id)
+                                                            }
+                                                        )
+                                                    }
+                                                    .testTag("up_next_handle_${ep.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DragHandle,
+                                                    contentDescription = "Reorder or Actions",
+                                                    tint = if (isDragging || isExpanded) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
 
                                 PodcastArtworkThumbnail(
                                     artworkUrl = ep.artworkUrl,
@@ -539,7 +676,7 @@ fun UpNextTabScreen(
                                     QueueStripAction("Up", Icons.Filled.ArrowUpward, LoheCyanAccent, enabled = idx > 0) {
                                         onMoveEpisode(ep, true)
                                     }
-                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = idx < visibleUpNext.lastIndex) {
+                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = idx < localQueue.lastIndex) {
                                         onMoveEpisode(ep, false)
                                     }
                                     QueueStripAction("Played", Icons.Filled.Check, LoheBrightBlueText) {
@@ -553,6 +690,7 @@ fun UpNextTabScreen(
                                 }
                             }
                         }
+                    }
                     }
                     }
                 }

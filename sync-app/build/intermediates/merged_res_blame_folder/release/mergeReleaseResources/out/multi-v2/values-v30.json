@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.lohe.sync.sync-app-mergeReleaseResources-41:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\davem\\.gradle\\caches\\9.3.1\\transforms\\c8f2ad4f5d10208a76c580613ee64832\\workspace\\transformed\\material3-release\\res\\values-v30\\values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}

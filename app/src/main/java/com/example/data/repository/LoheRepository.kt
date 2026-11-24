@@ -1041,6 +1041,32 @@ class LoheRepository(
         recordUpNextOrderMutation()
     }
 
+    suspend fun reorderUpNextQueue(orderedEpisodeIds: List<String>) {
+        if (orderedEpisodeIds.isEmpty()) return
+        val currentQueue = dao.getUpNextEpisodes().first()
+        if (currentQueue.isEmpty()) return
+        val byId = currentQueue.associateBy { it.id }
+        val ordered = mutableListOf<EpisodeEntity>()
+        val seen = HashSet<String>(orderedEpisodeIds.size)
+        orderedEpisodeIds.forEach { id ->
+            val item = byId[id]
+            if (item != null && seen.add(id)) {
+                ordered.add(item)
+            }
+        }
+        currentQueue.forEach { item ->
+            if (seen.add(item.id)) {
+                ordered.add(item)
+            }
+        }
+        ordered.forEachIndexed { newOrder, item ->
+            if (item.upNextOrder != newOrder) {
+                dao.updateEpisodeUpNext(item.id, inUpNext = true, upNextOrder = newOrder)
+            }
+        }
+        recordUpNextOrderMutation()
+    }
+
     suspend fun clearQueue() {
         val currentQueue = dao.getUpNextEpisodes().first()
         dao.clearUpNextQueue()

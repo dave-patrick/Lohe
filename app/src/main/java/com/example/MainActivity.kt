@@ -637,6 +637,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                                                 viewModel.playEpisode(ep)
                                             },
                                             onMoveEpisode = viewModel::moveEpisodeInQueue,
+                                            onReorderQueue = viewModel::reorderUpNextQueue,
                                             onMoveEpisodeEdge = viewModel::moveEpisodeToQueueEdge,
                                             onMarkPlayed = viewModel::markEpisodePlayed,
                                             onRemoveFromQueue = { viewModel.toggleEpisodeUpNext(it, false) },

@@ -929,6 +929,12 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun reorderUpNextQueue(orderedEpisodeIds: List<String>) {
+        viewModelScope.launch {
+            repository.reorderUpNextQueue(orderedEpisodeIds)
+        }
+    }
+
     fun clearUpNextQueue() {
         viewModelScope.launch {
             repository.clearQueue()
