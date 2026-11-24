@@ -10,7 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -428,16 +428,14 @@ fun UpNextTabScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .zIndex(if (isDragging) 10f else 0f)
-                            .then(
-                                if (!isDragging) {
-                                    Modifier.animateItem(
-                                        placementSpec = spring(
-                                            stiffness = Spring.StiffnessMediumLow,
-                                            dampingRatio = Spring.DampingRatioNoBouncy
-                                        )
-                                    )
+                            .animateItem(
+                                placementSpec = if (isDragging) {
+                                    null
                                 } else {
-                                    Modifier
+                                    spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    )
                                 }
                             )
                             .onGloballyPositioned { coords ->
@@ -468,7 +466,7 @@ fun UpNextTabScreen(
                                 onRemoveFromQueue(ep)
                             },
                             cornerRadius = 16.dp,
-                            enabled = !isMultiSelectMode && draggingEpisodeId == null
+                            enabled = !isMultiSelectMode
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
@@ -529,7 +527,7 @@ fun UpNextTabScreen(
                                                 modifier = Modifier
                                                     .size(36.dp)
                                                     .pointerInput(ep.id) {
-                                                        detectDragGesturesAfterLongPress(
+                                                        detectDragGestures(
                                                             onDragStart = {
                                                                 actionTargetId = null
                                                                 draggingEpisodeId = ep.id
