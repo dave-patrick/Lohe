@@ -607,6 +607,7 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                                             onCreatePlaylist = viewModel::createPlaylist,
                                             onDeletePlaylist = viewModel::deletePlaylist,
                                             onTogglePinned = viewModel::togglePlaylistPinned,
+                                            onReorderPlaylists = viewModel::reorderPlaylists,
                                             onUpdateFolder = viewModel::updatePlaylistFolder,
                                             onUpdateAssignedPodcasts = viewModel::updatePlaylistAssignedPodcasts,
                                             onQueueEpisodes = { eps -> viewModel.queueAllEpisodes(eps, false) },

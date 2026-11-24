@@ -1368,6 +1368,54 @@ class LoheRepository(
         recordPlaylistMutation(playlist.id)
     }
 
+    suspend fun reorderPlaylists(orderedPlaylistIds: List<String>, draggedPlaylistId: String? = null) {
+        if (orderedPlaylistIds.isEmpty()) return
+        val current = dao.getCustomPlaylists().first()
+        if (current.isEmpty()) return
+        val byId = current.associateBy { it.id }
+
+        val visibleSet = orderedPlaylistIds.toSet()
+        val ordered = mutableListOf<PlaylistEntity>()
+        val visibleQueue = ArrayDeque<PlaylistEntity>()
+        orderedPlaylistIds.forEach { id -> byId[id]?.let(visibleQueue::addLast) }
+        current.forEach { item ->
+            if (item.id in visibleSet) {
+                visibleQueue.removeFirstOrNull()?.let(ordered::add)
+            } else {
+                ordered.add(item)
+            }
+        }
+        while (visibleQueue.isNotEmpty()) {
+            ordered.add(visibleQueue.removeFirst())
+        }
+
+        val draggedIdx = draggedPlaylistId?.let { id -> ordered.indexOfFirst { it.id == id } } ?: -1
+        if (draggedIdx in ordered.indices) {
+            val dragged = ordered[draggedIdx]
+            val prevPinned = draggedIdx > 0 && ordered[draggedIdx - 1].isPinned
+            val nextPinned = draggedIdx < ordered.lastIndex && ordered[draggedIdx + 1].isPinned
+            val desiredPinned = when {
+                !dragged.isPinned && nextPinned -> true
+                dragged.isPinned && draggedIdx > 0 && !prevPinned -> false
+                else -> dragged.isPinned
+            }
+            if (desiredPinned != dragged.isPinned) {
+                ordered[draggedIdx] = dragged.copy(isPinned = desiredPinned)
+            }
+        }
+
+        val baseCreatedAt = (current.minOfOrNull { it.createdAt } ?: System.currentTimeMillis())
+            .coerceAtLeast(1_000_000_000_000L)
+        ordered.forEachIndexed { idx, pl ->
+            val newCreatedAt = baseCreatedAt + idx * 1000L
+            val orig = byId[pl.id]
+            if (orig == null || orig.createdAt != newCreatedAt || orig.isPinned != pl.isPinned) {
+                dao.updatePlaylist(pl.copy(createdAt = newCreatedAt))
+                recordPlaylistMutation(pl.id)
+            }
+        }
+    }
+
     suspend fun toggleEpisodeInPlaylist(playlist: PlaylistEntity, episodeId: String) {
         val current = playlist.episodeIdList().toMutableList()
         if (current.contains(episodeId)) {

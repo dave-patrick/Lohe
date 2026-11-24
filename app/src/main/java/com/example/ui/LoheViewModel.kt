@@ -1116,6 +1116,12 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun reorderPlaylists(orderedPlaylistIds: List<String>, draggedPlaylistId: String? = null) {
+        viewModelScope.launch {
+            repository.reorderPlaylists(orderedPlaylistIds, draggedPlaylistId)
+        }
+    }
+
     fun togglePlaylistAutoDownload(playlist: PlaylistEntity) {
         viewModelScope.launch {
             repository.updatePlaylist(playlist.copy(autoDownload = !playlist.autoDownload))

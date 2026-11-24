@@ -2,11 +2,16 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +30,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +53,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
@@ -74,15 +82,23 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -91,8 +107,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
 import com.example.R
 import com.example.data.local.EpisodeEntity
 import com.example.data.local.EpisodeSwipeAction
@@ -138,6 +157,7 @@ fun PlaylistsTabScreen(
     onCreatePlaylist: (String, String, List<String>) -> Unit,
     onDeletePlaylist: (String) -> Unit,
     onTogglePinned: (PlaylistEntity) -> Unit,
+    onReorderPlaylists: (List<String>, String?) -> Unit = { _, _ -> },
     onUpdateFolder: (PlaylistEntity, String) -> Unit,
     onUpdateAssignedPodcasts: (PlaylistEntity, List<String>) -> Unit,
     onQueueEpisodes: (List<EpisodeEntity>) -> Unit,
@@ -204,6 +224,193 @@ fun PlaylistsTabScreen(
         val displayedPlaylists = remember(playlists, selectedFolder, sortNameAsc) {
             val base = playlists.filter { selectedFolder == "All" || it.folderName == selectedFolder }
             if (sortNameAsc) base.sortedBy { it.name.lowercase() } else base
+        }
+        var localPlaylists by remember { mutableStateOf(displayedPlaylists) }
+        var pendingCommittedPlaylistIds by remember { mutableStateOf<List<String>?>(null) }
+        var draggingPlaylistId by remember { mutableStateOf<String?>(null) }
+        var dragOffsetX by remember { mutableFloatStateOf(0f) }
+        var dragOffsetY by remember { mutableFloatStateOf(0f) }
+        val itemSizes = remember { mutableStateMapOf<String, IntSize>() }
+        val playlistListState = rememberLazyListState()
+        val playlistGridState = rememberLazyGridState()
+        val density = LocalDensity.current
+        val listSpacingPx = remember(density) { with(density) { 8.dp.toPx() } }
+        val gridSpacingPx = remember(density) { with(density) { 10.dp.toPx() } }
+        val fallbackListHeightPx = remember(density) { with(density) { 80.dp.toPx() } }
+        val fallbackGridWidthPx = remember(density) { with(density) { 170.dp.toPx() } }
+        val fallbackGridHeightPx = remember(density) { with(density) { 215.dp.toPx() } }
+        val latestOnReorderPlaylists by rememberUpdatedState(onReorderPlaylists)
+        val latestDisplayedPlaylists by rememberUpdatedState(displayedPlaylists)
+
+        LaunchedEffect(displayedPlaylists, draggingPlaylistId) {
+            if (draggingPlaylistId != null) return@LaunchedEffect
+            val committed = pendingCommittedPlaylistIds
+            if (committed != null) {
+                val incomingIds = displayedPlaylists.map { it.id }
+                if (incomingIds == committed || incomingIds.toSet() != committed.toSet()) {
+                    pendingCommittedPlaylistIds = null
+                    localPlaylists = displayedPlaylists
+                }
+            } else {
+                localPlaylists = displayedPlaylists
+            }
+        }
+
+        LaunchedEffect(pendingCommittedPlaylistIds) {
+            if (pendingCommittedPlaylistIds != null) {
+                delay(750)
+                pendingCommittedPlaylistIds = null
+                if (draggingPlaylistId == null) {
+                    localPlaylists = latestDisplayedPlaylists
+                }
+            }
+        }
+
+        fun applyListDragSwaps(activeId: String) {
+            var currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
+            while (currentIdx > 0) {
+                val prev = localPlaylists[currentIdx - 1]
+                val stepPx = (itemSizes[prev.id]?.height?.toFloat() ?: fallbackListHeightPx) + listSpacingPx
+                if (dragOffsetY <= -stepPx * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx - 1, removeAt(currentIdx))
+                    }
+                    dragOffsetY += stepPx
+                    currentIdx -= 1
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                } else break
+            }
+            while (currentIdx in 0 until localPlaylists.lastIndex) {
+                val next = localPlaylists[currentIdx + 1]
+                val stepPx = (itemSizes[next.id]?.height?.toFloat() ?: fallbackListHeightPx) + listSpacingPx
+                if (dragOffsetY >= stepPx * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx + 1, removeAt(currentIdx))
+                    }
+                    dragOffsetY -= stepPx
+                    currentIdx += 1
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                } else break
+            }
+        }
+
+        fun applyGridDragSwaps(activeId: String) {
+            var currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
+            var guard = 0
+            while (currentIdx in localPlaylists.indices && guard < 8) {
+                guard++
+                val size = itemSizes[activeId]
+                val stepX = (size?.width?.toFloat() ?: fallbackGridWidthPx) + gridSpacingPx
+                val stepY = (size?.height?.toFloat() ?: fallbackGridHeightPx) + gridSpacingPx
+                val col = currentIdx % 2
+                var moved = false
+                if (col == 0 && currentIdx + 1 < localPlaylists.size && dragOffsetX >= stepX * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx + 1, removeAt(currentIdx))
+                    }
+                    dragOffsetX -= stepX
+                    currentIdx += 1
+                    moved = true
+                } else if (col == 1 && dragOffsetX <= -stepX * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx - 1, removeAt(currentIdx))
+                    }
+                    dragOffsetX += stepX
+                    currentIdx -= 1
+                    moved = true
+                } else if (currentIdx >= 2 && dragOffsetY <= -stepY * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx - 2, removeAt(currentIdx))
+                    }
+                    dragOffsetY += stepY
+                    currentIdx -= 2
+                    moved = true
+                } else if (currentIdx + 2 < localPlaylists.size && dragOffsetY >= stepY * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(currentIdx + 2, removeAt(currentIdx))
+                    }
+                    dragOffsetY -= stepY
+                    currentIdx += 2
+                    moved = true
+                } else if (col == 1 && currentIdx == localPlaylists.lastIndex - 1 && dragOffsetY >= stepY * 0.5f) {
+                    localPlaylists = localPlaylists.toMutableList().apply {
+                        add(localPlaylists.lastIndex, removeAt(currentIdx))
+                    }
+                    dragOffsetY -= stepY
+                    dragOffsetX += stepX
+                    currentIdx = localPlaylists.lastIndex
+                    moved = true
+                }
+                if (moved) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                } else {
+                    break
+                }
+            }
+        }
+
+        LaunchedEffect(draggingPlaylistId, settings.playlistsGridView) {
+            val activeId = draggingPlaylistId ?: return@LaunchedEffect
+            val edgeThresholdPx = with(density) { 72.dp.toPx() }
+            val maxScrollStepPx = with(density) { 14.dp.toPx() }
+            while (draggingPlaylistId == activeId) {
+                if (settings.playlistsGridView) {
+                    val layoutInfo = playlistGridState.layoutInfo
+                    val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
+                    if (draggedInfo != null) {
+                        val itemTop = draggedInfo.offset.y + dragOffsetY
+                        val itemBottom = itemTop + draggedInfo.size.height
+                        val viewportStart = layoutInfo.viewportStartOffset.toFloat()
+                        val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
+                        val scrollDelta = when {
+                            itemTop < viewportStart + edgeThresholdPx && playlistGridState.canScrollBackward -> {
+                                val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                                -maxScrollStepPx * ratio
+                            }
+                            itemBottom > viewportEnd - edgeThresholdPx && playlistGridState.canScrollForward -> {
+                                val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                                maxScrollStepPx * ratio
+                            }
+                            else -> 0f
+                        }
+                        if (scrollDelta != 0f) {
+                            val consumed = playlistGridState.scrollBy(scrollDelta)
+                            if (consumed != 0f) {
+                                dragOffsetY += consumed
+                                applyGridDragSwaps(activeId)
+                            }
+                        }
+                    }
+                } else {
+                    val layoutInfo = playlistListState.layoutInfo
+                    val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
+                    if (draggedInfo != null) {
+                        val itemTop = draggedInfo.offset + dragOffsetY
+                        val itemBottom = itemTop + draggedInfo.size
+                        val viewportStart = layoutInfo.viewportStartOffset.toFloat()
+                        val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
+                        val scrollDelta = when {
+                            itemTop < viewportStart + edgeThresholdPx && playlistListState.canScrollBackward -> {
+                                val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                                -maxScrollStepPx * ratio
+                            }
+                            itemBottom > viewportEnd - edgeThresholdPx && playlistListState.canScrollForward -> {
+                                val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                                maxScrollStepPx * ratio
+                            }
+                            else -> 0f
+                        }
+                        if (scrollDelta != 0f) {
+                            val consumed = playlistListState.scrollBy(scrollDelta)
+                            if (consumed != 0f) {
+                                dragOffsetY += consumed
+                                applyListDragSwaps(activeId)
+                            }
+                        }
+                    }
+                }
+                delay(16)
+            }
         }
         val activeSelectedPlaylistIds = remember(selectedPlaylistIds, displayedPlaylists) {
             val valid = displayedPlaylists.map { it.id }.toSet()
@@ -336,6 +543,7 @@ fun PlaylistsTabScreen(
 
         if (settings.playlistsGridView) {
             LazyVerticalGrid(
+                state = playlistGridState,
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(bottom = if (isPlaylistMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -344,19 +552,53 @@ fun PlaylistsTabScreen(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                items(displayedPlaylists, key = { it.id }) { pl ->
+                items(localPlaylists, key = { it.id }) { pl ->
                     val plEps = resolvePlaylistEpisodes(pl, episodes)
                     val totalDurMs = plEps.sumOf { it.durationMs }
                     val isSelectedPane = isTwoPane && paneDetailPlaylist?.id == pl.id
                     val isSelected = pl.id in activeSelectedPlaylistIds
+                    val isDragging = draggingPlaylistId == pl.id
+                    val liftScale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.04f else 1f,
+                        animationSpec = spring(
+                            stiffness = Spring.StiffnessMedium,
+                            dampingRatio = Spring.DampingRatioNoBouncy
+                        ),
+                        label = "playlistGridLiftScale"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 0f)
+                            .animateItem(
+                                placementSpec = if (isDragging) {
+                                    null
+                                } else {
+                                    spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    )
+                                }
+                            )
+                            .onGloballyPositioned { coords ->
+                                itemSizes[pl.id] = coords.size
+                            }
+                            .graphicsLayer {
+                                translationX = if (isDragging) dragOffsetX else 0f
+                                translationY = if (isDragging) dragOffsetY else 0f
+                                scaleX = liftScale
+                                scaleY = liftScale
+                            }
+                    ) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),
-                        color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                        color = if (isSelected || isDragging) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                        shadowElevation = if (isDragging) 14.dp else 0.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .border(
-                                if (isSelected || isSelectedPane) 1.5.dp else 1.dp,
-                                if (isSelected || isSelectedPane) LoheElectricBlue else borderColor,
+                                if (isSelected || isSelectedPane || isDragging) 1.5.dp else 1.dp,
+                                if (isSelected || isSelectedPane || isDragging) LoheElectricBlue else borderColor,
                                 RoundedCornerShape(18.dp)
                             )
                             .combinedClickable(
@@ -459,14 +701,74 @@ fun PlaylistsTabScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Text(
-                                text = pl.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                minLines = 1,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = pl.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    minLines = 1,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!isPlaylistMultiSelectMode) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .pointerInput(pl.id) {
+                                                detectDragGestures(
+                                                    onDragStart = {
+                                                        sortNameAsc = false
+                                                        draggingPlaylistId = pl.id
+                                                        dragOffsetX = 0f
+                                                        dragOffsetY = 0f
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    },
+                                                    onDragEnd = {
+                                                        val finalIds = localPlaylists.map { it.id }
+                                                        val originalIds = latestDisplayedPlaylists.map { it.id }
+                                                        draggingPlaylistId = null
+                                                        dragOffsetX = 0f
+                                                        dragOffsetY = 0f
+                                                        if (finalIds != originalIds) {
+                                                            pendingCommittedPlaylistIds = finalIds
+                                                            latestOnReorderPlaylists(finalIds, pl.id)
+                                                        }
+                                                    },
+                                                    onDragCancel = {
+                                                        val finalIds = localPlaylists.map { it.id }
+                                                        val originalIds = latestDisplayedPlaylists.map { it.id }
+                                                        draggingPlaylistId = null
+                                                        dragOffsetX = 0f
+                                                        dragOffsetY = 0f
+                                                        if (finalIds != originalIds) {
+                                                            pendingCommittedPlaylistIds = finalIds
+                                                            latestOnReorderPlaylists(finalIds, pl.id)
+                                                        }
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        dragOffsetX += dragAmount.x
+                                                        dragOffsetY += dragAmount.y
+                                                        applyGridDragSwaps(pl.id)
+                                                    }
+                                                )
+                                            }
+                                            .testTag("playlist_grid_handle_${pl.id}"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DragHandle,
+                                            contentDescription = "Reorder Playlist",
+                                            tint = if (isDragging) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = buildAnnotatedString {
@@ -517,29 +819,64 @@ fun PlaylistsTabScreen(
                             }
                         }
                     }
+                    }
                 }
             }
         } else {
             LazyColumn(
+                state = playlistListState,
                 contentPadding = PaddingValues(bottom = if (isPlaylistMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                itemsIndexed(displayedPlaylists, key = { _, p -> p.id }) { _, pl ->
+                itemsIndexed(localPlaylists, key = { _, p -> p.id }) { _, pl ->
                     val plEps = resolvePlaylistEpisodes(pl, episodes)
                     val totalDurMs = plEps.sumOf { it.durationMs }
                     val isSelectedPane = isTwoPane && paneDetailPlaylist?.id == pl.id
                     val isSelected = pl.id in activeSelectedPlaylistIds
+                    val isDragging = draggingPlaylistId == pl.id
+                    val liftScale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.03f else 1f,
+                        animationSpec = spring(
+                            stiffness = Spring.StiffnessMedium,
+                            dampingRatio = Spring.DampingRatioNoBouncy
+                        ),
+                        label = "playlistListLiftScale"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 0f)
+                            .animateItem(
+                                placementSpec = if (isDragging) {
+                                    null
+                                } else {
+                                    spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    )
+                                }
+                            )
+                            .onGloballyPositioned { coords ->
+                                itemSizes[pl.id] = coords.size
+                            }
+                            .graphicsLayer {
+                                translationY = if (isDragging) dragOffsetY else 0f
+                                scaleX = liftScale
+                                scaleY = liftScale
+                            }
+                    ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                        color = if (isSelected || isDragging) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                        shadowElevation = if (isDragging) 14.dp else 0.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .border(
-                                if (isSelected || isSelectedPane) 1.5.dp else 1.dp,
-                                if (isSelected || isSelectedPane) LoheElectricBlue else borderColor,
+                                if (isSelected || isSelectedPane || isDragging) 1.5.dp else 1.dp,
+                                if (isSelected || isSelectedPane || isDragging) LoheElectricBlue else borderColor,
                                 RoundedCornerShape(16.dp)
                             )
                             .combinedClickable(
@@ -563,7 +900,7 @@ fun PlaylistsTabScreen(
                             .testTag("playlist_card_${pl.id}")
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (isPlaylistMultiSelectMode) {
@@ -576,6 +913,57 @@ fun PlaylistsTabScreen(
                                         .testTag("playlist_select_icon_${pl.id}")
                                 )
                                 Spacer(Modifier.width(10.dp))
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .pointerInput(pl.id) {
+                                            detectDragGestures(
+                                                onDragStart = {
+                                                    sortNameAsc = false
+                                                    draggingPlaylistId = pl.id
+                                                    dragOffsetX = 0f
+                                                    dragOffsetY = 0f
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                },
+                                                onDragEnd = {
+                                                    val finalIds = localPlaylists.map { it.id }
+                                                    val originalIds = latestDisplayedPlaylists.map { it.id }
+                                                    draggingPlaylistId = null
+                                                    dragOffsetX = 0f
+                                                    dragOffsetY = 0f
+                                                    if (finalIds != originalIds) {
+                                                        pendingCommittedPlaylistIds = finalIds
+                                                        latestOnReorderPlaylists(finalIds, pl.id)
+                                                    }
+                                                },
+                                                onDragCancel = {
+                                                    val finalIds = localPlaylists.map { it.id }
+                                                    val originalIds = latestDisplayedPlaylists.map { it.id }
+                                                    draggingPlaylistId = null
+                                                    dragOffsetX = 0f
+                                                    dragOffsetY = 0f
+                                                    if (finalIds != originalIds) {
+                                                        pendingCommittedPlaylistIds = finalIds
+                                                        latestOnReorderPlaylists(finalIds, pl.id)
+                                                    }
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    dragOffsetY += dragAmount.y
+                                                    applyListDragSwaps(pl.id)
+                                                }
+                                            )
+                                        }
+                                        .testTag("playlist_list_handle_${pl.id}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DragHandle,
+                                        contentDescription = "Reorder Playlist",
+                                        tint = if (isDragging) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             Box(
                                 modifier = Modifier
@@ -608,6 +996,7 @@ fun PlaylistsTabScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
