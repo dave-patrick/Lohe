@@ -97,6 +97,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -228,17 +229,15 @@ fun PlaylistsTabScreen(
         var localPlaylists by remember { mutableStateOf(displayedPlaylists) }
         var pendingCommittedPlaylistIds by remember { mutableStateOf<List<String>?>(null) }
         var draggingPlaylistId by remember { mutableStateOf<String?>(null) }
-        var dragOffsetX by remember { mutableFloatStateOf(0f) }
-        var dragOffsetY by remember { mutableFloatStateOf(0f) }
-        val itemSizes = remember { mutableStateMapOf<String, IntSize>() }
+        var dragStartFingerScreenX by remember { mutableFloatStateOf(0f) }
+        var dragStartFingerScreenY by remember { mutableFloatStateOf(0f) }
+        var dragCurrentFingerScreenX by remember { mutableFloatStateOf(0f) }
+        var dragCurrentFingerScreenY by remember { mutableFloatStateOf(0f) }
+        var dragStartItemOffsetX by remember { mutableFloatStateOf(0f) }
+        var dragStartItemOffsetY by remember { mutableFloatStateOf(0f) }
         val playlistListState = rememberLazyListState()
         val playlistGridState = rememberLazyGridState()
         val density = LocalDensity.current
-        val listSpacingPx = remember(density) { with(density) { 8.dp.toPx() } }
-        val gridSpacingPx = remember(density) { with(density) { 10.dp.toPx() } }
-        val fallbackListHeightPx = remember(density) { with(density) { 80.dp.toPx() } }
-        val fallbackGridWidthPx = remember(density) { with(density) { 170.dp.toPx() } }
-        val fallbackGridHeightPx = remember(density) { with(density) { 215.dp.toPx() } }
         val latestOnReorderPlaylists by rememberUpdatedState(onReorderPlaylists)
         val latestDisplayedPlaylists by rememberUpdatedState(displayedPlaylists)
 
@@ -267,108 +266,90 @@ fun PlaylistsTabScreen(
         }
 
         fun applyListDragSwaps(activeId: String) {
-            var currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
-            while (currentIdx > 0) {
-                val prev = localPlaylists[currentIdx - 1]
-                val stepPx = (itemSizes[prev.id]?.height?.toFloat() ?: fallbackListHeightPx) + listSpacingPx
-                if (dragOffsetY <= -stepPx * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx - 1, removeAt(currentIdx))
+            val layoutInfo = playlistListState.layoutInfo
+            val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId } ?: return
+            val currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
+            if (currentIdx !in localPlaylists.indices) return
+
+            val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+            val targetCenterY = targetTop + draggedInfo.size * 0.5f
+
+            val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { other ->
+                other.key != activeId &&
+                    other.index in localPlaylists.indices &&
+                    if (other.index < currentIdx) {
+                        targetCenterY < other.offset + other.size * 0.48f
+                    } else {
+                        targetCenterY > other.offset + other.size * 0.52f
                     }
-                    dragOffsetY += stepPx
-                    currentIdx -= 1
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                } else break
+            } ?: return
+
+            val targetIdx = targetInfo.index.coerceIn(0, localPlaylists.lastIndex)
+            if (targetIdx == currentIdx) return
+
+            val savedFirstIndex = playlistListState.firstVisibleItemIndex
+            val savedFirstOffset = playlistListState.firstVisibleItemScrollOffset
+            localPlaylists = localPlaylists.toMutableList().apply {
+                add(targetIdx, removeAt(currentIdx))
             }
-            while (currentIdx in 0 until localPlaylists.lastIndex) {
-                val next = localPlaylists[currentIdx + 1]
-                val stepPx = (itemSizes[next.id]?.height?.toFloat() ?: fallbackListHeightPx) + listSpacingPx
-                if (dragOffsetY >= stepPx * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx + 1, removeAt(currentIdx))
-                    }
-                    dragOffsetY -= stepPx
-                    currentIdx += 1
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                } else break
+            if (currentIdx == savedFirstIndex || targetIdx == savedFirstIndex) {
+                playlistListState.requestScrollToItem(savedFirstIndex, savedFirstOffset)
             }
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
 
         fun applyGridDragSwaps(activeId: String) {
-            var currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
-            var guard = 0
-            while (currentIdx in localPlaylists.indices && guard < 8) {
-                guard++
-                val size = itemSizes[activeId]
-                val stepX = (size?.width?.toFloat() ?: fallbackGridWidthPx) + gridSpacingPx
-                val stepY = (size?.height?.toFloat() ?: fallbackGridHeightPx) + gridSpacingPx
-                val col = currentIdx % 2
-                var moved = false
-                if (col == 0 && currentIdx + 1 < localPlaylists.size && dragOffsetX >= stepX * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx + 1, removeAt(currentIdx))
-                    }
-                    dragOffsetX -= stepX
-                    currentIdx += 1
-                    moved = true
-                } else if (col == 1 && dragOffsetX <= -stepX * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx - 1, removeAt(currentIdx))
-                    }
-                    dragOffsetX += stepX
-                    currentIdx -= 1
-                    moved = true
-                } else if (currentIdx >= 2 && dragOffsetY <= -stepY * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx - 2, removeAt(currentIdx))
-                    }
-                    dragOffsetY += stepY
-                    currentIdx -= 2
-                    moved = true
-                } else if (currentIdx + 2 < localPlaylists.size && dragOffsetY >= stepY * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(currentIdx + 2, removeAt(currentIdx))
-                    }
-                    dragOffsetY -= stepY
-                    currentIdx += 2
-                    moved = true
-                } else if (col == 1 && currentIdx == localPlaylists.lastIndex - 1 && dragOffsetY >= stepY * 0.5f) {
-                    localPlaylists = localPlaylists.toMutableList().apply {
-                        add(localPlaylists.lastIndex, removeAt(currentIdx))
-                    }
-                    dragOffsetY -= stepY
-                    dragOffsetX += stepX
-                    currentIdx = localPlaylists.lastIndex
-                    moved = true
-                }
-                if (moved) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                } else {
-                    break
-                }
+            val layoutInfo = playlistGridState.layoutInfo
+            val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId } ?: return
+            val currentIdx = localPlaylists.indexOfFirst { it.id == activeId }
+            if (currentIdx !in localPlaylists.indices) return
+
+            val targetLeft = dragStartItemOffsetX + (dragCurrentFingerScreenX - dragStartFingerScreenX)
+            val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+            val targetCenterX = targetLeft + draggedInfo.size.width * 0.5f
+            val targetCenterY = targetTop + draggedInfo.size.height * 0.5f
+
+            val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { other ->
+                other.key != activeId &&
+                    other.index in localPlaylists.indices &&
+                    targetCenterX in (other.offset.x.toFloat()..(other.offset.x + other.size.width).toFloat()) &&
+                    targetCenterY in (other.offset.y.toFloat()..(other.offset.y + other.size.height).toFloat())
+            } ?: return
+
+            val targetIdx = targetInfo.index.coerceIn(0, localPlaylists.lastIndex)
+            if (targetIdx == currentIdx) return
+
+            val savedFirstIndex = playlistGridState.firstVisibleItemIndex
+            val savedFirstOffset = playlistGridState.firstVisibleItemScrollOffset
+            localPlaylists = localPlaylists.toMutableList().apply {
+                add(targetIdx, removeAt(currentIdx))
             }
+            if (currentIdx == savedFirstIndex || targetIdx == savedFirstIndex) {
+                playlistGridState.requestScrollToItem(savedFirstIndex, savedFirstOffset)
+            }
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
 
         LaunchedEffect(draggingPlaylistId, settings.playlistsGridView) {
             val activeId = draggingPlaylistId ?: return@LaunchedEffect
-            val edgeThresholdPx = with(density) { 72.dp.toPx() }
-            val maxScrollStepPx = with(density) { 14.dp.toPx() }
+            val edgeThresholdPx = with(density) { 80.dp.toPx() }
+            val maxScrollStepPx = with(density) { 12.dp.toPx() }
             while (draggingPlaylistId == activeId) {
                 if (settings.playlistsGridView) {
                     val layoutInfo = playlistGridState.layoutInfo
                     val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
                     if (draggedInfo != null) {
-                        val itemTop = draggedInfo.offset.y + dragOffsetY
-                        val itemBottom = itemTop + draggedInfo.size.height
+                        val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                        val targetBottom = targetTop + draggedInfo.size.height
                         val viewportStart = layoutInfo.viewportStartOffset.toFloat()
                         val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
                         val scrollDelta = when {
-                            itemTop < viewportStart + edgeThresholdPx && playlistGridState.canScrollBackward -> {
-                                val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                            targetTop < viewportStart + edgeThresholdPx && playlistGridState.canScrollBackward -> {
+                                val ratio = ((viewportStart + edgeThresholdPx - targetTop) / edgeThresholdPx).coerceIn(0f, 1f)
                                 -maxScrollStepPx * ratio
                             }
-                            itemBottom > viewportEnd - edgeThresholdPx && playlistGridState.canScrollForward -> {
-                                val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                            targetBottom > viewportEnd - edgeThresholdPx && playlistGridState.canScrollForward -> {
+                                val ratio = ((targetBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
                                 maxScrollStepPx * ratio
                             }
                             else -> 0f
@@ -376,7 +357,6 @@ fun PlaylistsTabScreen(
                         if (scrollDelta != 0f) {
                             val consumed = playlistGridState.scrollBy(scrollDelta)
                             if (consumed != 0f) {
-                                dragOffsetY += consumed
                                 applyGridDragSwaps(activeId)
                             }
                         }
@@ -385,17 +365,17 @@ fun PlaylistsTabScreen(
                     val layoutInfo = playlistListState.layoutInfo
                     val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
                     if (draggedInfo != null) {
-                        val itemTop = draggedInfo.offset + dragOffsetY
-                        val itemBottom = itemTop + draggedInfo.size
+                        val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                        val targetBottom = targetTop + draggedInfo.size
                         val viewportStart = layoutInfo.viewportStartOffset.toFloat()
                         val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
                         val scrollDelta = when {
-                            itemTop < viewportStart + edgeThresholdPx && playlistListState.canScrollBackward -> {
-                                val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                            targetTop < viewportStart + edgeThresholdPx && playlistListState.canScrollBackward -> {
+                                val ratio = ((viewportStart + edgeThresholdPx - targetTop) / edgeThresholdPx).coerceIn(0f, 1f)
                                 -maxScrollStepPx * ratio
                             }
-                            itemBottom > viewportEnd - edgeThresholdPx && playlistListState.canScrollForward -> {
-                                val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                            targetBottom > viewportEnd - edgeThresholdPx && playlistListState.canScrollForward -> {
+                                val ratio = ((targetBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
                                 maxScrollStepPx * ratio
                             }
                             else -> 0f
@@ -403,7 +383,6 @@ fun PlaylistsTabScreen(
                         if (scrollDelta != 0f) {
                             val consumed = playlistListState.scrollBy(scrollDelta)
                             if (consumed != 0f) {
-                                dragOffsetY += consumed
                                 applyListDragSwaps(activeId)
                             }
                         }
@@ -580,12 +559,22 @@ fun PlaylistsTabScreen(
                                     )
                                 }
                             )
-                            .onGloballyPositioned { coords ->
-                                itemSizes[pl.id] = coords.size
-                            }
                             .graphicsLayer {
-                                translationX = if (isDragging) dragOffsetX else 0f
-                                translationY = if (isDragging) dragOffsetY else 0f
+                                if (isDragging) {
+                                    val info = playlistGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == pl.id }
+                                    if (info != null) {
+                                        val targetLeft = dragStartItemOffsetX + (dragCurrentFingerScreenX - dragStartFingerScreenX)
+                                        val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                                        translationX = targetLeft - info.offset.x.toFloat()
+                                        translationY = targetTop - info.offset.y.toFloat()
+                                    } else {
+                                        translationX = 0f
+                                        translationY = 0f
+                                    }
+                                } else {
+                                    translationX = 0f
+                                    translationY = 0f
+                                }
                                 scaleX = liftScale
                                 scaleY = liftScale
                             }
@@ -715,24 +704,30 @@ fun PlaylistsTabScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (!isPlaylistMultiSelectMode) {
+                                    var gridHandleCoords by remember(pl.id) { mutableStateOf<LayoutCoordinates?>(null) }
                                     Box(
                                         modifier = Modifier
                                             .size(26.dp)
+                                            .onGloballyPositioned { gridHandleCoords = it }
                                             .pointerInput(pl.id) {
                                                 detectDragGestures(
-                                                    onDragStart = {
+                                                    onDragStart = { startOffset ->
                                                         sortNameAsc = false
+                                                        val itemInfo = playlistGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == pl.id }
+                                                        val screenPos = gridHandleCoords?.localToWindow(startOffset)
+                                                        dragStartFingerScreenX = screenPos?.x ?: startOffset.x
+                                                        dragStartFingerScreenY = screenPos?.y ?: startOffset.y
+                                                        dragCurrentFingerScreenX = dragStartFingerScreenX
+                                                        dragCurrentFingerScreenY = dragStartFingerScreenY
+                                                        dragStartItemOffsetX = itemInfo?.offset?.x?.toFloat() ?: 0f
+                                                        dragStartItemOffsetY = itemInfo?.offset?.y?.toFloat() ?: 0f
                                                         draggingPlaylistId = pl.id
-                                                        dragOffsetX = 0f
-                                                        dragOffsetY = 0f
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                     },
                                                     onDragEnd = {
                                                         val finalIds = localPlaylists.map { it.id }
                                                         val originalIds = latestDisplayedPlaylists.map { it.id }
                                                         draggingPlaylistId = null
-                                                        dragOffsetX = 0f
-                                                        dragOffsetY = 0f
                                                         if (finalIds != originalIds) {
                                                             pendingCommittedPlaylistIds = finalIds
                                                             latestOnReorderPlaylists(finalIds, pl.id)
@@ -742,18 +737,20 @@ fun PlaylistsTabScreen(
                                                         val finalIds = localPlaylists.map { it.id }
                                                         val originalIds = latestDisplayedPlaylists.map { it.id }
                                                         draggingPlaylistId = null
-                                                        dragOffsetX = 0f
-                                                        dragOffsetY = 0f
                                                         if (finalIds != originalIds) {
                                                             pendingCommittedPlaylistIds = finalIds
                                                             latestOnReorderPlaylists(finalIds, pl.id)
                                                         }
                                                     },
-                                                    onDrag = { change, dragAmount ->
+                                                    onDrag = { change, _ ->
                                                         change.consume()
-                                                        dragOffsetX += dragAmount.x
-                                                        dragOffsetY += dragAmount.y
-                                                        applyGridDragSwaps(pl.id)
+                                                        val coords = gridHandleCoords
+                                                        if (coords != null && coords.isAttached) {
+                                                            val pos = coords.localToWindow(change.position)
+                                                            dragCurrentFingerScreenX = pos.x
+                                                            dragCurrentFingerScreenY = pos.y
+                                                            applyGridDragSwaps(pl.id)
+                                                        }
                                                     }
                                                 )
                                             }
@@ -859,11 +856,18 @@ fun PlaylistsTabScreen(
                                     )
                                 }
                             )
-                            .onGloballyPositioned { coords ->
-                                itemSizes[pl.id] = coords.size
-                            }
                             .graphicsLayer {
-                                translationY = if (isDragging) dragOffsetY else 0f
+                                translationY = if (isDragging) {
+                                    val info = playlistListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == pl.id }
+                                    if (info != null) {
+                                        val targetTop = dragStartItemOffsetY + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                                        targetTop - info.offset.toFloat()
+                                    } else {
+                                        0f
+                                    }
+                                } else {
+                                    0f
+                                }
                                 scaleX = liftScale
                                 scaleY = liftScale
                             }
@@ -914,24 +918,27 @@ fun PlaylistsTabScreen(
                                 )
                                 Spacer(Modifier.width(10.dp))
                             } else {
+                                var listHandleCoords by remember(pl.id) { mutableStateOf<LayoutCoordinates?>(null) }
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
+                                        .onGloballyPositioned { listHandleCoords = it }
                                         .pointerInput(pl.id) {
                                             detectDragGestures(
-                                                onDragStart = {
+                                                onDragStart = { startOffset ->
                                                     sortNameAsc = false
+                                                    val itemInfo = playlistListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == pl.id }
+                                                    val screenY = listHandleCoords?.localToWindow(startOffset)?.y ?: startOffset.y
+                                                    dragStartFingerScreenY = screenY
+                                                    dragCurrentFingerScreenY = screenY
+                                                    dragStartItemOffsetY = itemInfo?.offset?.toFloat() ?: 0f
                                                     draggingPlaylistId = pl.id
-                                                    dragOffsetX = 0f
-                                                    dragOffsetY = 0f
                                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 },
                                                 onDragEnd = {
                                                     val finalIds = localPlaylists.map { it.id }
                                                     val originalIds = latestDisplayedPlaylists.map { it.id }
                                                     draggingPlaylistId = null
-                                                    dragOffsetX = 0f
-                                                    dragOffsetY = 0f
                                                     if (finalIds != originalIds) {
                                                         pendingCommittedPlaylistIds = finalIds
                                                         latestOnReorderPlaylists(finalIds, pl.id)
@@ -941,17 +948,18 @@ fun PlaylistsTabScreen(
                                                     val finalIds = localPlaylists.map { it.id }
                                                     val originalIds = latestDisplayedPlaylists.map { it.id }
                                                     draggingPlaylistId = null
-                                                    dragOffsetX = 0f
-                                                    dragOffsetY = 0f
                                                     if (finalIds != originalIds) {
                                                         pendingCommittedPlaylistIds = finalIds
                                                         latestOnReorderPlaylists(finalIds, pl.id)
                                                     }
                                                 },
-                                                onDrag = { change, dragAmount ->
+                                                onDrag = { change, _ ->
                                                     change.consume()
-                                                    dragOffsetY += dragAmount.y
-                                                    applyListDragSwaps(pl.id)
+                                                    val coords = listHandleCoords
+                                                    if (coords != null && coords.isAttached) {
+                                                        dragCurrentFingerScreenY = coords.localToWindow(change.position).y
+                                                        applyListDragSwaps(pl.id)
+                                                    }
                                                 }
                                             )
                                         }

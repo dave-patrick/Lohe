@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -139,13 +140,12 @@ fun UpNextTabScreen(
     var localQueue by remember { mutableStateOf(visibleUpNext) }
     var pendingCommittedIds by remember { mutableStateOf<List<String>?>(null) }
     var draggingEpisodeId by remember { mutableStateOf<String?>(null) }
-    var draggingOffsetY by remember { mutableFloatStateOf(0f) }
-    val itemHeights = remember { mutableStateMapOf<String, Int>() }
+    var dragStartFingerScreenY by remember { mutableFloatStateOf(0f) }
+    var dragCurrentFingerScreenY by remember { mutableFloatStateOf(0f) }
+    var dragStartItemOffset by remember { mutableFloatStateOf(0f) }
     val lazyListState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val spacingPx = remember(density) { with(density) { 8.dp.toPx() } }
-    val fallbackItemPx = remember(density) { with(density) { 84.dp.toPx() } }
     val latestOnReorderQueue by rememberUpdatedState(onReorderQueue)
     val latestVisibleUpNext by rememberUpdatedState(visibleUpNext)
 
@@ -174,56 +174,57 @@ fun UpNextTabScreen(
     }
 
     fun applyDragSwaps(activeId: String) {
-        var currentIdx = localQueue.indexOfFirst { it.id == activeId }
-        while (currentIdx > 0) {
-            val prevEp = localQueue[currentIdx - 1]
-            val stepPx = (itemHeights[prevEp.id]?.toFloat() ?: fallbackItemPx) + spacingPx
-            if (draggingOffsetY <= -stepPx * 0.5f) {
-                localQueue = localQueue.toMutableList().apply {
-                    add(currentIdx - 1, removeAt(currentIdx))
+        val layoutInfo = lazyListState.layoutInfo
+        val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId } ?: return
+        val currentIdx = localQueue.indexOfFirst { it.id == activeId }
+        if (currentIdx !in localQueue.indices) return
+
+        val targetTop = dragStartItemOffset + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+        val targetCenterY = targetTop + draggedInfo.size * 0.5f
+
+        val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { other ->
+            other.key != activeId &&
+                other.index in localQueue.indices &&
+                if (other.index < currentIdx) {
+                    targetCenterY < other.offset + other.size * 0.48f
+                } else {
+                    targetCenterY > other.offset + other.size * 0.52f
                 }
-                draggingOffsetY += stepPx
-                currentIdx -= 1
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            } else {
-                break
-            }
+        } ?: return
+
+        val targetIdx = targetInfo.index.coerceIn(0, localQueue.lastIndex)
+        if (targetIdx == currentIdx) return
+
+        val savedFirstIndex = lazyListState.firstVisibleItemIndex
+        val savedFirstOffset = lazyListState.firstVisibleItemScrollOffset
+        localQueue = localQueue.toMutableList().apply {
+            add(targetIdx, removeAt(currentIdx))
         }
-        while (currentIdx in 0 until localQueue.lastIndex) {
-            val nextEp = localQueue[currentIdx + 1]
-            val stepPx = (itemHeights[nextEp.id]?.toFloat() ?: fallbackItemPx) + spacingPx
-            if (draggingOffsetY >= stepPx * 0.5f) {
-                localQueue = localQueue.toMutableList().apply {
-                    add(currentIdx + 1, removeAt(currentIdx))
-                }
-                draggingOffsetY -= stepPx
-                currentIdx += 1
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            } else {
-                break
-            }
+        if (currentIdx == savedFirstIndex || targetIdx == savedFirstIndex) {
+            lazyListState.requestScrollToItem(savedFirstIndex, savedFirstOffset)
         }
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     LaunchedEffect(draggingEpisodeId) {
         val activeId = draggingEpisodeId ?: return@LaunchedEffect
-        val edgeThresholdPx = with(density) { 72.dp.toPx() }
-        val maxScrollStepPx = with(density) { 14.dp.toPx() }
+        val edgeThresholdPx = with(density) { 80.dp.toPx() }
+        val maxScrollStepPx = with(density) { 12.dp.toPx() }
         while (draggingEpisodeId == activeId) {
             val layoutInfo = lazyListState.layoutInfo
             val draggedItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId }
             if (draggedItemInfo != null) {
-                val itemTop = draggedItemInfo.offset + draggingOffsetY
-                val itemBottom = itemTop + draggedItemInfo.size
+                val targetTop = dragStartItemOffset + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                val targetBottom = targetTop + draggedItemInfo.size
                 val viewportStart = layoutInfo.viewportStartOffset.toFloat()
                 val viewportEnd = layoutInfo.viewportEndOffset.toFloat()
                 val scrollDelta = when {
-                    itemTop < viewportStart + edgeThresholdPx && lazyListState.canScrollBackward -> {
-                        val ratio = ((viewportStart + edgeThresholdPx - itemTop) / edgeThresholdPx).coerceIn(0f, 1f)
+                    targetTop < viewportStart + edgeThresholdPx && lazyListState.canScrollBackward -> {
+                        val ratio = ((viewportStart + edgeThresholdPx - targetTop) / edgeThresholdPx).coerceIn(0f, 1f)
                         -maxScrollStepPx * ratio
                     }
-                    itemBottom > viewportEnd - edgeThresholdPx && lazyListState.canScrollForward -> {
-                        val ratio = ((itemBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                    targetBottom > viewportEnd - edgeThresholdPx && lazyListState.canScrollForward -> {
+                        val ratio = ((targetBottom - (viewportEnd - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
                         maxScrollStepPx * ratio
                     }
                     else -> 0f
@@ -231,7 +232,6 @@ fun UpNextTabScreen(
                 if (scrollDelta != 0f) {
                     val consumed = lazyListState.scrollBy(scrollDelta)
                     if (consumed != 0f) {
-                        draggingOffsetY += consumed
                         applyDragSwaps(activeId)
                     }
                 }
@@ -438,11 +438,18 @@ fun UpNextTabScreen(
                                     )
                                 }
                             )
-                            .onGloballyPositioned { coords ->
-                                itemHeights[ep.id] = coords.size.height
-                            }
                             .graphicsLayer {
-                                translationY = if (isDragging) draggingOffsetY else 0f
+                                translationY = if (isDragging) {
+                                    val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == ep.id }
+                                    if (info != null) {
+                                        val targetTop = dragStartItemOffset + (dragCurrentFingerScreenY - dragStartFingerScreenY)
+                                        targetTop - info.offset.toFloat()
+                                    } else {
+                                        0f
+                                    }
+                                } else {
+                                    0f
+                                }
                                 scaleX = liftScale
                                 scaleY = liftScale
                             }
@@ -522,23 +529,28 @@ fun UpNextTabScreen(
                                                 )
                                             }
                                         } else {
+                                            var handleCoords by remember(ep.id) { mutableStateOf<LayoutCoordinates?>(null) }
                                             IconButton(
                                                 onClick = { actionTargetId = if (isExpanded) null else ep.id },
                                                 modifier = Modifier
                                                     .size(36.dp)
+                                                    .onGloballyPositioned { handleCoords = it }
                                                     .pointerInput(ep.id) {
                                                         detectDragGestures(
-                                                            onDragStart = {
+                                                            onDragStart = { startOffset ->
                                                                 actionTargetId = null
+                                                                val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == ep.id }
+                                                                val screenY = handleCoords?.localToWindow(startOffset)?.y ?: startOffset.y
+                                                                dragStartFingerScreenY = screenY
+                                                                dragCurrentFingerScreenY = screenY
+                                                                dragStartItemOffset = itemInfo?.offset?.toFloat() ?: 0f
                                                                 draggingEpisodeId = ep.id
-                                                                draggingOffsetY = 0f
                                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                             },
                                                             onDragEnd = {
                                                                 val finalIds = localQueue.map { it.id }
                                                                 val originalIds = latestVisibleUpNext.map { it.id }
                                                                 draggingEpisodeId = null
-                                                                draggingOffsetY = 0f
                                                                 if (finalIds != originalIds) {
                                                                     pendingCommittedIds = finalIds
                                                                     latestOnReorderQueue(finalIds)
@@ -548,16 +560,18 @@ fun UpNextTabScreen(
                                                                 val finalIds = localQueue.map { it.id }
                                                                 val originalIds = latestVisibleUpNext.map { it.id }
                                                                 draggingEpisodeId = null
-                                                                draggingOffsetY = 0f
                                                                 if (finalIds != originalIds) {
                                                                     pendingCommittedIds = finalIds
                                                                     latestOnReorderQueue(finalIds)
                                                                 }
                                                             },
-                                                            onDrag = { change, dragAmount ->
+                                                            onDrag = { change, _ ->
                                                                 change.consume()
-                                                                draggingOffsetY += dragAmount.y
-                                                                applyDragSwaps(ep.id)
+                                                                val coords = handleCoords
+                                                                if (coords != null && coords.isAttached) {
+                                                                    dragCurrentFingerScreenY = coords.localToWindow(change.position).y
+                                                                    applyDragSwaps(ep.id)
+                                                                }
                                                             }
                                                         )
                                                     }
