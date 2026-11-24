@@ -1145,25 +1145,38 @@ class PodcastAppImporter(
                 if (matchedExisting != null) {
                     importedEpIdToLocalEpId[importedEp.id] = matchedExisting.id
 
-                    // Forward-only state merge:
-                    // - never mark a played episode unplayed
-                    // - never lower a saved position
-                    // - never lower a played date
-                    val mergedIsPlayed = matchedExisting.isPlayed || importedCountsAsPlayed
+                    // Forward-only state merge (except actively queued Up Next items from a native Lohe DB
+                    // migration, which must unarchive/unplay and adopt the exported queue order so they
+                    // actually appear in Up Next).
+                    val importedActivelyQueued = isNativeLoheMigration &&
+                        importedEp.inUpNext &&
+                        !importedCountsAsPlayed &&
+                        !importedEp.isArchived
+                    val mergedIsPlayed = if (importedActivelyQueued) false else (matchedExisting.isPlayed || importedCountsAsPlayed)
                     val mergedPositionMs = maxOf(matchedExisting.resumePositionMs, importedPosition)
                     val mergedPlayedAt = maxOf(matchedExisting.playedAt, importedPlayedAt)
                     val mergedStarred = matchedExisting.isStarred || importedEp.isStarred
                     val mergedInUpNext = matchedExisting.inUpNext || importedEp.inUpNext
-                    val mergedArchived = matchedExisting.isArchived || (isNativeLoheMigration && importedEp.isArchived)
+                    val mergedUpNextOrder = if (importedActivelyQueued || (!matchedExisting.inUpNext && importedEp.inUpNext)) {
+                        importedEp.upNextOrder
+                    } else {
+                        matchedExisting.upNextOrder
+                    }
+                    val mergedArchived = if (importedActivelyQueued) {
+                        false
+                    } else {
+                        matchedExisting.isArchived || (isNativeLoheMigration && importedEp.isArchived)
+                    }
 
                     val healedDuration = matchedExisting.durationMs <= 5_000L && effectiveDuration > matchedExisting.durationMs
-                    val stateMovedForward = (!matchedExisting.isPlayed && mergedIsPlayed) ||
+                    val stateMovedForward = (mergedIsPlayed != matchedExisting.isPlayed) ||
                         (mergedPositionMs > matchedExisting.resumePositionMs) ||
                         (mergedPlayedAt > matchedExisting.playedAt) ||
                         healedDuration ||
                         (!matchedExisting.isStarred && mergedStarred) ||
                         (!matchedExisting.inUpNext && mergedInUpNext) ||
-                        (!matchedExisting.isArchived && mergedArchived)
+                        (mergedUpNextOrder != matchedExisting.upNextOrder) ||
+                        (mergedArchived != matchedExisting.isArchived)
 
                     val updatedEntity = matchedExisting.copy(
                         guid = matchedExisting.guid.ifBlank { importedEp.guid.trim() },
@@ -1174,7 +1187,7 @@ class PodcastAppImporter(
                         playedAt = mergedPlayedAt,
                         isStarred = mergedStarred,
                         inUpNext = mergedInUpNext,
-                        upNextOrder = if (!matchedExisting.inUpNext && importedEp.inUpNext) importedEp.upNextOrder else matchedExisting.upNextOrder,
+                        upNextOrder = mergedUpNextOrder,
                         isArchived = mergedArchived,
                         chaptersUrl = matchedExisting.chaptersUrl.ifBlank { importedEp.chaptersUrl },
                         chaptersJson = matchedExisting.chaptersJson.ifBlank { importedEp.chaptersJson },
