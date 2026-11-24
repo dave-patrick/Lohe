@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +64,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -122,6 +125,8 @@ fun UpNextTabScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedEpisodeIds by remember { mutableStateOf(setOf<String>()) }
+    var draggingEpisodeId by remember { mutableStateOf<String?>(null) }
+    var draggingOffsetY by remember { mutableFloatStateOf(0f) }
     val haptic = LocalHapticFeedback.current
 
     val activeSelectedIds = remember(selectedEpisodeIds, visibleUpNext) {
@@ -298,6 +303,15 @@ fun UpNextTabScreen(
                     val isPlayingEp = playbackState.currentEpisode?.id == ep.id && playbackState.isPlaying
                     val isExpanded = !isMultiSelectMode && actionTargetId == ep.id
                     val isSelected = ep.id in activeSelectedIds
+                    val isDragging = draggingEpisodeId == ep.id
+                    val liftScale by animateFloatAsState(
+                        targetValue = if (isDragging) 1.03f else 1f,
+                        label = "upNextLiftScale"
+                    )
+                    val animatedOffsetY by animateFloatAsState(
+                        targetValue = if (isDragging) draggingOffsetY else 0f,
+                        label = "upNextDragOffset"
+                    )
                     SwipeableUpNextRow(
                         episode = ep,
                         onMoveToTop = {
@@ -321,12 +335,19 @@ fun UpNextTabScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                            color = if (isSelected || isDragging) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                            shadowElevation = if (isDragging) 12.dp else 0.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .zIndex(if (isDragging) 10f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isDragging) draggingOffsetY else animatedOffsetY
+                                    scaleX = liftScale
+                                    scaleY = liftScale
+                                }
                                 .border(
-                                    if (isSelected) 1.5.dp else 1.dp,
-                                    if (isSelected || isPlayingEp) LoheElectricBlue else borderColor,
+                                    if (isSelected || isDragging) 1.5.dp else 1.dp,
+                                    if (isSelected || isDragging || isPlayingEp) LoheElectricBlue else borderColor,
                                     RoundedCornerShape(16.dp)
                                 )
                                 .combinedClickable(
@@ -372,7 +393,6 @@ fun UpNextTabScreen(
                                         )
                                     }
                                 } else {
-                                    var dragDeltaY by remember(ep.id) { mutableFloatStateOf(0f) }
                                     IconButton(
                                         onClick = { actionTargetId = if (isExpanded) null else ep.id },
                                         modifier = Modifier
@@ -381,20 +401,27 @@ fun UpNextTabScreen(
                                                 val thresholdPx = 64.dp.toPx()
                                                 detectDragGesturesAfterLongPress(
                                                     onDragStart = {
-                                                        dragDeltaY = 0f
+                                                        draggingEpisodeId = ep.id
+                                                        draggingOffsetY = 0f
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                     },
-                                                    onDragEnd = { dragDeltaY = 0f },
-                                                    onDragCancel = { dragDeltaY = 0f },
+                                                    onDragEnd = {
+                                                        draggingEpisodeId = null
+                                                        draggingOffsetY = 0f
+                                                    },
+                                                    onDragCancel = {
+                                                        draggingEpisodeId = null
+                                                        draggingOffsetY = 0f
+                                                    },
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()
-                                                        dragDeltaY += dragAmount.y
-                                                        if (dragDeltaY <= -thresholdPx && idx > 0) {
+                                                        draggingOffsetY += dragAmount.y
+                                                        if (draggingOffsetY <= -thresholdPx && idx > 0) {
                                                             onMoveEpisode(ep, true)
-                                                            dragDeltaY += thresholdPx
-                                                        } else if (dragDeltaY >= thresholdPx && idx < visibleUpNext.lastIndex) {
+                                                            draggingOffsetY += thresholdPx
+                                                        } else if (draggingOffsetY >= thresholdPx && idx < visibleUpNext.lastIndex) {
                                                             onMoveEpisode(ep, false)
-                                                            dragDeltaY -= thresholdPx
+                                                            draggingOffsetY -= thresholdPx
                                                         }
                                                     }
                                                 )
