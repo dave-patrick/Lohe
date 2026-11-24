@@ -313,26 +313,39 @@ class PodcastAppImporter(
 
     suspend fun exportLoheDatabaseToFile(destFile: File): Result<File> = withContext(Dispatchers.IO) {
         try {
-            // Checkpoint WAL so all committed rows are materialized into the primary .db file
             val writableDb = database.openHelper.writableDatabase
-            writableDb.query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
-                if (cursor.moveToFirst()) {
-                    // Checkpoint completed
-                }
-            }
-            val dbPath = writableDb.path
-            val sourceFile = if (!dbPath.isNullOrBlank() && dbPath != ":memory:") {
-                File(dbPath)
-            } else {
-                context.getDatabasePath("lohe_preview.db")
-            }
-            if (!sourceFile.exists() || sourceFile.length() == 0L) {
-                return@withContext Result.failure(IllegalStateException("Local Lohe database file was not found"))
-            }
             destFile.parentFile?.mkdirs()
-            FileInputStream(sourceFile).use { input ->
-                FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
+            if (destFile.exists()) {
+                destFile.delete()
+            }
+            // VACUUM INTO creates a 100% consistent, WAL-free snapshot including all recent
+            // committed writes even when Room Flow observers hold WAL read locks.
+            val vacuumSucceeded = runCatching {
+                val escapedPath = destFile.absolutePath.replace("'", "''")
+                writableDb.execSQL("VACUUM INTO '$escapedPath'")
+                destFile.exists() && destFile.length() > 0L
+            }.getOrDefault(false)
+
+            if (!vacuumSucceeded) {
+                if (destFile.exists()) destFile.delete()
+                writableDb.query("PRAGMA wal_checkpoint(FULL)").use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        // Best-effort fallback checkpoint
+                    }
+                }
+                val dbPath = writableDb.path
+                val sourceFile = if (!dbPath.isNullOrBlank() && dbPath != ":memory:") {
+                    File(dbPath)
+                } else {
+                    context.getDatabasePath("lohe_preview.db")
+                }
+                if (!sourceFile.exists() || sourceFile.length() == 0L) {
+                    return@withContext Result.failure(IllegalStateException("Local Lohe database file was not found"))
+                }
+                FileInputStream(sourceFile).use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
             Result.success(destFile)
