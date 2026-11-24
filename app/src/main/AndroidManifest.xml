@@ -71,7 +71,7 @@
             android:name=".data.sync.OwnerSyncProvider"
             android:authorities="${applicationId}.ownersync"
             android:exported="true"
-            android:permission="${applicationId}.permission.OWNER_SYNC" />
+            tools:ignore="ExportedContentProvider" />
     </application>
 
 </manifest>

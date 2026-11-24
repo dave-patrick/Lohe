@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
+import java.security.MessageDigest
 
 /**
  * Owner-only, signature-locked ContentProvider enabling the private `com.lohe.sync`
@@ -212,11 +213,41 @@ class OwnerSyncProvider : ContentProvider() {
 
         val pm = ctx.packageManager
         val packages = pm.getPackagesForUid(callingUid).orEmpty()
-        if (packages.none { it in ALLOWED_CALLER_PACKAGES }) {
-            throw SecurityException("Caller package is not authorized for Owner Sync")
+        val matchedPkg = packages.firstOrNull { it in ALLOWED_CALLER_PACKAGES }
+            ?: throw SecurityException("Caller package is not authorized for Owner Sync")
+
+        if (pm.checkSignatures(myUid, callingUid) == PackageManager.SIGNATURE_MATCH) return
+
+        val callerCerts = getPackageSigningCertSha256s(pm, matchedPkg)
+        if (callerCerts.none { it in PINNED_OWNER_CERT_SHA256S }) {
+            throw SecurityException("Caller signing certificate is not an authorized owner key")
         }
-        if (pm.checkSignatures(myUid, callingUid) != PackageManager.SIGNATURE_MATCH) {
-            throw SecurityException("Caller signature does not match owner signing key")
+    }
+
+    private fun getPackageSigningCertSha256s(pm: PackageManager, packageName: String): Set<String> {
+        return try {
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            }
+            val signingInfo = info.signingInfo ?: return emptySet()
+            val signers = if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+            } else {
+                signingInfo.signingCertificateHistory
+            }.orEmpty()
+            val digest = MessageDigest.getInstance("SHA-256")
+            signers.mapTo(HashSet()) { sig ->
+                digest.reset()
+                digest.digest(sig.toByteArray()).joinToString("") { b -> "%02X".format(b) }
+            }
+        } catch (_: Exception) {
+            emptySet()
         }
     }
 
@@ -245,8 +276,13 @@ class OwnerSyncProvider : ContentProvider() {
         val ALLOWED_CALLER_PACKAGES = setOf(
             "com.lohe.sync",
             "com.lohe.app",
-            "com.lohe.app.foss",
-            "com.lohe.app.preview"
+            "com.lohe.app.foss"
+        )
+        val PINNED_OWNER_CERT_SHA256S = setOf(
+            // Local release signing key (lohe-release.p12 — FOSS & Lohe Sync)
+            "D48AE0963817107E96DDEB1DA4ED3B4456B2087C410E1539834576795CB6B1DF",
+            // Google Play App Signing key (com.lohe.app)
+            "8A67EE719EDE6536ACC7215B1F89728B487C9C8B751C81B735C8BD4B39E23710"
         )
         const val EXPORT_FILE_NAME = "owner-sync-export.json"
         const val INCOMING_FILE_NAME = "owner-sync-incoming.json"

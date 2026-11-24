@@ -8,7 +8,7 @@ enum class Edition(
     val packageName: String,
     val authority: String,
 ) {
-    PLAY("Google Play", "com.lohe.app.preview", "com.lohe.app.preview.ownersync"),
+    PLAY("Google Play", "com.lohe.app", "com.lohe.app.ownersync"),
     FOSS("FOSS", "com.lohe.app.foss", "com.lohe.app.foss.ownersync"),
 }
 
