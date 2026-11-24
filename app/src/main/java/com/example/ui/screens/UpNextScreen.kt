@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -369,10 +372,33 @@ fun UpNextTabScreen(
                                         )
                                     }
                                 } else {
+                                    var dragDeltaY by remember(ep.id) { mutableFloatStateOf(0f) }
                                     IconButton(
                                         onClick = { actionTargetId = if (isExpanded) null else ep.id },
                                         modifier = Modifier
                                             .size(36.dp)
+                                            .pointerInput(ep.id, idx, visibleUpNext.size) {
+                                                val thresholdPx = 64.dp.toPx()
+                                                detectDragGesturesAfterLongPress(
+                                                    onDragStart = {
+                                                        dragDeltaY = 0f
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    },
+                                                    onDragEnd = { dragDeltaY = 0f },
+                                                    onDragCancel = { dragDeltaY = 0f },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        dragDeltaY += dragAmount.y
+                                                        if (dragDeltaY <= -thresholdPx && idx > 0) {
+                                                            onMoveEpisode(ep, true)
+                                                            dragDeltaY += thresholdPx
+                                                        } else if (dragDeltaY >= thresholdPx && idx < visibleUpNext.lastIndex) {
+                                                            onMoveEpisode(ep, false)
+                                                            dragDeltaY -= thresholdPx
+                                                        }
+                                                    }
+                                                )
+                                            }
                                             .testTag("up_next_handle_${ep.id}")
                                     ) {
                                         Icon(

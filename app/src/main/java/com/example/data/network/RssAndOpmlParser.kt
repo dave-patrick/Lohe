@@ -478,7 +478,7 @@ class RssAndOpmlParser(
         }
         root.put("bookmarks", bmArr)
 
-        return root.toString(2)
+        return root.toString()
     }
 
     suspend fun fetchPodcastFeed(

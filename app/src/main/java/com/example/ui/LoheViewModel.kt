@@ -1436,7 +1436,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                         if (remoteJson.isNullOrBlank()) {
                             postStatusMessage("No WebDAV sync file found at that URL yet")
                         } else {
-                            val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                            val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                }
                             val banner = mergeResult.summary.toShortBanner("Nextcloud / WebDAV")
                             preferencesRepository.setCloudSyncStatus(
                                 current.cloudSyncAutoBackup,
@@ -1445,7 +1447,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                             postStatusMessage(banner)
                         }
                     } else {
-                        val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                        val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                }
                         webDavSyncClient.uploadBackup(
                             serverUrl = current.webDavServerUrl,
                             username = current.webDavUsername,
@@ -1546,7 +1550,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                     postStatusMessage("${provider.title} sync file is empty — nothing to restore yet")
                     return
                 }
-                val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                }
                 val banner = mergeResult.summary.toShortBanner(provider.title)
                 preferencesRepository.setCloudSyncStatus(
                     settingsState.value.cloudSyncAutoBackup,
@@ -1554,7 +1560,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 postStatusMessage(banner)
             } else {
-                val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                }
                 safDriveSyncClient.writeSyncFile(uri, mergeResult.canonicalJsonPayload)
                     .onSuccess {
                         val banner = mergeResult.summary.toShortBanner(provider.title)
@@ -1649,7 +1657,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                     if (remoteJson.isNullOrBlank()) {
                         postStatusMessage("No Google Drive AppData sync file found yet")
                     } else {
-                        val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                        val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = true)
+                }
                         val banner = mergeResult.summary.toShortBanner("Google Drive")
                         preferencesRepository.setCloudSyncStatus(
                             settingsState.value.cloudSyncAutoBackup,
@@ -1658,7 +1668,9 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                         postStatusMessage(banner)
                     }
                 } else {
-                    val mergeResult = repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                    val mergeResult = withContext(Dispatchers.IO) {
+                    repository.syncWithDriveRemotePayload(remoteJson, pullOnly = false)
+                }
                     proFeatures.uploadBackupToAppData(accessToken, mergeResult.canonicalJsonPayload)
                         .onSuccess {
                             val banner = mergeResult.summary.toShortBanner("Google Drive")

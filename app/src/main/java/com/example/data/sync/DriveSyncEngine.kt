@@ -185,7 +185,19 @@ object DriveSyncEngine {
         journal: DriveSyncLocalJournal,
         nowMs: Long = System.currentTimeMillis()
     ): String {
-        val baseJson = RssAndOpmlParser().exportJsonBackup(podcasts, episodes, playlists, bookmarks)
+        val compactForLargeLibrary = episodes.size > 500
+        val trimmedEpisodes = if (compactForLargeLibrary) {
+            episodes.map { ep ->
+                if (ep.descriptionHtml.isNotEmpty() || ep.transcriptText.isNotEmpty() || ep.chaptersJson.isNotEmpty()) {
+                    ep.copy(descriptionHtml = "", transcriptText = "", chaptersJson = "")
+                } else {
+                    ep
+                }
+            }
+        } else {
+            episodes
+        }
+        val baseJson = RssAndOpmlParser().exportJsonBackup(podcasts, trimmedEpisodes, playlists, bookmarks)
         val root = JSONObject(baseJson)
         val podFeedById = podcasts.associateBy { it.id }
 
@@ -225,7 +237,7 @@ object DriveSyncEngine {
             put("episodeStatusUpdatedAt", mapToJson(journal.episodeStatusUpdatedAt))
         }
         root.put("driveSync", syncObj)
-        return root.toString(2)
+        return root.toString()
     }
 
     fun parseRemoteSyncPayload(rawJson: String): Pair<ParsedLibraryBackup, DriveSyncMetadataEnvelope> {
