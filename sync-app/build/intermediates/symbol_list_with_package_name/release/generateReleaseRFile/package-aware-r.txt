@@ -1,3 +1,0 @@
-com.lohe.sync
-drawable ic_sync_launcher
-string app_name
