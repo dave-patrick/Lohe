@@ -18,3 +18,7 @@
 ## History
 
 - The original hand-built FOSS codebase (Room schema 14, Android Auto, Pocket Casts tools, MCP) is preserved at the `legacy-v0.11.1` tag / commit `2d123a0`. Use it as a reference when porting features into the Play Edition.
+
+## Imported design reference
+
+- `prototypes/ai-studio-play/` is a separate React/Vite AI Studio reference snapshot. Read its `IMPORT_STATUS.md` before using it. Its billing, Android build files, native overlay example and exported context do not establish implemented native capabilities. Build the actual Android app from the repository root; keep the prototype's Gradle/configuration files isolated.

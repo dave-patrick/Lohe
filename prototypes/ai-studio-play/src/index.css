@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --lohe-bg: #121214;
+    --lohe-surface: #1C1C1E;
+    --lohe-surface-raised: #26262A;
+    --lohe-border: #323238;
+    --lohe-text: #F4F4F5;
+    --lohe-text-dim: #E4E4E7;
+    --lohe-text-muted: #A1A1A6;
+    --lohe-accent: #008EFF;
+    --lohe-accent-mid: #00A8FF;
+    --lohe-accent-cyan: #00D2FF;
+  }
+
+  .theme-light {
+    --lohe-bg: #FFFFFF;
+    --lohe-surface: #F5F5F7;
+    --lohe-surface-raised: #EBEBF0;
+    --lohe-border: #D9D9E0;
+    --lohe-text: #121214;
+    --lohe-text-dim: #26262A;
+    --lohe-text-muted: #6E6E73;
+    --lohe-accent: #0077D6;
+    --lohe-accent-mid: #007CBB;
+    --lohe-accent-cyan: #007CBD;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 166, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 166, 0.4);
+}
+
+/* Kani Mascot gentle hovering and wing flight animation */
+@keyframes kaniFloat {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translate(-3px, -5px) rotate(-2.5deg) scale(1.02);
+  }
+  50% {
+    transform: translate(3px, -2px) rotate(2deg) scale(0.99);
+  }
+  75% {
+    transform: translate(1px, -6px) rotate(-1deg) scale(1.01);
+  }
+  100% {
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+}
+
+.animate-kani-hover {
+  animation: kaniFloat 4.2s ease-in-out infinite;
+}
+
+/* Audio Waveform Equalizer Bounce Animations */
+@keyframes eqBounce {
+  0%, 100% {
+    transform: scaleY(0.25);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.eq-bar-1 { animation: eqBounce 0.85s ease-in-out infinite; transform-origin: bottom; }
+.eq-bar-2 { animation: eqBounce 1.15s ease-in-out infinite 0.15s; transform-origin: bottom; }
+.eq-bar-3 { animation: eqBounce 0.75s ease-in-out infinite 0.3s; transform-origin: bottom; }
+.eq-bar-4 { animation: eqBounce 1.05s ease-in-out infinite 0.1s; transform-origin: bottom; }
+.eq-bar-5 { animation: eqBounce 0.9s ease-in-out infinite 0.25s; transform-origin: bottom; }
+.eq-bar-6 { animation: eqBounce 1.25s ease-in-out infinite 0.05s; transform-origin: bottom; }
+.eq-bar-7 { animation: eqBounce 0.8s ease-in-out infinite 0.2s; transform-origin: bottom; }

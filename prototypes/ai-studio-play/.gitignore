@@ -1,0 +1,50 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Kotlin
+.kotlin/
+
+# Android
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Signing material must never be committed
+*.jks
+*.keystore
+*.keystore.base64
+debug.keystore.base64
+*.pem
+*.key
+*.p12
+
+# Node & Web build artifacts
+node_modules/
+dist/
+.aistudio/
+*.zip
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Local scratch
+*.log
+.env
+.env.local
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

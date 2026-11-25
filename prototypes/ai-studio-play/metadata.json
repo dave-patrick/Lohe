@@ -1,0 +1,9 @@
+{
+  "name": "Lohe",
+  "description": "Lohe is a podcast player for listening on your own terms. Discover shows, shape Up Next, and pick up where you left off.",
+  "version": "0.11.1",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ],
+  "permissions": []
+}
