@@ -163,19 +163,19 @@ class V12FeaturesTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_card_sample_pod_1").performClick()
         composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("podcast_settings_button").performClick()
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_notify_switch").assertExists()
         composeTestRule.onNodeWithTag("podcast_custom_audio_card").assertExists()
-        composeTestRule.onNodeWithTag("podcast_detail_list").performScrollToIndex(2)
         composeTestRule.onNodeWithTag("podcast_custom_audio_switch").performClick()
         composeTestRule.waitUntil(timeoutMillis = 3_000) {
             composeTestRule.onAllNodesWithTag("podcast_speed_1.5").fetchSemanticsNodes().isNotEmpty()
         }
-        composeTestRule.onNodeWithTag("podcast_detail_list").performScrollToIndex(2)
-        composeTestRule.onNodeWithTag("podcast_speed_1.5").assertIsDisplayed()
         composeTestRule.onNodeWithTag("podcast_speed_1.5").performClick()
         composeTestRule.waitUntil(timeoutMillis = 3_000) {
             composeTestRule.onAllNodesWithText("Custom 1.5x", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
+        composeTestRule.onNodeWithTag("podcast_settings_close").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_detail_back").performClick()
         composeTestRule.waitUntil(timeoutMillis = 3_000) {

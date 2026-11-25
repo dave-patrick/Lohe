@@ -86,7 +86,11 @@ class ExampleRobolectricTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_detail_screen").assertIsDisplayed()
         composeTestRule.onNodeWithTag("podcast_detail_back").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("podcast_settings_button").performClick()
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_auto_queue_card").assertExists()
+        composeTestRule.onNodeWithTag("podcast_settings_close").performClick()
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("podcast_detail_back").performClick()
         composeTestRule.waitForIdle()
 

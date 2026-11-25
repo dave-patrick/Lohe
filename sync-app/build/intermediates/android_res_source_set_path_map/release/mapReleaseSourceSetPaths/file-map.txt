@@ -1,0 +1,8 @@
+com.lohe.sync.sync-app-pngs-0 C:\repos\Lohe\sync-app\build\generated\res\pngs\release
+com.lohe.sync.sync-app-updated_navigation_xml-1 C:\repos\Lohe\sync-app\build\generated\updated_navigation_xml\release
+com.lohe.sync.sync-app-packageReleaseResources-2 C:\repos\Lohe\sync-app\build\intermediates\incremental\release\packageReleaseResources\merged.dir
+com.lohe.sync.sync-app-packageReleaseResources-3 C:\repos\Lohe\sync-app\build\intermediates\incremental\release\packageReleaseResources\stripped.dir
+com.lohe.sync.sync-app-merged-not-compiled-resources-4 C:\repos\Lohe\sync-app\build\intermediates\merged-not-compiled-resources\release
+com.lohe.sync.sync-app-release-5 C:\repos\Lohe\sync-app\build\intermediates\merged_res\release\mergeReleaseResources
+com.lohe.sync.sync-app-main-6 C:\repos\Lohe\sync-app\src\main\res
+com.lohe.sync.sync-app-release-7 C:\repos\Lohe\sync-app\src\release\res

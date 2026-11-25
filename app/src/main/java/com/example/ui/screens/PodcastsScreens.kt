@@ -31,8 +31,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -63,6 +65,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
@@ -104,6 +107,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.R
 import com.example.data.local.AutoQueueMode
 import com.example.data.local.EpisodeEntity
@@ -1199,6 +1204,7 @@ fun PodcastDetailScreen(
     var activeFilter by remember { mutableStateOf("All") }
     var sortNewestFirst by remember { mutableStateOf(true) }
     var showUnsubscribeConfirm by remember { mutableStateOf(false) }
+    var showPodcastSettingsModal by remember(podcast.id) { mutableStateOf(false) }
     var isMultiSelectMode by remember(podcast.id) { mutableStateOf(false) }
     var selectedEpisodeIds by remember(podcast.id) { mutableStateOf(setOf<String>()) }
     val haptic = LocalHapticFeedback.current
@@ -1407,279 +1413,42 @@ fun PodcastDetailScreen(
                                 Text("Unsubscribe", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            val hasCustomShowSettings = isAutoQueueEnabled ||
+                                podcast.useCustomAudio ||
+                                podcast.skipIntroSec > 0 ||
+                                podcast.skipOutroSec > 0
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (hasCustomShowSettings) LoheElectricBlue.copy(alpha = 0.16f)
+                                        else Color.Transparent
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (hasCustomShowSettings) LoheElectricBlue else borderColor,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { showPodcastSettingsModal = true }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                                    .testTag("podcast_settings_button")
+                            ) {
                                 Icon(
-                                    Icons.Filled.NotificationsActive,
-                                    contentDescription = null,
-                                    tint = if (podcast.notifyNewEpisodes) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Icons.Filled.Tune,
+                                    contentDescription = "Podcast Settings",
+                                    tint = if (hasCustomShowSettings) LoheCyanAccent else LoheBrightBlueText,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("New Ep Alerts", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.width(6.dp))
-                                Switch(
-                                    checked = podcast.notifyNewEpisodes,
-                                    onCheckedChange = onToggleNotifications,
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
-                                    modifier = Modifier.testTag("podcast_notify_switch")
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Auto-Queue Card (matching indicator-podcast-final_dcfc6890.png)
-            item {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = cardBg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-                        .testTag("podcast_auto_queue_card")
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Automatically add to Up Next",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    text = "Show Settings",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (hasCustomShowSettings) LoheCyanAccent else MaterialTheme.colorScheme.onSurface
                                 )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = "Adds existing unplayed episodes now and new episodes on refresh.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Switch(
-                                checked = isAutoQueueEnabled,
-                                onCheckedChange = { enabled ->
-                                    onUpdateAutoQueue(if (enabled) AutoQueueMode.END else AutoQueueMode.OFF)
-                                },
-                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
-                                modifier = Modifier.testTag("auto_queue_switch")
-                            )
-                        }
-
-                        if (isAutoQueueEnabled) {
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = "Add episodes at",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                listOf(AutoQueueMode.BEGINNING, AutoQueueMode.END).forEach { mode ->
-                                    val active = podcast.autoQueueMode == mode.name
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (active) LoheElectricBlue else cardBg)
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (active) LoheElectricBlue else borderColor,
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            .clickable { onUpdateAutoQueue(mode) }
-                                            .padding(horizontal = 18.dp, vertical = 9.dp)
-                                            .testTag("auto_queue_${mode.name.lowercase()}")
-                                    ) {
-                                        Text(
-                                            text = mode.label,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
                             }
                         }
-                    }
-                }
-            }
-
-            // Per-Show Audio Overrides Card (Speed, Skip Silence, Volume Boost)
-            item {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = cardBg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-                        .testTag("podcast_custom_audio_card")
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Show Audio Overrides",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = if (podcast.useCustomAudio) {
-                                        "Custom ${podcast.customSpeed}x • Skip Silence ${if (podcast.customSkipSilence) "ON" else "OFF"} • Boost +${podcast.customVolumeBoostDb}dB"
-                                    } else {
-                                        "Using global Playback Settings (${settings.playbackSpeed}x)"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (podcast.useCustomAudio) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Switch(
-                                checked = podcast.useCustomAudio,
-                                onCheckedChange = { enabled ->
-                                    onUpdateAudioOverrides(
-                                        enabled,
-                                        if (podcast.useCustomAudio) podcast.customSpeed else settings.playbackSpeed,
-                                        if (podcast.useCustomAudio) podcast.customSkipSilence else settings.skipSilenceEnabled,
-                                        if (podcast.useCustomAudio) podcast.customVolumeBoostDb else settings.volumeBoostDb
-                                    )
-                                },
-                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
-                                modifier = Modifier.testTag("podcast_custom_audio_switch")
-                            )
-                        }
-
-                        if (podcast.useCustomAudio) {
-                            Spacer(Modifier.height(10.dp))
-                            com.example.ui.components.VariableSpeedSliderBar(
-                                speed = podcast.customSpeed,
-                                onSpeedChange = { spd ->
-                                    onUpdateAudioOverrides(
-                                        true,
-                                        spd,
-                                        podcast.customSkipSilence,
-                                        podcast.customVolumeBoostDb
-                                    )
-                                },
-                                title = "Show Speed",
-                                keySpeedTagPrefix = "podcast_speed",
-                                onDarkSurface = isDark
-                            )
-
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Trim silence for this show", style = MaterialTheme.typography.bodySmall)
-                                Switch(
-                                    checked = podcast.customSkipSilence,
-                                    onCheckedChange = { skip ->
-                                        onUpdateAudioOverrides(
-                                            true,
-                                            podcast.customSpeed,
-                                            skip,
-                                            podcast.customVolumeBoostDb
-                                        )
-                                    },
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue)
-                                )
-                            }
-
-                            Spacer(Modifier.height(6.dp))
-                            Text("Voice Boost", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
-                            Spacer(Modifier.height(6.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(0 to "Off", 3 to "+3dB", 6 to "+6dB", 10 to "+10dB").forEach { (db, lbl) ->
-                                    val activeBoost = podcast.customVolumeBoostDb == db
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (activeBoost) LoheElectricBlue else cardBg)
-                                            .border(
-                                                1.dp,
-                                                if (activeBoost) LoheElectricBlue else borderColor,
-                                                RoundedCornerShape(10.dp)
-                                            )
-                                            .clickable {
-                                                onUpdateAudioOverrides(
-                                                    true,
-                                                    podcast.customSpeed,
-                                                    podcast.customSkipSilence,
-                                                    db
-                                                )
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                                    ) {
-                                        Text(
-                                            text = lbl,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (activeBoost) Color.White else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Per-show skip of the start (intro) and end (outro) of every episode
-            item {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = cardBg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-                        .testTag("podcast_skip_card")
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "Skip Intro & Outro",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) {
-                                "Skipping first ${podcast.skipIntroSec}s • last ${podcast.skipOutroSec}s of every episode"
-                            } else {
-                                "Jump past recurring intros and trailing credits on every episode"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) LoheCyanAccent
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        SkipSecondsStepper(
-                            label = "Skip from start",
-                            seconds = podcast.skipIntroSec,
-                            tagPrefix = "podcast_skip_intro",
-                            borderColor = borderColor,
-                            onChange = { onUpdateSkips(it, podcast.skipOutroSec) }
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        SkipSecondsStepper(
-                            label = "Skip from end",
-                            seconds = podcast.skipOutroSec,
-                            tagPrefix = "podcast_skip_outro",
-                            borderColor = borderColor,
-                            onChange = { onUpdateSkips(podcast.skipIntroSec, it) }
-                        )
                     }
                 }
             }
@@ -1900,6 +1669,357 @@ fun PodcastDetailScreen(
                     }
                 }
             )
+        }
+    }
+
+    if (showPodcastSettingsModal) {
+        Dialog(
+            onDismissRequest = { showPodcastSettingsModal = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .heightIn(max = 680.dp)
+                    .border(1.dp, borderColor, RoundedCornerShape(24.dp))
+                    .testTag("podcast_settings_modal")
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Show Settings",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = podcast.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = { showPodcastSettingsModal = false },
+                            modifier = Modifier.testTag("podcast_settings_close")
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close Show Settings")
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // New Episode Alerts
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = cardBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, borderColor, RoundedCornerShape(18.dp))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.NotificationsActive,
+                                        contentDescription = null,
+                                        tint = if (podcast.notifyNewEpisodes) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "New Episode Alerts",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = "Notify when new episodes are published.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Switch(
+                                    checked = podcast.notifyNewEpisodes,
+                                    onCheckedChange = onToggleNotifications,
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
+                                    modifier = Modifier.testTag("podcast_notify_switch")
+                                )
+                            }
+                        }
+
+                        // Auto-Queue Card
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = cardBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, borderColor, RoundedCornerShape(18.dp))
+                                .testTag("podcast_auto_queue_card")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Automatically add to Up Next",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = "Adds existing unplayed episodes now and new episodes on refresh.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(
+                                        checked = isAutoQueueEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onUpdateAutoQueue(if (enabled) AutoQueueMode.END else AutoQueueMode.OFF)
+                                        },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
+                                        modifier = Modifier.testTag("auto_queue_switch")
+                                    )
+                                }
+
+                                if (isAutoQueueEnabled) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Text(
+                                        text = "Add episodes at",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        listOf(AutoQueueMode.BEGINNING, AutoQueueMode.END).forEach { mode ->
+                                            val active = podcast.autoQueueMode == mode.name
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(if (active) LoheElectricBlue else cardBg)
+                                                    .border(
+                                                        width = 1.dp,
+                                                        color = if (active) LoheElectricBlue else borderColor,
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    )
+                                                    .clickable { onUpdateAutoQueue(mode) }
+                                                    .padding(horizontal = 18.dp, vertical = 9.dp)
+                                                    .testTag("auto_queue_${mode.name.lowercase()}")
+                                            ) {
+                                                Text(
+                                                    text = mode.label,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Per-Show Audio Overrides Card
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = cardBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, borderColor, RoundedCornerShape(18.dp))
+                                .testTag("podcast_custom_audio_card")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Show Audio Overrides",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = if (podcast.useCustomAudio) {
+                                                "Custom ${podcast.customSpeed}x • Skip Silence ${if (podcast.customSkipSilence) "ON" else "OFF"} • Boost +${podcast.customVolumeBoostDb}dB"
+                                            } else {
+                                                "Using global Playback Settings (${settings.playbackSpeed}x)"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (podcast.useCustomAudio) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(
+                                        checked = podcast.useCustomAudio,
+                                        onCheckedChange = { enabled ->
+                                            onUpdateAudioOverrides(
+                                                enabled,
+                                                if (podcast.useCustomAudio) podcast.customSpeed else settings.playbackSpeed,
+                                                if (podcast.useCustomAudio) podcast.customSkipSilence else settings.skipSilenceEnabled,
+                                                if (podcast.useCustomAudio) podcast.customVolumeBoostDb else settings.volumeBoostDb
+                                            )
+                                        },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue),
+                                        modifier = Modifier.testTag("podcast_custom_audio_switch")
+                                    )
+                                }
+
+                                if (podcast.useCustomAudio) {
+                                    Spacer(Modifier.height(10.dp))
+                                    com.example.ui.components.VariableSpeedSliderBar(
+                                        speed = podcast.customSpeed,
+                                        onSpeedChange = { spd ->
+                                            onUpdateAudioOverrides(
+                                                true,
+                                                spd,
+                                                podcast.customSkipSilence,
+                                                podcast.customVolumeBoostDb
+                                            )
+                                        },
+                                        title = "Show Speed",
+                                        keySpeedTagPrefix = "podcast_speed",
+                                        onDarkSurface = isDark
+                                    )
+
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Trim silence for this show", style = MaterialTheme.typography.bodySmall)
+                                        Switch(
+                                            checked = podcast.customSkipSilence,
+                                            onCheckedChange = { skip ->
+                                                onUpdateAudioOverrides(
+                                                    true,
+                                                    podcast.customSpeed,
+                                                    skip,
+                                                    podcast.customVolumeBoostDb
+                                                )
+                                            },
+                                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = LoheElectricBlue)
+                                        )
+                                    }
+
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Voice Boost", style = MaterialTheme.typography.labelMedium, color = LoheCyanAccent)
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf(0 to "Off", 3 to "+3dB", 6 to "+6dB", 10 to "+10dB").forEach { (db, lbl) ->
+                                            val activeBoost = podcast.customVolumeBoostDb == db
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(if (activeBoost) LoheElectricBlue else cardBg)
+                                                    .border(
+                                                        1.dp,
+                                                        if (activeBoost) LoheElectricBlue else borderColor,
+                                                        RoundedCornerShape(10.dp)
+                                                    )
+                                                    .clickable {
+                                                        onUpdateAudioOverrides(
+                                                            true,
+                                                            podcast.customSpeed,
+                                                            podcast.customSkipSilence,
+                                                            db
+                                                        )
+                                                    }
+                                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                                            ) {
+                                                Text(
+                                                    text = lbl,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (activeBoost) Color.White else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Skip Intro & Outro Card
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = cardBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, borderColor, RoundedCornerShape(18.dp))
+                                .testTag("podcast_skip_card")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "Skip Intro & Outro",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) {
+                                        "Skipping first ${podcast.skipIntroSec}s • last ${podcast.skipOutroSec}s of every episode"
+                                    } else {
+                                        "Jump past recurring intros and trailing credits on every episode"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) LoheCyanAccent
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                SkipSecondsStepper(
+                                    label = "Skip from start",
+                                    seconds = podcast.skipIntroSec,
+                                    tagPrefix = "podcast_skip_intro",
+                                    borderColor = borderColor,
+                                    onChange = { onUpdateSkips(it, podcast.skipOutroSec) }
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                SkipSecondsStepper(
+                                    label = "Skip from end",
+                                    seconds = podcast.skipOutroSec,
+                                    tagPrefix = "podcast_skip_outro",
+                                    borderColor = borderColor,
+                                    onChange = { onUpdateSkips(podcast.skipIntroSec, it) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
