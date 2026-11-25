@@ -34,6 +34,10 @@ Manage downloads
 
 Save episodes before you go and choose your archive and downloaded-copy retention settings. Open episode notes from playlists without starting playback.
 
+Lohe Pro (optional one-time purchase)
+
+Everything above is free. Lohe Pro is a single one-time purchase, with no subscription, that adds custom RSS feed URLs, Pro Home insight cards, a floating draggable mini-player, extra Up Next indicator styles, custom hex colours and cloud sync (Google Drive, Nextcloud/WebDAV and more).
+
 No Lohe account is required. Lohe includes no advertising or analytics SDK. Podcast publishers may include ads in their audio. Catalog search and podcast requests connect to third-party services; some feeds use unencrypted HTTP. See the privacy policy for details.
 
 Support: atomic22industries@gmail.com

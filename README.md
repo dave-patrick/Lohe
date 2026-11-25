@@ -35,7 +35,7 @@ Download `Lohe-0.11.1-build-2026.08.11.80-release.apk` from the [latest GitHub r
 
 ## Free, open source, and Lohe Pro
 
-This repository is the free, open-source edition of Lohe. It has every free feature of the Google Play version. The optional Lohe Pro subscription on Google Play adds the floating player, extra Up Next indicator styles, custom colours and Google Drive sync; those parts are not in this repository.
+This repository is the free, open-source edition of Lohe. It has every free feature of the Google Play version. The optional one-time Lohe Pro purchase on Google Play adds the floating player, extra Up Next indicator styles, custom colours and Google Drive sync; those parts are not in this repository.
 
 The app code here is exported automatically from the main Lohe codebase by `tools/foss-export`. Please open issues here; code changes to `app/` are made upstream and arrive through the export.
 
