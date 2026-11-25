@@ -144,7 +144,12 @@ fun UpNextTabScreen(
     val pinnedNowPlayingId = remember(visibleUpNext, nowPlayingId) {
         if (nowPlayingId != null && visibleUpNext.firstOrNull()?.id == nowPlayingId) nowPlayingId else null
     }
-    val minReorderIndex = if (pinnedNowPlayingId != null) 1 else 0
+    val pinnedNowPlayingEpisode = remember(visibleUpNext, pinnedNowPlayingId) {
+        if (pinnedNowPlayingId != null) visibleUpNext.firstOrNull { it.id == pinnedNowPlayingId } else null
+    }
+    val scrollableVisibleUpNext = remember(visibleUpNext, pinnedNowPlayingId) {
+        if (pinnedNowPlayingId != null) visibleUpNext.filter { it.id != pinnedNowPlayingId } else visibleUpNext
+    }
     val remainingMs = remember(visibleUpNext) {
         visibleUpNext.sumOf { (it.durationMs - it.resumePositionMs).coerceAtLeast(0L) }
     }
@@ -153,7 +158,7 @@ fun UpNextTabScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedEpisodeIds by remember { mutableStateOf(setOf<String>()) }
-    var localQueue by remember { mutableStateOf(visibleUpNext) }
+    var localQueue by remember { mutableStateOf(scrollableVisibleUpNext) }
     var pendingCommittedIds by remember { mutableStateOf<List<String>?>(null) }
     var draggingEpisodeId by remember { mutableStateOf<String?>(null) }
     var dragStartFingerScreenY by remember { mutableFloatStateOf(0f) }
@@ -163,19 +168,20 @@ fun UpNextTabScreen(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val latestOnReorderQueue by rememberUpdatedState(onReorderQueue)
-    val latestVisibleUpNext by rememberUpdatedState(visibleUpNext)
+    val latestScrollableUpNext by rememberUpdatedState(scrollableVisibleUpNext)
+    val latestPinnedNowPlayingId by rememberUpdatedState(pinnedNowPlayingId)
 
-    LaunchedEffect(visibleUpNext, draggingEpisodeId) {
+    LaunchedEffect(scrollableVisibleUpNext, draggingEpisodeId) {
         if (draggingEpisodeId != null) return@LaunchedEffect
         val committed = pendingCommittedIds
         if (committed != null) {
-            val incomingIds = visibleUpNext.map { it.id }
+            val incomingIds = scrollableVisibleUpNext.map { it.id }
             if (incomingIds == committed || incomingIds.toSet() != committed.toSet()) {
                 pendingCommittedIds = null
-                localQueue = visibleUpNext
+                localQueue = scrollableVisibleUpNext
             }
         } else {
-            localQueue = visibleUpNext
+            localQueue = scrollableVisibleUpNext
         }
     }
 
@@ -184,25 +190,23 @@ fun UpNextTabScreen(
             delay(750)
             pendingCommittedIds = null
             if (draggingEpisodeId == null) {
-                localQueue = latestVisibleUpNext
+                localQueue = latestScrollableUpNext
             }
         }
     }
 
     fun applyDragSwaps(activeId: String) {
-        if (activeId == pinnedNowPlayingId) return
         val layoutInfo = lazyListState.layoutInfo
         val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == activeId } ?: return
         val currentIdx = localQueue.indexOfFirst { it.id == activeId }
-        if (currentIdx !in minReorderIndex..localQueue.lastIndex) return
+        if (currentIdx !in localQueue.indices) return
 
         val targetTop = dragStartItemOffset + (dragCurrentFingerScreenY - dragStartFingerScreenY)
         val targetCenterY = targetTop + draggedInfo.size * 0.5f
 
         val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { other ->
             other.key != activeId &&
-                other.key != pinnedNowPlayingId &&
-                other.index in minReorderIndex..localQueue.lastIndex &&
+                other.index in localQueue.indices &&
                 if (other.index < currentIdx) {
                     targetCenterY < other.offset + other.size * 0.48f
                 } else {
@@ -210,7 +214,7 @@ fun UpNextTabScreen(
                 }
         } ?: return
 
-        val targetIdx = targetInfo.index.coerceIn(minReorderIndex, localQueue.lastIndex)
+        val targetIdx = targetInfo.index.coerceIn(0, localQueue.lastIndex)
         if (targetIdx == currentIdx) return
 
         val savedFirstIndex = lazyListState.firstVisibleItemIndex
@@ -421,9 +425,160 @@ fun UpNextTabScreen(
                 }
             }
         } else {
+            if (pinnedNowPlayingEpisode != null) {
+                val pinnedEp = pinnedNowPlayingEpisode
+                val isPinnedPlaying = playbackState.isPlaying
+                val isPinnedSelected = pinnedEp.id in activeSelectedIds
+                Spacer(Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isPinnedSelected) LoheElectricBlue.copy(alpha = if (isDark) 0.16f else 0.10f) else cardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.5.dp,
+                            color = LoheElectricBlue,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .combinedClickable(
+                            onClick = {
+                                if (isMultiSelectMode) {
+                                    selectedEpisodeIds = if (isPinnedSelected) {
+                                        selectedEpisodeIds - pinnedEp.id
+                                    } else {
+                                        selectedEpisodeIds + pinnedEp.id
+                                    }
+                                } else {
+                                    onOpenNotes(pinnedEp)
+                                }
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                actionTargetId = null
+                                isMultiSelectMode = true
+                                selectedEpisodeIds = selectedEpisodeIds + pinnedEp.id
+                            }
+                        )
+                        .testTag("up_next_item_${pinnedEp.id}")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isMultiSelectMode) {
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isPinnedSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                    contentDescription = if (isPinnedSelected) "Selected" else "Not selected",
+                                    tint = if (isPinnedSelected) LoheElectricBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .testTag("up_next_select_icon_${pinnedEp.id}")
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("up_next_pinned_${pinnedEp.id}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PushPin,
+                                    contentDescription = "Pinned Now Playing",
+                                    tint = LoheCyanAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        PodcastArtworkThumbnail(
+                            artworkUrl = pinnedEp.artworkUrl,
+                            title = pinnedEp.podcastTitle,
+                            cornerRadius = 10.dp,
+                            modifier = Modifier.size(56.dp)
+                        )
+
+                        Spacer(Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                QueueIndicatorBadge(settings = settings, queuePosition = 1)
+                                Text(
+                                    text = pinnedEp.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(SpanStyle(color = LoheCyanAccent, fontWeight = FontWeight.SemiBold)) {
+                                        append(if (isPinnedPlaying) "Now Playing • " else "Paused • ")
+                                    }
+                                    withStyle(SpanStyle(color = LoheBrightBlueText, fontWeight = FontWeight.SemiBold)) {
+                                        append(formatDurationCompactHuman(pinnedEp.durationMs))
+                                    }
+                                    append(" • ${pinnedEp.podcastTitle}")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (pinnedEp.durationMs > 0L && pinnedEp.resumePositionMs > 0L) {
+                                Spacer(Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { (pinnedEp.resumePositionMs.toFloat() / pinnedEp.durationMs.toFloat()).coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(2.5.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = LoheElectricBlue
+                                )
+                            }
+                        }
+
+                        if (!isMultiSelectMode) {
+                            IconButton(
+                                onClick = { onMarkPlayed(pinnedEp, true) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Mark Played",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onPlayEpisode(pinnedEp) },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPinnedPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (isPinnedPlaying) "Pause" else "Play",
+                                    tint = LoheElectricBlue
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             LazyColumn(
                 state = lazyListState,
-                contentPadding = PaddingValues(bottom = if (isMultiSelectMode) 12.dp else 24.dp, top = 4.dp),
+                contentPadding = PaddingValues(bottom = if (isMultiSelectMode) 12.dp else 24.dp, top = if (pinnedNowPlayingEpisode != null) 0.dp else 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .weight(1f)
@@ -431,8 +586,8 @@ fun UpNextTabScreen(
             ) {
                 itemsIndexed(localQueue, key = { _, ep -> ep.id }) { idx, ep ->
                     val isPlayingEp = playbackState.currentEpisode?.id == ep.id && playbackState.isPlaying
-                    val isPinnedNowPlaying = pinnedNowPlayingId == ep.id
                     val isExpanded = !isMultiSelectMode && actionTargetId == ep.id
+                    val displayQueuePos = idx + if (pinnedNowPlayingEpisode != null) 2 else 1
                     val isSelected = ep.id in activeSelectedIds
                     val isDragging = draggingEpisodeId == ep.id
                     val liftScale by animateFloatAsState(
@@ -477,23 +632,22 @@ fun UpNextTabScreen(
                             episode = ep,
                             onMoveToTop = {
                                 actionTargetId = null
-                                if (isPinnedNowPlaying) return@SwipeableUpNextRow
                                 if (pinnedNowPlayingId != null) {
                                     val reordered = localQueue.toMutableList().apply {
                                         val cur = indexOfFirst { it.id == ep.id }
-                                        if (cur > 1) add(1, removeAt(cur))
+                                        if (cur > 0) add(0, removeAt(cur))
                                     }
                                     val ids = reordered.map { it.id }
                                     localQueue = reordered
                                     pendingCommittedIds = ids
-                                    latestOnReorderQueue(ids)
+                                    latestOnReorderQueue(listOfNotNull(latestPinnedNowPlayingId) + ids)
                                 } else {
                                     onMoveEpisodeEdge(ep, true)
                                 }
                             },
                             onMoveToBottom = {
                                 actionTargetId = null
-                                if (!isPinnedNowPlaying) onMoveEpisodeEdge(ep, false)
+                                onMoveEpisodeEdge(ep, false)
                             },
                             onMarkPlayed = {
                                 actionTargetId = null
@@ -559,20 +713,6 @@ fun UpNextTabScreen(
                                                         .testTag("up_next_select_icon_${ep.id}")
                                                 )
                                             }
-                                        } else if (isPinnedNowPlaying) {
-                                            IconButton(
-                                                onClick = { actionTargetId = if (isExpanded) null else ep.id },
-                                                modifier = Modifier
-                                                    .size(36.dp)
-                                                    .testTag("up_next_pinned_${ep.id}")
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.PushPin,
-                                                    contentDescription = "Pinned Now Playing",
-                                                    tint = LoheCyanAccent,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
                                         } else {
                                             var handleCoords by remember(ep.id) { mutableStateOf<LayoutCoordinates?>(null) }
                                             IconButton(
@@ -594,20 +734,20 @@ fun UpNextTabScreen(
                                                             },
                                                             onDragEnd = {
                                                                 val finalIds = localQueue.map { it.id }
-                                                                val originalIds = latestVisibleUpNext.map { it.id }
+                                                                val originalIds = latestScrollableUpNext.map { it.id }
                                                                 draggingEpisodeId = null
                                                                 if (finalIds != originalIds) {
                                                                     pendingCommittedIds = finalIds
-                                                                    latestOnReorderQueue(finalIds)
+                                                                    latestOnReorderQueue(listOfNotNull(latestPinnedNowPlayingId) + finalIds)
                                                                 }
                                                             },
                                                             onDragCancel = {
                                                                 val finalIds = localQueue.map { it.id }
-                                                                val originalIds = latestVisibleUpNext.map { it.id }
+                                                                val originalIds = latestScrollableUpNext.map { it.id }
                                                                 draggingEpisodeId = null
                                                                 if (finalIds != originalIds) {
                                                                     pendingCommittedIds = finalIds
-                                                                    latestOnReorderQueue(finalIds)
+                                                                    latestOnReorderQueue(listOfNotNull(latestPinnedNowPlayingId) + finalIds)
                                                                 }
                                                             },
                                                             onDrag = { change, _ ->
@@ -644,7 +784,7 @@ fun UpNextTabScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        QueueIndicatorBadge(settings = settings, queuePosition = idx + 1)
+                                        QueueIndicatorBadge(settings = settings, queuePosition = displayQueuePos)
                                         Text(
                                             text = ep.title,
                                             style = MaterialTheme.typography.titleSmall,
@@ -722,29 +862,29 @@ fun UpNextTabScreen(
                                         actionTargetId = null
                                         onOpenNotes(ep)
                                     }
-                                    QueueStripAction("Top", Icons.Filled.KeyboardDoubleArrowUp, LoheBrightBlueText, enabled = !isPinnedNowPlaying && idx > minReorderIndex) {
+                                    QueueStripAction("Top", Icons.Filled.KeyboardDoubleArrowUp, LoheBrightBlueText, enabled = idx > 0) {
                                         if (pinnedNowPlayingId != null) {
                                             val reordered = localQueue.toMutableList().apply {
                                                 val cur = indexOfFirst { it.id == ep.id }
-                                                if (cur > 1) add(1, removeAt(cur))
+                                                if (cur > 0) add(0, removeAt(cur))
                                             }
                                             val ids = reordered.map { it.id }
                                             localQueue = reordered
                                             pendingCommittedIds = ids
-                                            latestOnReorderQueue(ids)
+                                            latestOnReorderQueue(listOfNotNull(latestPinnedNowPlayingId) + ids)
                                         } else {
                                             onMoveEpisodeEdge(ep, true)
                                         }
                                         actionTargetId = null
                                     }
-                                    QueueStripAction("End", Icons.Filled.KeyboardDoubleArrowDown, LoheBrightBlueText, enabled = !isPinnedNowPlaying && idx < localQueue.lastIndex) {
+                                    QueueStripAction("End", Icons.Filled.KeyboardDoubleArrowDown, LoheBrightBlueText, enabled = idx < localQueue.lastIndex) {
                                         onMoveEpisodeEdge(ep, false)
                                         actionTargetId = null
                                     }
-                                    QueueStripAction("Up", Icons.Filled.ArrowUpward, LoheCyanAccent, enabled = !isPinnedNowPlaying && idx > minReorderIndex) {
+                                    QueueStripAction("Up", Icons.Filled.ArrowUpward, LoheCyanAccent, enabled = idx > 0) {
                                         onMoveEpisode(ep, true)
                                     }
-                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = !isPinnedNowPlaying && idx < localQueue.lastIndex) {
+                                    QueueStripAction("Down", Icons.Filled.ArrowDownward, LoheCyanAccent, enabled = idx < localQueue.lastIndex) {
                                         onMoveEpisode(ep, false)
                                     }
                                     QueueStripAction("Played", Icons.Filled.Check, LoheBrightBlueText) {
