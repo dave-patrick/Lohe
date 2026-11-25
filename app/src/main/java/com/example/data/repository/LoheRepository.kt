@@ -906,6 +906,15 @@ class LoheRepository(
         recordPodcastMutation(updated)
     }
 
+    suspend fun updatePodcastSkips(podcast: PodcastEntity, introSec: Int, outroSec: Int) {
+        val updated = podcast.copy(
+            skipIntroSec = introSec.coerceIn(0, 600),
+            skipOutroSec = outroSec.coerceIn(0, 600)
+        )
+        dao.updatePodcast(updated)
+        recordPodcastMutation(updated)
+    }
+
     suspend fun updatePodcastNotifications(podcast: PodcastEntity, notify: Boolean) {
         val updated = podcast.copy(notifyNewEpisodes = notify)
         dao.updatePodcast(updated)

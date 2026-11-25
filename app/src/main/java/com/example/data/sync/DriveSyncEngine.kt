@@ -391,6 +391,8 @@ object DriveSyncEngine {
                     customSpeed = if (remoteConfigNewer) remotePod.customSpeed else localPod.customSpeed,
                     customSkipSilence = if (remoteConfigNewer) remotePod.customSkipSilence else localPod.customSkipSilence,
                     customVolumeBoostDb = if (remoteConfigNewer) remotePod.customVolumeBoostDb else localPod.customVolumeBoostDb,
+                    skipIntroSec = if (remoteConfigNewer) remotePod.skipIntroSec else localPod.skipIntroSec,
+                    skipOutroSec = if (remoteConfigNewer) remotePod.skipOutroSec else localPod.skipOutroSec,
                     notifyNewEpisodes = if (remoteConfigNewer) remotePod.notifyNewEpisodes else localPod.notifyNewEpisodes,
                     isSubscribed = resolvedSubscribed,
                     lastSyncedAt = maxOf(localPod.lastSyncedAt, remotePod.lastSyncedAt)

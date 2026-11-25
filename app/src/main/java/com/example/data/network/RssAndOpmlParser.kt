@@ -300,6 +300,8 @@ class RssAndOpmlParser(
                     customSpeed = obj.optDouble("customSpeed", 1.0).toFloat(),
                     customSkipSilence = obj.optBoolean("customSkipSilence", false),
                     customVolumeBoostDb = obj.optInt("customVolumeBoostDb", 0),
+                    skipIntroSec = obj.optInt("skipIntroSec", 0).coerceIn(0, 600),
+                    skipOutroSec = obj.optInt("skipOutroSec", 0).coerceIn(0, 600),
                     notifyNewEpisodes = obj.optBoolean("notifyNewEpisodes", true),
                     isSubscribed = obj.optBoolean("isSubscribed", true)
                 )
@@ -407,6 +409,8 @@ class RssAndOpmlParser(
                         put("customSpeed", p.customSpeed.toDouble())
                         put("customSkipSilence", p.customSkipSilence)
                         put("customVolumeBoostDb", p.customVolumeBoostDb)
+                        put("skipIntroSec", p.skipIntroSec)
+                        put("skipOutroSec", p.skipOutroSec)
                         put("notifyNewEpisodes", p.notifyNewEpisodes)
                         put("isSubscribed", p.isSubscribed)
                     }

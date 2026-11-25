@@ -108,7 +108,7 @@ class LoheDatabaseMigrationTest {
 
         // 2. Open the v5 database with Room at v6 using MIGRATION_5_6 (and no destructive migration)
         val roomDb = Room.databaseBuilder(context, LoheDatabase::class.java, dbName)
-            .addMigrations(LoheDatabase.MIGRATION_5_6)
+            .addMigrations(LoheDatabase.MIGRATION_5_6, LoheDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
@@ -132,6 +132,8 @@ class LoheDatabaseMigrationTest {
             assertTrue(migratedEpisode?.isStarred == true)
             assertEquals("", migratedEpisode?.guid)
             assertEquals(0L, migratedEpisode?.playedAt)
+            assertEquals(0, migratedPodcast?.skipIntroSec)
+            assertEquals(0, migratedPodcast?.skipOutroSec)
         } finally {
             roomDb.close()
             dbFile.delete()

@@ -1072,6 +1072,18 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setPodcastSkips(podcast: PodcastEntity, introSec: Int, outroSec: Int) {
+        viewModelScope.launch {
+            repository.updatePodcastSkips(podcast, introSec, outroSec)
+            if (playbackState.value.currentEpisode?.podcastId == podcast.id) {
+                LohePlaybackService.activeServiceFlow.value?.setActiveSkips(
+                    introSec.coerceIn(0, 600) * 1000L,
+                    outroSec.coerceIn(0, 600) * 1000L
+                )
+            }
+        }
+    }
+
     fun unsubscribePodcast(podcastId: String) {
         viewModelScope.launch {
             repository.unsubscribePodcast(podcastId)
@@ -1275,6 +1287,10 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
                 isProUnlocked = settingsState.value.isProUnlocked
             )
         }
+    }
+
+    fun moveHomeCard(card: HomeCardType, delta: Int) {
+        viewModelScope.launch { preferencesRepository.moveHomeCard(card, delta) }
     }
 
     fun resetHomeCardsToDefault() {

@@ -130,6 +130,16 @@ class LohePlaybackService : MediaLibraryService() {
     private var sessionPlayer: LoheAutoForwardingPlayer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var currentBoostDb: Int = 0
+
+    /** Per-podcast skip of the first / last N milliseconds of every episode (0 = off). */
+    private var currentIntroMs: Long = 0L
+    private var currentOutroMs: Long = 0L
+    private var outroHandledId: String? = null
+
+    fun setActiveSkips(introMs: Long, outroMs: Long) {
+        currentIntroMs = introMs.coerceAtLeast(0L)
+        currentOutroMs = outroMs.coerceAtLeast(0L)
+    }
     private var progressPersistJob: Job? = null
 
     @Volatile
@@ -825,11 +835,36 @@ class LohePlaybackService : MediaLibraryService() {
     private fun startServiceProgressPersistence(player: ExoPlayer) {
         progressPersistJob?.cancel()
         progressPersistJob = serviceScope.launch {
+            var tick = 0
             while (isActive && player.isPlaying) {
-                persistCurrentPlayerProgress(player)
-                delay(2000L)
+                if (tick % 4 == 0) persistCurrentPlayerProgress(player)
+                maybeSkipOutro(player)
+                tick++
+                delay(500L)
             }
         }
+    }
+
+    /** Ends the episode early once playback reaches the podcast's "skip last N seconds" point. */
+    private fun maybeSkipOutro(player: ExoPlayer) {
+        val outroMs = currentOutroMs
+        if (outroMs <= 0L) return
+        val mediaId = player.currentMediaItem?.mediaId.orEmpty()
+        if (mediaId.isBlank() || outroHandledId == mediaId) return
+        val dur = player.duration
+        if (dur == C.TIME_UNSET || dur <= currentIntroMs + outroMs) return
+        if (player.currentPosition < dur - outroMs) return
+        outroHandledId = mediaId
+        cacheResumePositionMs(mediaId, 0L)
+        serviceScope.launch {
+            if (markPlayedWhenFinished) {
+                loheDao.markEpisodePlayed(mediaId, true)
+            }
+            if (autoArchivePolicy == "IMMEDIATELY") {
+                loheDao.archiveAllPlayedNonStarred()
+            }
+        }
+        player.seekTo(dur)
     }
 
     private fun persistCurrentPlayerProgress(player: ExoPlayer) {
@@ -858,6 +893,17 @@ class LohePlaybackService : MediaLibraryService() {
     private suspend fun applyEffectiveAudioForEpisodeId(episodeId: String, player: ExoPlayer) {
         val ep = loheDao.getEpisodeById(episodeId) ?: return
         val pod = loheDao.getPodcastById(ep.podcastId)
+        currentIntroMs = (pod?.skipIntroSec ?: 0) * 1000L
+        currentOutroMs = (pod?.skipOutroSec ?: 0) * 1000L
+        outroHandledId = null
+        if (currentIntroMs > 0L && player.currentMediaItem?.mediaId == episodeId &&
+            player.currentPosition < currentIntroMs
+        ) {
+            val dur = player.duration
+            if (dur == C.TIME_UNSET || dur > currentIntroMs + currentOutroMs) {
+                player.seekTo(currentIntroMs)
+            }
+        }
         if (pod?.useCustomAudio == true) {
             player.playbackParameters = PlaybackParameters(pod.customSpeed.coerceIn(0.5f, 3.0f))
             player.skipSilenceEnabled = pod.customSkipSilence

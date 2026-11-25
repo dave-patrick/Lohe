@@ -87,6 +87,12 @@ enum class HomeCardType(
     val isPro: Boolean = false,
     val defaultEnabled: Boolean = false
 ) {
+    CONTINUE_LISTENING(
+        title = "Continue Listening",
+        description = "Resume card for the episode you were last in the middle of",
+        isPro = false,
+        defaultEnabled = true
+    ),
     YOUR_SIGNAL(
         title = "Your Signal",
         description = "Played ratio gauge, time played, time saved & remaining backlog",
@@ -123,12 +129,6 @@ enum class HomeCardType(
         isPro = true,
         defaultEnabled = false
     ),
-    CONTINUE_LISTENING(
-        title = "Continue Listening",
-        description = "Resume list of episodes currently in progress",
-        isPro = false,
-        defaultEnabled = false
-    ),
     RECENT_EPISODES(
         title = "Recent Dispatches",
         description = "Latest episodes published across your subscribed shows",
@@ -139,6 +139,16 @@ enum class HomeCardType(
     companion object {
         fun defaultEnabledFor(isProUnlocked: Boolean): Set<HomeCardType> =
             entries.filter { it.defaultEnabled && (!it.isPro || isProUnlocked) }.toSet()
+
+        /** Saved order first; any card missing from the saved list (e.g. added later) follows in default order. */
+        fun orderFromCsv(csv: String?): List<HomeCardType> {
+            val saved = csv.orEmpty().split(",")
+                .mapNotNull { token -> entries.firstOrNull { it.name == token.trim() } }
+                .distinct()
+            return saved + entries.filter { it !in saved }
+        }
+
+        fun orderToCsv(order: List<HomeCardType>): String = order.joinToString(",") { it.name }
 
         fun fromCsv(csv: String?, isProUnlocked: Boolean): Set<HomeCardType> {
             if (csv == null) return defaultEnabledFor(isProUnlocked)
@@ -283,6 +293,7 @@ data class LoheUserSettings(
     val autoDeletePlayedPolicy: String = "AFTER_24H", // NEVER, IMMEDIATELY, AFTER_24H, AFTER_7D
     val maxCacheSizeMb: Int = 1024, // 0 = Unlimited, 500, 1024, 2048
     val enabledHomeCards: Set<HomeCardType> = HomeCardType.defaultEnabledFor(isProUnlocked = false),
+    val homeCardOrder: List<HomeCardType> = HomeCardType.entries.toList(),
     val listeningHistoryRange: ListeningHistoryRange = ListeningHistoryRange.DAYS_14,
     val swipeRightAction: EpisodeSwipeAction = EpisodeSwipeAction.UP_NEXT_CHOOSE,
     val swipeLeftAction: EpisodeSwipeAction = EpisodeSwipeAction.MARK_PLAYED,
@@ -346,6 +357,7 @@ class LohePreferencesRepository(private val context: Context) {
         val AUTO_DELETE_PLAYED = stringPreferencesKey("auto_delete_played_policy")
         val MAX_CACHE_MB = intPreferencesKey("max_cache_size_mb")
         val HOME_CARDS_CSV = stringPreferencesKey("enabled_home_cards_csv")
+        val HOME_CARD_ORDER_CSV = stringPreferencesKey("home_card_order_csv")
         val LISTENING_HISTORY_DAYS = intPreferencesKey("listening_history_days")
         val SWIPE_RIGHT_ACTION = stringPreferencesKey("swipe_right_action")
         val SWIPE_LEFT_ACTION = stringPreferencesKey("swipe_left_action")
@@ -433,6 +445,7 @@ class LohePreferencesRepository(private val context: Context) {
             autoDeletePlayedPolicy = prefs[Keys.AUTO_DELETE_PLAYED] ?: "AFTER_24H",
             maxCacheSizeMb = prefs[Keys.MAX_CACHE_MB] ?: 1024,
             enabledHomeCards = HomeCardType.fromCsv(prefs[Keys.HOME_CARDS_CSV], isPro),
+            homeCardOrder = HomeCardType.orderFromCsv(prefs[Keys.HOME_CARD_ORDER_CSV]),
             listeningHistoryRange = ListeningHistoryRange.fromDays(prefs[Keys.LISTENING_HISTORY_DAYS] ?: 14),
             swipeRightAction = EpisodeSwipeAction.fromName(prefs[Keys.SWIPE_RIGHT_ACTION], EpisodeSwipeAction.UP_NEXT_CHOOSE),
             swipeLeftAction = EpisodeSwipeAction.fromName(prefs[Keys.SWIPE_LEFT_ACTION], EpisodeSwipeAction.MARK_PLAYED),
@@ -679,9 +692,21 @@ class LohePreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun moveHomeCard(card: HomeCardType, delta: Int) {
+        context.loheDataStore.edit { prefs ->
+            val order = HomeCardType.orderFromCsv(prefs[Keys.HOME_CARD_ORDER_CSV]).toMutableList()
+            val from = order.indexOf(card)
+            val to = (from + delta).coerceIn(0, order.lastIndex)
+            if (from < 0 || from == to) return@edit
+            order.add(to, order.removeAt(from))
+            prefs[Keys.HOME_CARD_ORDER_CSV] = HomeCardType.orderToCsv(order)
+        }
+    }
+
     suspend fun resetHomeCardsToDefault() {
         context.loheDataStore.edit { prefs ->
             prefs.remove(Keys.HOME_CARDS_CSV)
+            prefs.remove(Keys.HOME_CARD_ORDER_CSV)
         }
     }
 

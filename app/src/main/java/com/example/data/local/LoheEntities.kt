@@ -60,6 +60,8 @@ data class PodcastEntity(
     val customSpeed: Float = 1.0f,
     val customSkipSilence: Boolean = false,
     val customVolumeBoostDb: Int = 0,
+    val skipIntroSec: Int = 0,
+    val skipOutroSec: Int = 0,
     val notifyNewEpisodes: Boolean = true,
     val isSubscribed: Boolean = true,
     val lastSyncedAt: Long = System.currentTimeMillis()

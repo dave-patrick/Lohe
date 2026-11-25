@@ -161,7 +161,7 @@ interface LoheDao {
         PlaylistEntity::class,
         EpisodeBookmarkEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class LoheDatabase : RoomDatabase() {
@@ -178,6 +178,13 @@ abstract class LoheDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN skipIntroSec INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN skipOutroSec INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): LoheDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -185,7 +192,7 @@ abstract class LoheDatabase : RoomDatabase() {
                     LoheDatabase::class.java,
                     "lohe_preview.db"
                 )
-                    .addMigrations(MIGRATION_5_6)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                 INSTANCE = instance
                 instance

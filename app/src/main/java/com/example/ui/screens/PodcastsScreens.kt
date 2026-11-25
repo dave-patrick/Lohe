@@ -92,6 +92,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -237,6 +240,7 @@ fun PodcastsTabScreen(
     onOpenNotes: (EpisodeEntity) -> Unit,
     onRefreshFeeds: () -> Unit = {},
     onUpdateAudioOverrides: (PodcastEntity, Boolean, Float, Boolean, Int) -> Unit = { _, _, _, _, _ -> },
+    onUpdateSkips: (PodcastEntity, Int, Int) -> Unit = { _, _, _ -> },
     onPlayNext: (EpisodeEntity) -> Unit = { onToggleUpNext(it, true) },
     onToggleNotifications: (PodcastEntity, Boolean) -> Unit = { _, _ -> },
     onAddToUpNext: (EpisodeEntity, Boolean) -> Unit = { ep, beg -> onToggleUpNext(ep, beg) },
@@ -279,6 +283,7 @@ fun PodcastsTabScreen(
                 onUpdateAudioOverrides = { useCustom, spd, skipSil, boost ->
                     onUpdateAudioOverrides(activeShow, useCustom, spd, skipSil, boost)
                 },
+                onUpdateSkips = { intro, outro -> onUpdateSkips(activeShow, intro, outro) },
                 onToggleNotifications = { enabled -> onToggleNotifications(activeShow, enabled) }
             )
             return@BoxWithConstraints
@@ -1092,6 +1097,7 @@ fun PodcastsTabScreen(
                             onUpdateAudioOverrides = { useCustom, spd, skipSil, boost ->
                                 onUpdateAudioOverrides(paneDetailShow, useCustom, spd, skipSil, boost)
                             },
+                            onUpdateSkips = { intro, outro -> onUpdateSkips(paneDetailShow, intro, outro) },
                             onToggleNotifications = { enabled -> onToggleNotifications(paneDetailShow, enabled) }
                         )
                     } else {
@@ -1187,6 +1193,7 @@ fun PodcastDetailScreen(
     onOpenNotes: (EpisodeEntity) -> Unit,
     isEmbeddedPane: Boolean = false,
     onUpdateAudioOverrides: (Boolean, Float, Boolean, Int) -> Unit = { _, _, _, _ -> },
+    onUpdateSkips: (Int, Int) -> Unit = { _, _ -> },
     onToggleNotifications: (Boolean) -> Unit = {}
 ) {
     var activeFilter by remember { mutableStateOf("All") }
@@ -1630,6 +1637,53 @@ fun PodcastDetailScreen(
                 }
             }
 
+            // Per-show skip of the start (intro) and end (outro) of every episode
+            item {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = cardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, borderColor, RoundedCornerShape(18.dp))
+                        .testTag("podcast_skip_card")
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Skip Intro & Outro",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) {
+                                "Skipping first ${podcast.skipIntroSec}s • last ${podcast.skipOutroSec}s of every episode"
+                            } else {
+                                "Jump past recurring intros and trailing credits on every episode"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (podcast.skipIntroSec > 0 || podcast.skipOutroSec > 0) LoheCyanAccent
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        SkipSecondsStepper(
+                            label = "Skip from start",
+                            seconds = podcast.skipIntroSec,
+                            tagPrefix = "podcast_skip_intro",
+                            borderColor = borderColor,
+                            onChange = { onUpdateSkips(it, podcast.skipOutroSec) }
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        SkipSecondsStepper(
+                            label = "Skip from end",
+                            seconds = podcast.skipOutroSec,
+                            tagPrefix = "podcast_skip_outro",
+                            borderColor = borderColor,
+                            onChange = { onUpdateSkips(podcast.skipIntroSec, it) }
+                        )
+                    }
+                }
+            }
+
             // Segmented Filter Pills (All, Played, Unplayed, Listening matching screenshot)
             item {
                 FlowRow(
@@ -1867,5 +1921,73 @@ fun PodcastDetailScreen(
                 TextButton(onClick = { showUnsubscribeConfirm = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun SkipSecondsStepper(
+    label: String,
+    seconds: Int,
+    tagPrefix: String,
+    borderColor: Color,
+    onChange: (Int) -> Unit
+) {
+    val step = 5
+    val maxSeconds = 600
+    val valueLabel = when {
+        seconds <= 0 -> "Off"
+        seconds >= 60 -> "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+        else -> "${seconds}s"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, borderColor, CircleShape)
+                    .clickable(enabled = seconds > 0) { onChange((seconds - step).coerceAtLeast(0)) }
+                    .semantics { contentDescription = "$label: decrease by $step seconds" }
+                    .testTag("${tagPrefix}_minus")
+            ) {
+                Text(
+                    "−",
+                    fontSize = 20.sp,
+                    color = if (seconds > 0) LoheCyanAccent else MaterialTheme.colorScheme.outline
+                )
+            }
+            Text(
+                text = valueLabel,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                color = if (seconds > 0) LoheCyanAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .width(56.dp)
+                    .testTag("${tagPrefix}_value")
+            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, borderColor, CircleShape)
+                    .clickable(enabled = seconds < maxSeconds) { onChange((seconds + step).coerceAtMost(maxSeconds)) }
+                    .semantics { contentDescription = "$label: increase by $step seconds" }
+                    .testTag("${tagPrefix}_plus")
+            ) {
+                Text(
+                    "+",
+                    fontSize = 20.sp,
+                    color = if (seconds < maxSeconds) LoheCyanAccent else MaterialTheme.colorScheme.outline
+                )
+            }
+        }
     }
 }

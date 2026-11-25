@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -1028,6 +1029,130 @@ fun UpNextSpotlightCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Compact resume card for the episode the listener was last in the middle of.
+ * Follows the "glow means playing" rule: halo only while that episode is actually playing.
+ */
+@Composable
+fun ContinueListeningCard(
+    episode: EpisodeEntity,
+    isPlaying: Boolean,
+    moreInProgress: Int,
+    onPlay: () -> Unit,
+    onOpenNotes: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val remainingMs = (episode.durationMs - episode.resumePositionMs).coerceAtLeast(0L)
+    val progress = if (episode.durationMs > 0L) {
+        (episode.resumePositionMs.toFloat() / episode.durationMs).coerceIn(0f, 1f)
+    } else 0f
+    val glow = if (isPlaying) {
+        Modifier.shadow(
+            elevation = 14.dp,
+            shape = shape,
+            ambientColor = LoheElectricBlue,
+            spotColor = LoheElectricBlue
+        )
+    } else Modifier
+
+    Surface(
+        shape = shape,
+        color = LoheSurfaceCardDark,
+        border = androidx.compose.foundation.BorderStroke(
+            width = if (isPlaying) 1.5.dp else 1.dp,
+            color = if (isPlaying) LoheElectricBlue else LoheBorderDark
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(glow)
+            .testTag("continue_listening_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(LoheElectricBlue.copy(alpha = 0.16f), Color.Transparent)
+                    )
+                )
+                .clickable(onClick = onOpenNotes)
+                .padding(14.dp)
+        ) {
+            Text(
+                text = "PICK UP WHERE YOU LEFT OFF",
+                style = MaterialTheme.typography.labelSmall,
+                letterSpacing = 1.6.sp,
+                color = LoheElectricBlue
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PodcastArtworkThumbnail(
+                    artworkUrl = episode.artworkUrl,
+                    title = episode.podcastTitle,
+                    modifier = Modifier.size(52.dp),
+                    cornerRadius = 10.dp
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = episode.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${episode.podcastTitle} · ${formatDurationCompactHuman(remainingMs)} left",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                IconButton(
+                    onClick = onPlay,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(LoheElectricBlue)
+                        .testTag("continue_listening_play")
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause ${episode.title}" else "Resume ${episode.title}",
+                        tint = Color.White
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(LoheBorderDark)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(LoheCyanAccent)
+                )
+            }
+            if (moreInProgress > 0) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "+$moreInProgress more in progress",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

@@ -521,6 +521,8 @@ class PodcastAppImporter(
                             customSpeed = cursor.getDoubleOrDefault(1.0, "customSpeed").toFloat().coerceIn(0.5f, 3.0f),
                             customSkipSilence = cursor.getIntOrDefault(0, "customSkipSilence") != 0,
                             customVolumeBoostDb = cursor.getIntOrDefault(0, "customVolumeBoostDb"),
+                            skipIntroSec = cursor.getIntOrDefault(0, "skipIntroSec").coerceIn(0, 600),
+                            skipOutroSec = cursor.getIntOrDefault(0, "skipOutroSec").coerceIn(0, 600),
                             notifyNewEpisodes = cursor.getIntOrDefault(1, "notifyNewEpisodes") != 0,
                             isSubscribed = cursor.getIntOrDefault(1, "isSubscribed") != 0,
                             lastSyncedAt = cursor.getLongOrDefault(System.currentTimeMillis(), "lastSyncedAt")

@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
@@ -140,6 +142,7 @@ fun SettingsContainerScreen(
     onPresetColorChange: (QueuePresetColor) -> Unit,
     onCustomHexColorChange: (String, Boolean) -> Unit,
     onToggleHomeCard: (HomeCardType, Boolean) -> Unit = { _, _ -> },
+    onMoveHomeCard: (HomeCardType, Int) -> Unit = { _, _ -> },
     onResetHomeCards: () -> Unit = {},
     onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit = {},
     onSpeedChange: (Float) -> Unit,
@@ -284,6 +287,7 @@ fun SettingsContainerScreen(
                             onPresetColorChange = onPresetColorChange,
                             onCustomHexColorChange = onCustomHexColorChange,
                             onToggleHomeCard = onToggleHomeCard,
+                            onMoveHomeCard = onMoveHomeCard,
                             onResetHomeCards = onResetHomeCards,
                             onListeningHistoryRangeChange = onListeningHistoryRangeChange,
                             onSpeedChange = onSpeedChange,
@@ -358,6 +362,7 @@ fun SettingsContainerScreen(
                         onPresetColorChange = onPresetColorChange,
                         onCustomHexColorChange = onCustomHexColorChange,
                         onToggleHomeCard = onToggleHomeCard,
+                        onMoveHomeCard = onMoveHomeCard,
                         onResetHomeCards = onResetHomeCards,
                         onListeningHistoryRangeChange = onListeningHistoryRangeChange,
                         onSpeedChange = onSpeedChange,
@@ -427,6 +432,7 @@ private fun SettingsDetailContent(
     onPresetColorChange: (QueuePresetColor) -> Unit,
     onCustomHexColorChange: (String, Boolean) -> Unit,
     onToggleHomeCard: (HomeCardType, Boolean) -> Unit,
+    onMoveHomeCard: (HomeCardType, Int) -> Unit,
     onResetHomeCards: () -> Unit,
     onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -495,6 +501,7 @@ private fun SettingsDetailContent(
         SettingsSubScreen.HOME_CARDS -> HomeCardsSettingsSubScreen(
             settings = settings,
             onToggleHomeCard = onToggleHomeCard,
+            onMoveHomeCard = onMoveHomeCard,
             onResetHomeCards = onResetHomeCards,
             onListeningHistoryRangeChange = onListeningHistoryRangeChange,
             onOpenProModal = onOpenProUpgradeModal
@@ -2646,13 +2653,15 @@ private fun CloudSyncSettingsSubScreen(
 private fun HomeCardsSettingsSubScreen(
     settings: LoheUserSettings,
     onToggleHomeCard: (HomeCardType, Boolean) -> Unit,
+    onMoveHomeCard: (HomeCardType, Int) -> Unit,
     onResetHomeCards: () -> Unit,
     onListeningHistoryRangeChange: (ListeningHistoryRange) -> Unit,
     onOpenProModal: () -> Unit
 ) {
-    val freeCards = remember { HomeCardType.entries.filter { !it.isPro } }
-    val proCards = remember { HomeCardType.entries.filter { it.isPro } }
-    val totalAvailable = if (Edition.HAS_PRO) HomeCardType.entries.size else freeCards.size
+    val orderedCards = remember(settings.homeCardOrder) {
+        settings.homeCardOrder.filter { Edition.HAS_PRO || !it.isPro }
+    }
+    val totalAvailable = orderedCards.size
     val activeCount = settings.enabledHomeCards.count { !it.isPro || (Edition.HAS_PRO && settings.isProUnlocked) }
 
     LazyColumn(
@@ -2726,17 +2735,28 @@ private fun HomeCardsSettingsSubScreen(
         }
 
         item {
-            SettingsCard(title = "Dashboard Cards (Free)") {
-                freeCards.forEachIndexed { idx, card ->
-                    val checked = card in settings.enabledHomeCards
+            SettingsCard(title = "Card Order") {
+                Text(
+                    text = "Use the arrows to rearrange. Cards show on Home from top to bottom.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                orderedCards.forEachIndexed { idx, card ->
+                    val isLocked = card.isPro && !settings.isProUnlocked
+                    val checked = !isLocked && card in settings.enabledHomeCards
                     HomeCardToggleRow(
                         card = card,
                         checked = checked,
-                        isLockedPro = false,
+                        isLockedPro = isLocked,
                         isProUnlocked = settings.isProUnlocked,
-                        onToggle = { enabled -> onToggleHomeCard(card, enabled) }
+                        onToggle = { enabled ->
+                            if (isLocked) onOpenProModal() else onToggleHomeCard(card, enabled)
+                        },
+                        onMoveUp = if (idx > 0) ({ onMoveHomeCard(card, -1) }) else null,
+                        onMoveDown = if (idx < orderedCards.lastIndex) ({ onMoveHomeCard(card, 1) }) else null
                     )
-                    if (idx < freeCards.lastIndex) {
+                    if (idx < orderedCards.lastIndex) {
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 8.dp),
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
@@ -2758,26 +2778,6 @@ private fun HomeCardsSettingsSubScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    proCards.forEachIndexed { idx, card ->
-                        val isLocked = !settings.isProUnlocked
-                        val checked = !isLocked && card in settings.enabledHomeCards
-                        HomeCardToggleRow(
-                            card = card,
-                            checked = checked,
-                            isLockedPro = isLocked,
-                            isProUnlocked = settings.isProUnlocked,
-                            onToggle = { enabled ->
-                                if (isLocked) onOpenProModal() else onToggleHomeCard(card, enabled)
-                            }
-                        )
-                        if (idx < proCards.lastIndex) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-                            )
-                        }
                     }
                     if (!settings.isProUnlocked) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -2806,7 +2806,9 @@ private fun HomeCardToggleRow(
     checked: Boolean,
     isLockedPro: Boolean,
     isProUnlocked: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -2836,7 +2838,38 @@ private fun HomeCardToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        if (onMoveUp != null || onMoveDown != null) {
+            Column {
+                IconButton(
+                    onClick = { onMoveUp?.invoke() },
+                    enabled = onMoveUp != null,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("home_card_up_${card.name.lowercase()}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowUp,
+                        contentDescription = "Move ${card.title} up",
+                        tint = if (onMoveUp != null) LoheCyanAccent else MaterialTheme.colorScheme.outline
+                    )
+                }
+                IconButton(
+                    onClick = { onMoveDown?.invoke() },
+                    enabled = onMoveDown != null,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("home_card_down_${card.name.lowercase()}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = "Move ${card.title} down",
+                        tint = if (onMoveDown != null) LoheCyanAccent else MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
         if (isLockedPro) {
             IconButton(
                 onClick = { onToggle(true) },

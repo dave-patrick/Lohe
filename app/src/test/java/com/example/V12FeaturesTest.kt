@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasTestTag
 import com.example.data.network.PodcastingChaptersAndTranscripts
@@ -97,6 +98,8 @@ class V12FeaturesTest {
         }
 
         // Home Listening Activity summary card shows streak & saved mins
+        composeTestRule.onNodeWithTag("home_tab_screen")
+            .performScrollToNode(androidx.compose.ui.test.hasTestTag("listening_activity_card"))
         composeTestRule.onNodeWithTag("listening_activity_card").assertIsDisplayed()
 
         // Open Full Player -> verify active Podcasting 2.0 chapter bar -> bookmark -> open Now Playing Settings -> End of Ep sleep timer -> open Notes/Chapters/Transcript/Bookmarks sheet

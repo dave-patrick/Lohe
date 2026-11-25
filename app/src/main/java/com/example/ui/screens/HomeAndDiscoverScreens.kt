@@ -123,6 +123,7 @@ import com.example.ui.components.QueueIndicatorBadge
 import com.example.ui.components.SwipeableEpisodeRow
 import com.example.ui.components.UpNextQueueActionButton
 import com.example.ui.components.UpNextSpotlightCard
+import com.example.ui.components.ContinueListeningCard
 import com.example.ui.components.YourSignalCard
 import com.example.ui.components.formatDurationCompactHuman
 import com.example.ui.components.formatDurationMmSs
@@ -185,8 +186,8 @@ fun HomeTabScreen(
         if (ep.isPlayed) 0L else (ep.durationMs - ep.resumePositionMs).coerceAtLeast(0L)
     }
 
-    val visibleCards = remember(settings.enabledHomeCards, settings.isProUnlocked) {
-        HomeCardType.entries.filter { card ->
+    val visibleCards = remember(settings.enabledHomeCards, settings.homeCardOrder, settings.isProUnlocked) {
+        settings.homeCardOrder.filter { card ->
             card in settings.enabledHomeCards && (!card.isPro || (Edition.HAS_PRO && settings.isProUnlocked))
         }
     }
@@ -255,35 +256,16 @@ fun HomeTabScreen(
             )
 
             HomeCardType.CONTINUE_LISTENING -> {
-                if (inProgressEpisodes.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = stringResource(id = R.string.continue_listening_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        inProgressEpisodes.forEach { episode ->
-                            SwipeableEpisodeRow(
-                                episode = episode,
-                                settings = settings,
-                                onSwipeAction = onSwipeEpisodeAction,
-                                cornerRadius = 16.dp
-                            ) {
-                                CompactEpisodeRowCard(
-                                    episode = episode,
-                                    settings = settings,
-                                    isCurrentlyPlaying = playbackState.currentEpisode?.id == episode.id && playbackState.isPlaying,
-                                    queuePosition = upNextEpisodes.indexOfFirst { it.id == episode.id }.takeIf { it >= 0 }?.plus(1),
-                                    onPlay = { onPlayEpisode(episode) },
-                                    onToggleUpNext = { onToggleUpNext(episode, false) },
-                                    onAddToUpNext = { beg -> onAddToUpNext(episode, beg) },
-                                    onToggleStarred = { onToggleStarred(episode) },
-                                    onOpenNotes = { onOpenNotes(episode) }
-                                )
-                            }
-                        }
-                    }
+                val resumeEpisode = inProgressEpisodes.firstOrNull { it.id == playbackState.currentEpisode?.id }
+                    ?: inProgressEpisodes.firstOrNull()
+                if (resumeEpisode != null) {
+                    ContinueListeningCard(
+                        episode = resumeEpisode,
+                        isPlaying = playbackState.currentEpisode?.id == resumeEpisode.id && playbackState.isPlaying,
+                        moreInProgress = inProgressEpisodes.size - 1,
+                        onPlay = { onPlayEpisode(resumeEpisode) },
+                        onOpenNotes = { onOpenNotes(resumeEpisode) }
+                    )
                 }
             }
 

@@ -48,6 +48,43 @@ class HomeCardsAndFeedSyncTest {
     }
 
     @Test
+    fun podcastSkipIntroOutro_defaultOffAndSurviveJsonBackupRoundTrip() {
+        val pod = com.example.data.local.PodcastEntity(
+            id = "p1", title = "Show", author = "A", description = "", feedUrl = "https://example.org/f.xml",
+            artworkUrl = "", category = "Tech", skipIntroSec = 35, skipOutroSec = 90
+        )
+        assertEquals(0, pod.copy(skipIntroSec = 0, skipOutroSec = 0).skipIntroSec)
+        val parser = RssAndOpmlParser()
+        val json = parser.exportJsonBackup(listOf(pod), emptyList(), emptyList())
+        val restored = parser.parseJsonBackup(json).podcasts.single()
+        assertEquals(35, restored.skipIntroSec)
+        assertEquals(90, restored.skipOutroSec)
+
+        val legacy = parser.parseJsonBackup(json.replace("\"skipIntroSec\"", "\"x1\"").replace("\"skipOutroSec\"", "\"x2\""))
+        assertEquals("backups without the fields mean off", 0, legacy.podcasts.single().skipIntroSec)
+        assertEquals(0, legacy.podcasts.single().skipOutroSec)
+    }
+
+    @Test
+    fun homeCardOrder_savedOrderWinsAndMissingCardsAppendInDefaultOrder() {
+        assertEquals(HomeCardType.entries.toList(), HomeCardType.orderFromCsv(null))
+        assertEquals(HomeCardType.entries.toList(), HomeCardType.orderFromCsv(""))
+
+        val custom = HomeCardType.orderFromCsv("LIBRARY_DETAILS,BOGUS,YOUR_SIGNAL,LIBRARY_DETAILS")
+        assertEquals(HomeCardType.LIBRARY_DETAILS, custom[0])
+        assertEquals(HomeCardType.YOUR_SIGNAL, custom[1])
+        assertEquals("every card appears exactly once", HomeCardType.entries.size, custom.size)
+        assertEquals(HomeCardType.entries.toSet(), custom.toSet())
+        assertEquals(
+            "unsaved cards follow in default order",
+            HomeCardType.entries.filter { it != HomeCardType.LIBRARY_DETAILS && it != HomeCardType.YOUR_SIGNAL },
+            custom.drop(2)
+        )
+
+        assertEquals(custom, HomeCardType.orderFromCsv(HomeCardType.orderToCsv(custom)))
+    }
+
+    @Test
     fun homeCardDefaults_matchFreeAndProExpectations() {
         val freeDefaults = HomeCardType.defaultEnabledFor(isProUnlocked = false)
         assertTrue(HomeCardType.YOUR_SIGNAL in freeDefaults)
@@ -56,7 +93,8 @@ class HomeCardsAndFeedSyncTest {
         assertTrue(HomeCardType.LIBRARY_DETAILS in freeDefaults)
         assertFalse("Most Episodes should now be a Pro card", HomeCardType.MOST_EPISODES in freeDefaults)
         assertTrue(HomeCardType.MOST_EPISODES.isPro)
-        assertFalse(HomeCardType.CONTINUE_LISTENING in freeDefaults)
+        assertTrue("Continue Listening is on by default", HomeCardType.CONTINUE_LISTENING in freeDefaults)
+        assertEquals("Continue Listening leads the default order", HomeCardType.CONTINUE_LISTENING, HomeCardType.entries.first())
         assertFalse(HomeCardType.RECENT_EPISODES in freeDefaults)
         assertFalse(HomeCardType.MOST_LISTENED in freeDefaults)
 
