@@ -28,6 +28,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaConstants
@@ -72,6 +73,8 @@ class LohePlaybackService : MediaLibraryService() {
     companion object {
         const val ACTION_SET_SKIP_SILENCE = "com.example.playback.SET_SKIP_SILENCE"
         const val ACTION_SET_VOLUME_BOOST = "com.example.playback.SET_VOLUME_BOOST"
+        const val ACTION_AA_SKIP_BACK_15 = "com.example.playback.AA_SKIP_BACK_15"
+        const val ACTION_AA_SKIP_FORWARD_30 = "com.example.playback.AA_SKIP_FORWARD_30"
         const val EXTRA_ENABLED = "enabled"
         const val EXTRA_BOOST_DB = "boost_db"
 
@@ -415,6 +418,25 @@ class LohePlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val skipBack15Command = SessionCommand(ACTION_AA_SKIP_BACK_15, Bundle.EMPTY)
+        val skipForward30Command = SessionCommand(ACTION_AA_SKIP_FORWARD_30, Bundle.EMPTY)
+        val androidAutoCustomLayout = ImmutableList.of(
+            CommandButton.Builder()
+                .setDisplayName("Back 15s")
+                .setIconResId(R.drawable.ic_aa_replay_15)
+                .setSessionCommand(skipBack15Command)
+                .build(),
+            CommandButton.Builder()
+                .setDisplayName("Forward 30s")
+                .setIconResId(R.drawable.ic_aa_forward_30)
+                .setSessionCommand(skipForward30Command)
+                .build()
+        )
+        val sessionExtras = Bundle().apply {
+            putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)
+            putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_NEXT, false)
+        }
+
         val callback = object : MediaLibrarySession.Callback {
             override fun onConnect(
                 session: MediaSession,
@@ -426,9 +448,12 @@ class LohePlaybackService : MediaLibraryService() {
                 val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                     .add(SessionCommand(ACTION_SET_SKIP_SILENCE, Bundle.EMPTY))
                     .add(SessionCommand(ACTION_SET_VOLUME_BOOST, Bundle.EMPTY))
+                    .add(skipBack15Command)
+                    .add(skipForward30Command)
                     .build()
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(sessionCommands)
+                    .setCustomLayout(androidAutoCustomLayout)
                     .build()
             }
 
@@ -448,6 +473,18 @@ class LohePlaybackService : MediaLibraryService() {
                         val db = args.getInt(EXTRA_BOOST_DB, 0)
                         currentBoostDb = db
                         applyLoudnessBoost(rawPlayer.audioSessionId, db)
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                    ACTION_AA_SKIP_BACK_15 -> {
+                        val targetMs = (rawPlayer.currentPosition - 15_000L).coerceAtLeast(0L)
+                        rawPlayer.seekTo(targetMs)
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                    ACTION_AA_SKIP_FORWARD_30 -> {
+                        val dur = rawPlayer.duration
+                        val rawTarget = rawPlayer.currentPosition + 30_000L
+                        val targetMs = if (dur != C.TIME_UNSET && dur > 0L) rawTarget.coerceAtMost(dur) else rawTarget
+                        rawPlayer.seekTo(targetMs)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
                 }
@@ -720,6 +757,8 @@ class LohePlaybackService : MediaLibraryService() {
         libraryCallback = callback
         mediaLibrarySession = MediaLibrarySession.Builder(this, forwardingPlayer, callback)
             .setSessionActivity(pendingIntent)
+            .setCustomLayout(androidAutoCustomLayout)
+            .setExtras(sessionExtras)
             .build()
 
         _activeServiceFlow.value = this
