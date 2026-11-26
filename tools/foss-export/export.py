@@ -38,7 +38,7 @@ EXCLUDE = {
     ".git", "app/src/main/java/com/example/pro", "app/src/debug",
     "app/src/testDebug", "firebase-applet-config.json", "metadata.json", ".env", ".env.example",
     "public", "local.properties", "google-services.json", "app/google-services.json",
-    "my-upload-key.jks", "debug.keystore", ".idea", "build", "app/build", ".gradle", ".kotlin",
+    "my-upload-key.jks", "debug.keystore", ".idea", "build", "app/build", "wear", "wear/build", ".gradle", ".kotlin",
 }
 EXCLUDE_SUFFIXES = (".jks", ".keystore", ".p12")
 
@@ -149,6 +149,7 @@ def patch_app_gradle(t):
     t = sub_once(t, r"(?m)^googleServices \{.*\}\n", "", "googleServices block")
     t = sub_once(t, r"(?m)^\s*implementation\(libs\.android\.billing\.ktx\)\n", "", "billing dependency")
     t = sub_once(t, r"(?m)^\s*implementation\(libs\.play\.services\.auth\)\n", "", "play-services-auth dependency")
+    t = re.sub(r"(?m)^\s*implementation\(libs\.play\.services\.wearable\)\n", "", t)
     # Optional local release signing for people building their own FOSS APKs.
     t = "import java.util.Properties\n" + t
     t = sub_once(
@@ -186,6 +187,7 @@ def patch_manifest(t):
     t = sub_once(t, r"(?m)^\s*<uses-permission android:name=\"android\.permission\.SYSTEM_ALERT_WINDOW\" />\n",
                  "", "overlay permission")
     t = sub_once(t, r"(?s)\n\s*<service\s+android:name=\"\.pro\.[^\"]+\"[^>]*?/>\n", "\n", "Pro overlay service")
+    t = re.sub(r"(?s)\n\s*<service\s+android:name=\"\.pro\.[^\"]+\"[^>]*?>.*?</service>\n", "\n", t)
     if ".pro." in t:
         fail("manifest still references a Pro component")
     t, n = re.subn(r'android:label="@string/app_name"', 'android:label="@string/foss_launcher_label"', t)
@@ -249,6 +251,10 @@ def main():
           lambda t: sub_once(t, r"const val HAS_PRO = true", "const val HAS_PRO = false", "Edition.HAS_PRO"))
     patch(out / "app/build.gradle.kts", patch_app_gradle)
     patch(out / "build.gradle.kts", patch_root_gradle)
+    patch(
+        out / "settings.gradle.kts",
+        lambda t: re.sub(r'(?m)^\s*include\(":wear"\)\n?', "", t),
+    )
     if (out / "sync-app/build.gradle.kts").exists():
         patch(
             out / "settings.gradle.kts",

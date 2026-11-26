@@ -84,8 +84,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val openProOnLaunch = intent?.getBooleanExtra("com.example.EXTRA_OPEN_PRO_UPGRADE", false) == true
         setContent {
             val viewModel: LoheViewModel = viewModel()
+            LaunchedEffect(openProOnLaunch) {
+                if (openProOnLaunch) {
+                    viewModel.setShowProUpgradeSheet(true)
+                }
+            }
             LoheAppRoot(viewModel = viewModel)
         }
     }
@@ -131,6 +137,23 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
     val lastImportSummary by viewModel.lastImportSummary.collectAsStateWithLifecycle()
     val downloadingEpisodeIds by viewModel.downloadingEpisodeIds.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Sync Pro entitlement, Now Playing, and Up Next to paired Wear OS watch (no-op in FOSS)
+    LaunchedEffect(
+        settings.isProUnlocked,
+        playbackState.currentEpisode?.id,
+        playbackState.isPlaying,
+        playbackState.positionMs / 5_000L,
+        playbackState.playbackSpeed,
+        upNextEpisodes
+    ) {
+        viewModel.proFeatures.syncWearState(
+            context = context,
+            isProUnlocked = settings.isProUnlocked,
+            playbackState = playbackState,
+            upNextEpisodes = upNextEpisodes
+        )
+    }
 
     // Google Drive OAuth AppData Consent Launcher
     val driveAuthLauncher = rememberLauncherForActivityResult(

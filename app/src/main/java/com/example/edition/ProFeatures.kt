@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import com.example.data.local.EpisodeEntity
+import com.example.playback.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +60,13 @@ interface ProFeatures {
     )
 
     fun stopFloatingOverlay(context: Context)
+
+    fun syncWearState(
+        context: Context,
+        isProUnlocked: Boolean,
+        playbackState: PlaybackUiState,
+        upNextEpisodes: List<EpisodeEntity>
+    ) = Unit
 
     @Composable
     fun UpgradeDialog(
