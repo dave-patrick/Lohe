@@ -11,6 +11,7 @@
 .DS_Store
 /build
 /sync-app/build
+/wear/build
 /captures
 .externalNativeBuild
 .cxx

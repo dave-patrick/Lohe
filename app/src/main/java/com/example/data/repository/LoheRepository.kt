@@ -1110,6 +1110,18 @@ class LoheRepository(
         }
     }
 
+    suspend fun ensureEpisodeDownloadedFile(episode: EpisodeEntity): Result<File> {
+        val fresh = dao.getEpisodeById(episode.id) ?: episode
+        val existing = fresh.localFilePath.takeIf { it.isNotBlank() }?.let(::File)
+            ?.takeIf { it.exists() && it.length() > 0L }
+        if (existing != null) return Result.success(existing)
+        val manager = downloadManager
+            ?: return Result.failure(IllegalStateException("Download manager unavailable"))
+        return manager.downloadEpisodeAudio(fresh).onSuccess { file ->
+            dao.updateEpisodeDownloaded(fresh.id, downloaded = true, localFilePath = file.absolutePath)
+        }
+    }
+
     suspend fun refreshAllSubscribedFeeds(): Int {
         return refreshAllSubscribedFeedsWithAlerts().first
     }

@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Explore
@@ -2108,7 +2109,8 @@ fun EpisodeNotesBottomSheet(
     onCreatePlaylistWithEpisode: ((String) -> Unit)? = null,
     onOpenPodcast: (() -> Unit)? = null,
     onResetProgress: (() -> Unit)? = null,
-    onArchiveEpisode: (() -> Unit)? = null
+    onArchiveEpisode: (() -> Unit)? = null,
+    onSendToWatch: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2366,6 +2368,16 @@ fun EpisodeNotesBottomSheet(
                             tint = LoheTextPrimaryDark,
                             testTag = "episode_sheet_archive_chip",
                             onClick = onArchiveEpisode
+                        )
+                    }
+
+                    if (onSendToWatch != null) {
+                        EpisodeSheetQuickActionChip(
+                            label = "Send to Watch",
+                            icon = Icons.Filled.Watch,
+                            tint = LoheCyanAccent,
+                            testTag = "episode_sheet_send_watch_chip",
+                            onClick = onSendToWatch
                         )
                     }
 

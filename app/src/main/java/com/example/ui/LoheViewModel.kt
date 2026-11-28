@@ -965,6 +965,28 @@ class LoheViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun sendEpisodeToWatch(episode: EpisodeEntity) {
+        if (!Edition.HAS_PRO) return
+        if (!settingsState.value.isProUnlocked) {
+            _showProUpgradeSheet.value = true
+            return
+        }
+        viewModelScope.launch {
+            postStatusMessage("Preparing \"${episode.title}\" for watch...")
+            val fileResult = repository.ensureEpisodeDownloadedFile(episode)
+            val file = fileResult.getOrElse { err ->
+                postStatusMessage("Watch download failed: ${err.localizedMessage ?: "Network error"}")
+                return@launch
+            }
+            val sendResult = proFeatures.sendEpisodeToWatch(getApplication(), episode, file)
+            sendResult.onSuccess { msg ->
+                postStatusMessage(msg)
+            }.onFailure { err ->
+                postStatusMessage("Watch transfer failed: ${err.localizedMessage ?: "Watch not connected"}")
+            }
+        }
+    }
+
     fun refreshSubscribedFeedsNow() {
         viewModelScope.launch {
             postStatusMessage("Checking subscribed RSS feeds for new episodes...")

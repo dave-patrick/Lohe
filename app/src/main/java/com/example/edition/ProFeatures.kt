@@ -6,11 +6,13 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
 import com.example.data.local.EpisodeEntity
+import com.example.data.local.PodcastEntity
 import com.example.playback.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 
 data class LoheBillingState(
     val isConnected: Boolean = false,
@@ -65,8 +67,15 @@ interface ProFeatures {
         context: Context,
         isProUnlocked: Boolean,
         playbackState: PlaybackUiState,
-        upNextEpisodes: List<EpisodeEntity>
+        upNextEpisodes: List<EpisodeEntity>,
+        podcasts: List<PodcastEntity> = emptyList()
     ) = Unit
+
+    suspend fun sendEpisodeToWatch(
+        context: Context,
+        episode: EpisodeEntity,
+        audioFile: File
+    ): Result<String> = Result.failure(UnsupportedOperationException("Not available in FOSS build"))
 
     @Composable
     fun UpgradeDialog(

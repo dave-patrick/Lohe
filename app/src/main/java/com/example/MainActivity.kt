@@ -138,20 +138,22 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
     val downloadingEpisodeIds by viewModel.downloadingEpisodeIds.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Sync Pro entitlement, Now Playing, and Up Next to paired Wear OS watch (no-op in FOSS)
+    // Sync Pro entitlement, Now Playing, Shows, and Up Next to paired Wear OS watch (no-op in FOSS)
     LaunchedEffect(
         settings.isProUnlocked,
         playbackState.currentEpisode?.id,
         playbackState.isPlaying,
         playbackState.positionMs / 5_000L,
         playbackState.playbackSpeed,
-        upNextEpisodes
+        upNextEpisodes,
+        podcasts
     ) {
         viewModel.proFeatures.syncWearState(
             context = context,
             isProUnlocked = settings.isProUnlocked,
             playbackState = playbackState,
-            upNextEpisodes = upNextEpisodes
+            upNextEpisodes = upNextEpisodes,
+            podcasts = podcasts
         )
     }
 
@@ -850,6 +852,11 @@ fun LoheAppRoot(viewModel: LoheViewModel) {
                 onArchiveEpisode = {
                     viewModel.archiveEpisode(liveEp)
                     viewModel.openEpisodeNotes(null)
+                },
+                onSendToWatch = if (Edition.HAS_PRO) {
+                    { viewModel.sendEpisodeToWatch(liveEp) }
+                } else {
+                    null
                 }
             )
         }
